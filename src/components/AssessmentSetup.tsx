@@ -6,6 +6,7 @@ export function AssessmentSetup() {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [assessmentType, setAssessmentType] = useState('');
   const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
+  const [isLocalDialect, setIsLocalDialect] = useState(false);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -27,6 +28,27 @@ export function AssessmentSetup() {
             <option value="ama">Ama Osei (Primary 6)</option>
             <option value="kojo">Kojo Appiah (Primary 5)</option>
           </select>
+
+          <div className="mt-3">
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className="relative flex items-center">
+                <input
+                  type="checkbox"
+                  checked={isLocalDialect}
+                  onChange={(e) => setIsLocalDialect(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1"
+                />
+              </div>
+              <div className="text-sm">
+                <span className="font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
+                  Student primarily speaks a local dialect at home (e.g., Twi, Ga, Ewe)
+                </span>
+                <p className="text-xs text-blue-500/80 italic mt-0.5">
+                  Provides context to the AI to distinguish between cognitive literacy gaps and ESL translation errors.
+                </p>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div>
