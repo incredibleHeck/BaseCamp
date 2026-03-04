@@ -1,0 +1,5 @@
+{
+  "name": "BaseCamp Diagnostics",
+  "description": "EdTech web application for basic school teachers in Ghana to upload student assessments and receive AI-generated diagnostics on literacy and numeracy gaps.",
+  "requestFramePermissions": []
+}
