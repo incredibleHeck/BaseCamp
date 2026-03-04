@@ -1,17 +1,27 @@
 import React, { useState } from 'react';
-import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send } from 'lucide-react';
+import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer } from 'lucide-react';
 
 type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
 export function AnalysisResults() {
   const [status, setStatus] = useState<AnalysisStatus>('empty');
   const [showSmsDraft, setShowSmsDraft] = useState(false);
+  const [showLessonPlan, setShowLessonPlan] = useState(false);
+  const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
 
   // Temporary function to cycle through states for demonstration
   const cycleStatus = () => {
     if (status === 'empty') setStatus('analyzing');
     else if (status === 'analyzing') setStatus('results');
     else setStatus('empty');
+  };
+
+  const handleGenerateLesson = () => {
+    setIsGeneratingLesson(true);
+    setTimeout(() => {
+      setIsGeneratingLesson(false);
+      setShowLessonPlan(true);
+    }, 2000);
   };
 
   return (
@@ -76,11 +86,50 @@ export function AnalysisResults() {
 
             <div className="bg-gray-50 border border-gray-100 rounded-lg p-5">
               <h4 className="text-base font-semibold text-gray-900 mb-3">Recommended Intervention</h4>
-              <ul className="list-disc list-inside text-sm text-gray-700 space-y-2">
+              <ul className="list-disc list-inside text-sm text-gray-700 space-y-2 mb-4">
                 <li>Use visual fraction models (like pie charts or fraction bars) to show why denominators cannot simply be added.</li>
                 <li>Practice finding the Least Common Multiple (LCM) for denominators before attempting addition.</li>
                 <li>Review the concept of "equivalent fractions" using multiplication tables.</li>
               </ul>
+              
+              {!showLessonPlan && !isGeneratingLesson && (
+                <button 
+                  onClick={handleGenerateLesson}
+                  className="inline-flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2 px-4 rounded-lg transition-colors border border-yellow-200"
+                >
+                  <Sparkles size={16} />
+                  ✨ Generate 5-Minute Remedial Activity
+                </button>
+              )}
+
+              {isGeneratingLesson && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                  AI generating localized lesson...
+                </div>
+              )}
+
+              {showLessonPlan && (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-5 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex justify-between items-start mb-3">
+                    <h5 className="text-base font-bold text-gray-900">Visualizing Fractions with Local Materials</h5>
+                    <Sparkles size={16} className="text-yellow-600" />
+                  </div>
+                  <div className="space-y-3 mb-4">
+                    <p className="text-sm text-gray-800 font-medium">Instructions:</p>
+                    <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">
+                      <li>Gather 10 small stones or pebbles.</li>
+                      <li>Ask the student to divide the stones into two equal groups to show 1/2.</li>
+                      <li>Ask them to divide them into 5 equal groups to show 1/5.</li>
+                      <li>Physically demonstrate why 1/2 of the stones is a larger amount than 1/5 of the stones.</li>
+                    </ol>
+                  </div>
+                  <button className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline">
+                    <Printer size={14} />
+                    Print Activity
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-auto pt-4 flex flex-col sm:flex-row items-center justify-end gap-4">
