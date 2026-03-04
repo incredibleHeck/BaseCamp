@@ -1,10 +1,5 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState } from 'react';
-import { Header } from './components/Header';
+import React, { useState, useMemo } from 'react';
+import { Header, UserData } from './components/Header';
 import { AssessmentSetup } from './components/AssessmentSetup';
 import { AnalysisResults } from './components/AnalysisResults';
 import { StudentProfile } from './components/StudentProfile';
@@ -13,183 +8,124 @@ import { DistrictOverview } from './components/DistrictOverview';
 import { SchoolOverview } from './components/SchoolOverview';
 import { Login } from './components/Login';
 
+// 1. Scalable Types
 type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview' | 'school-overview' | 'teacher-directory';
-type Role = 'teacher' | 'headteacher' | 'district' | null;
+
+const DASHBOARD_CONFIG = {
+  teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
+  headteacher: { title: 'School Leadership Dashboard', welcome: 'Here is your school performance overview.' },
+  district: { title: 'District Analytics Dashboard', welcome: 'Here is the district-wide performance overview.' },
+};
 
 export default function App() {
-  const [userRole, setUserRole] = useState<Role>(null);
+  // 2. State Management
+  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [currentView, setCurrentView] = useState<View>('roster');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
-  const handleLogin = (role: 'teacher' | 'headteacher' | 'district') => {
-    setUserRole(role);
-    if (role === 'teacher') {
-      setCurrentView('roster');
-    } else if (role === 'headteacher') {
-      setCurrentView('school-overview');
-    } else {
-      setCurrentView('district-overview');
-    }
+  // 3. Handlers
+  const handleLogin = (role: UserData['role']) => {
+    // In a real app, this data comes from the Auth provider
+    const mockUser: UserData = {
+      id: 'u123',
+      role: role,
+      name: role.charAt(0).toUpperCase() + role.slice(1) + ' User',
+      location: role === 'district' ? 'Greater Accra' : 'Mando Basic School'
+    };
+    
+    setCurrentUser(mockUser);
+    setCurrentView(role === 'teacher' ? 'roster' : role === 'headteacher' ? 'school-overview' : 'district-overview');
   };
 
-  const handleLogout = () => {
-    setUserRole(null);
-    setCurrentView('roster'); // Reset view on logout
+  const handleStartAssessment = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setCurrentView('new-assessment');
   };
 
-  const renderView = () => {
+  const handleViewProfile = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setCurrentView('student-profile');
+  };
+
+  // 4. Expert View Rendering
+  const renderContent = () => {
     switch (currentView) {
       case 'roster':
-        return <ClassRoster />;
+        return <ClassRoster onNewAssessment={handleStartAssessment} onViewProfile={handleViewProfile} />;
       case 'new-assessment':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Left Column: Assessment Setup */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
             <div className="lg:col-span-1">
-              <AssessmentSetup />
+              <AssessmentSetup initialStudentId={selectedStudentId || undefined} />
             </div>
-
-            {/* Middle & Right Columns: Analysis Results */}
             <div className="lg:col-span-2">
-              <AnalysisResults />
+              <AnalysisResults status="empty" onSaveProfile={() => setCurrentView('student-profile')} />
             </div>
           </div>
         );
       case 'student-profile':
-        return <StudentProfile />;
+        return <StudentProfile studentId={selectedStudentId || undefined} />;
       case 'district-overview':
         return <DistrictOverview />;
       case 'school-overview':
         return <SchoolOverview />;
-      case 'teacher-directory':
-        return (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Teacher Directory</h3>
-            <p className="text-gray-500">Teacher directory functionality coming soon.</p>
-          </div>
-        );
       default:
-        return <ClassRoster />;
+        return <div className="p-12 text-center text-gray-400">View under construction.</div>;
     }
   };
 
-  if (!userRole) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  const getDashboardTitle = () => {
-    switch (userRole) {
-      case 'teacher': return 'Classroom Dashboard';
-      case 'headteacher': return 'School Leadership Dashboard';
-      case 'district': return 'District Analytics Dashboard';
-      default: return 'Dashboard';
-    }
-  };
-
-  const getWelcomeMessage = () => {
-    switch (userRole) {
-      case 'teacher': return 'Welcome back, Teacher. Here is your class overview.';
-      case 'headteacher': return 'Welcome back, Headmaster. Here is your school performance overview.';
-      case 'district': return 'Welcome back, Director. Here is the district-wide performance overview.';
-      default: return '';
-    }
-  };
+  if (!currentUser) return <Login onLogin={handleLogin} />;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <Header onLogout={handleLogout} userRole={userRole} />
+      <Header onLogout={() => setCurrentUser(null)} user={currentUser} />
       
-      {/* Main Content Area - padded top to account for fixed header */}
       <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="mb-6">
+        <div className="mb-6 animate-in slide-in-from-left duration-500">
           <h2 className="text-2xl font-bold text-gray-900">
-            {getDashboardTitle()}
+            {DASHBOARD_CONFIG[currentUser.role].title}
           </h2>
           <p className="text-gray-600 mt-1">
-            {getWelcomeMessage()}
+            Welcome back, {currentUser.name}. {DASHBOARD_CONFIG[currentUser.role].welcome}
           </p>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="border-b border-gray-200 mb-8">
-          <nav className="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
-            {userRole === 'teacher' && (
+        {/* 5. Expert Navigation: Automated based on Role */}
+        <div className="border-b border-gray-200 mb-8 overflow-x-auto">
+          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+            <NavTab 
+              label="Overview" 
+              active={currentView === 'roster' || currentView === 'school-overview' || currentView === 'district-overview'} 
+              onClick={() => setCurrentView(currentUser.role === 'teacher' ? 'roster' : currentUser.role === 'headteacher' ? 'school-overview' : 'district-overview')} 
+            />
+            {currentUser.role === 'teacher' && (
               <>
-                <button
-                  onClick={() => setCurrentView('roster')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === 'roster'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Class Overview
-                </button>
-                <button
-                  onClick={() => setCurrentView('new-assessment')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === 'new-assessment'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Run New Assessment
-                </button>
-                <button
-                  onClick={() => setCurrentView('student-profile')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === 'student-profile'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Student Profiles
-                </button>
+                <NavTab label="New Assessment" active={currentView === 'new-assessment'} onClick={() => setCurrentView('new-assessment')} />
+                <NavTab label="Student Profiles" active={currentView === 'student-profile'} onClick={() => setCurrentView('student-profile')} />
               </>
             )}
-
-            {userRole === 'headteacher' && (
-              <>
-                <button
-                  onClick={() => setCurrentView('school-overview')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === 'school-overview'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  School Overview
-                </button>
-                <button
-                  onClick={() => setCurrentView('teacher-directory')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === 'teacher-directory'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Teacher Directory
-                </button>
-              </>
-            )}
-
-            {userRole === 'district' && (
-              <button
-                onClick={() => setCurrentView('district-overview')}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  currentView === 'district-overview'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                District Analytics
-              </button>
+            {currentUser.role === 'headteacher' && (
+              <NavTab label="Teacher Directory" active={currentView === 'teacher-directory'} onClick={() => setCurrentView('teacher-directory')} />
             )}
           </nav>
         </div>
 
-        {/* Dynamic Content View */}
-        {renderView()}
+        {renderContent()}
       </main>
     </div>
+  );
+}
+
+// Reusable Navigation Component
+function NavTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200 ${
+        active ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+      }`}
+    >
+      {label}
+    </button>
   );
 }

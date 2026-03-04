@@ -1,180 +1,138 @@
 import React, { useState } from 'react';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle2 } from 'lucide-react';
+import { Search, UserPlus, FileText, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp } from 'lucide-react';
 
-type Status = 'On Track' | 'Monitor' | 'Critical Gap';
-
-interface Student {
+export interface StudentListItem {
   id: string;
   name: string;
-  target: string;
-  literacyStatus: Status;
-  numeracyStatus: Status;
+  readinessScore: number;
+  lastAssessmentDate: string;
+  criticalGap: string | null;
 }
 
-const mockData: Student[] = [
-  {
-    id: '1',
-    name: 'Kwame Mensah',
-    target: 'JHS 1',
-    literacyStatus: 'On Track',
-    numeracyStatus: 'Critical Gap',
-  },
-  {
-    id: '2',
-    name: 'Ama Osei',
-    target: 'JHS 1',
-    literacyStatus: 'Monitor',
-    numeracyStatus: 'On Track',
-  },
-  {
-    id: '3',
-    name: 'Kojo Appiah',
-    target: 'JHS 1',
-    literacyStatus: 'Critical Gap',
-    numeracyStatus: 'Monitor',
-  },
-  {
-    id: '4',
-    name: 'Abena Yeboah',
-    target: 'JHS 1',
-    literacyStatus: 'On Track',
-    numeracyStatus: 'On Track',
-  },
-];
+interface ClassRosterProps {
+  className?: string;
+  students?: StudentListItem[];
+  onViewProfile: (studentId: string) => void;
+  onNewAssessment: (studentId: string) => void;
+}
 
-function StatusBadge({ status }: { status: Status }) {
-  let colorClass = '';
-  switch (status) {
-    case 'On Track':
-      colorClass = 'bg-green-100 text-green-800';
-      break;
-    case 'Monitor':
-      colorClass = 'bg-yellow-100 text-yellow-800';
-      break;
-    case 'Critical Gap':
-      colorClass = 'bg-red-100 text-red-800';
-      break;
-  }
+export function ClassRoster({ 
+  className = "Primary 6A", 
+  students = [
+    { id: '1', name: 'Kwame Mensah', readinessScore: 40, lastAssessmentDate: '2 Days Ago', criticalGap: 'Fractions' },
+    { id: '2', name: 'Ama Osei', readinessScore: 85, lastAssessmentDate: '1 Week Ago', criticalGap: null },
+    { id: '3', name: 'Kojo Appiah', readinessScore: 65, lastAssessmentDate: '3 Days Ago', criticalGap: 'Reading Comprehension' },
+    { id: '4', name: 'Esi Boateng', readinessScore: 92, lastAssessmentDate: 'Yesterday', criticalGap: null },
+    { id: '5', name: 'Yaw Asante', readinessScore: 48, lastAssessmentDate: '2 Weeks Ago', criticalGap: 'Division' },
+  ],
+  onViewProfile,
+  onNewAssessment
+}: ClassRosterProps) {
+  const [searchTerm, setSearchTerm] = useState('');
 
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-      {status}
-    </span>
+  const filteredStudents = students.filter(student => 
+    student.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-}
 
-export function ClassRoster() {
-  const [showImportArea, setShowImportArea] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [importSuccess, setImportSuccess] = useState(false);
-
-  const handleSimulateUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      setShowImportArea(false);
-      setImportSuccess(true);
-      // Reset success message after 5 seconds
-      setTimeout(() => setImportSuccess(false), 5000);
-    }, 2000);
+  const getStatusDisplay = (score: number) => {
+    if (score >= 70) return { icon: <CheckCircle2 size={16} />, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', text: 'On Track' };
+    if (score >= 50) return { icon: <TrendingUp size={16} />, color: 'text-yellow-600 bg-yellow-50 border-yellow-200', text: 'Monitor' };
+    return { icon: <AlertTriangle size={16} />, color: 'text-red-600 bg-red-50 border-red-200', text: 'At Risk' };
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-      <div className="px-6 py-5 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-gray-800">Class Roster</h3>
-        <button 
-          onClick={() => {
-            setShowImportArea(!showImportArea);
-            setImportSuccess(false);
-          }}
-          className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
-        >
-          <Upload size={16} />
-          Import Roster (CSV/Excel)
-        </button>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full animate-in fade-in duration-500">
+      <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">{className} Roster</h2>
+          <p className="text-sm text-gray-500 mt-1">{students.length} Students Enrolled</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Find student..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none w-full sm:w-64 transition-all bg-gray-50 focus:bg-white"
+            />
+          </div>
+          <button className="hidden sm:flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200">
+            <UserPlus size={16} />
+            Add Student
+          </button>
+        </div>
       </div>
 
-      {importSuccess && (
-        <div className="bg-green-50 border-b border-green-100 px-6 py-3 flex items-center gap-2 text-green-700 animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 size={18} />
-          <span className="text-sm font-medium">Successfully imported 65 students from District Database.</span>
-        </div>
-      )}
-
-      {showImportArea && (
-        <div className="bg-gray-50 border-b border-gray-200 p-6 animate-in fade-in slide-in-from-top-4">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center text-center bg-white">
-            {isUploading ? (
-              <div className="flex flex-col items-center">
-                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-                <p className="text-gray-900 font-medium">Parsing 65 students...</p>
-                <p className="text-sm text-gray-500 mt-1">Generating longitudinal profiles</p>
-              </div>
-            ) : (
-              <>
-                <div className="bg-blue-50 p-3 rounded-full mb-4">
-                  <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-                </div>
-                <h4 className="text-gray-900 font-medium mb-2">Import Class Roster</h4>
-                <p className="text-gray-500 text-sm max-w-md mb-6">
-                  Drag and drop your terminal report CSV here to automatically generate longitudinal profiles.
-                </p>
-                <button 
-                  onClick={handleSimulateUpload}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors shadow-sm"
-                >
-                  Simulate Upload
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Student Name
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Transition Target
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Literacy Status
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Numeracy Status
-              </th>
-              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Action
-              </th>
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
+              <th className="p-4 font-semibold">Student Name</th>
+              <th className="p-4 font-semibold">JHS Readiness</th>
+              <th className="p-4 font-semibold hidden md:table-cell">Last Assessment</th>
+              <th className="p-4 font-semibold hidden sm:table-cell">Active Gap</th>
+              <th className="p-4 font-semibold text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {mockData.map((student) => (
-              <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {student.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {student.target}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge status={student.literacyStatus} />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge status={student.numeracyStatus} />
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button className="text-blue-600 hover:text-blue-900 transition-colors">
-                    View Profile
-                  </button>
+          <tbody className="divide-y divide-gray-100">
+            {filteredStudents.length > 0 ? (
+              filteredStudents.map((student) => {
+                const status = getStatusDisplay(student.readinessScore);
+                return (
+                  <tr key={student.id} className="hover:bg-gray-50 transition-colors group">
+                    <td className="p-4">
+                      <div className="font-medium text-gray-900">{student.name}</div>
+                      <div className="text-xs text-gray-500 md:hidden mt-1">Updated {student.lastAssessmentDate}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${status.color}`}>
+                        {status.icon}
+                        {status.text} ({student.readinessScore}%)
+                      </div>
+                    </td>
+                    <td className="p-4 text-sm text-gray-600 hidden md:table-cell">
+                      {student.lastAssessmentDate}
+                    </td>
+                    <td className="p-4 hidden sm:table-cell">
+                      {student.criticalGap ? (
+                        <span className="text-sm text-red-600 font-medium">{student.criticalGap}</span>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">None identified</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => onNewAssessment(student.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors shadow-sm"
+                          title="New Assessment"
+                        >
+                          <FileText size={14} />
+                          <span className="hidden lg:inline">Assess</span>
+                        </button>
+                        <button 
+                          onClick={() => onViewProfile(student.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-medium rounded hover:bg-gray-50 transition-colors shadow-sm"
+                          title="View Profile"
+                        >
+                          <span className="hidden lg:inline">Profile</span>
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={5} className="p-8 text-center text-gray-500">
+                  No students found matching "{searchTerm}"
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
