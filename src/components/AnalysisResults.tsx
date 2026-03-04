@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { FileSearch, Loader2, CheckCircle2 } from 'lucide-react';
+import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send } from 'lucide-react';
 
 type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
 export function AnalysisResults() {
   const [status, setStatus] = useState<AnalysisStatus>('empty');
+  const [showSmsDraft, setShowSmsDraft] = useState(false);
 
   // Temporary function to cycle through states for demonstration
   const cycleStatus = () => {
@@ -82,11 +83,40 @@ export function AnalysisResults() {
               </ul>
             </div>
 
-            <div className="mt-auto pt-4 flex justify-end">
+            <div className="mt-auto pt-4 flex flex-col sm:flex-row items-center justify-end gap-4">
+              <button 
+                onClick={() => setShowSmsDraft(!showSmsDraft)}
+                className="text-sm font-medium text-emerald-600 hover:text-emerald-800 transition-colors border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <MessageSquare size={16} />
+                Generate SMS for Parent
+              </button>
               <button className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
                 + Save to Longitudinal Learner Profile
               </button>
             </div>
+
+            {showSmsDraft && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-start gap-3">
+                  <div className="bg-emerald-100 p-2 rounded-full shrink-0">
+                    <MessageSquare size={20} className="text-emerald-600" />
+                  </div>
+                  <div className="flex-grow">
+                    <h5 className="text-sm font-semibold text-gray-900 mb-1">Draft Message to Parent</h5>
+                    <div className="bg-white border border-gray-200 rounded-lg p-3 rounded-tl-none shadow-sm mb-3">
+                      <p className="text-sm text-gray-700">
+                        BaseCamp Alert: Kwame needs help with fractions before JHS. Ask him to group stones into halves and quarters tonight. - Teacher Mensah
+                      </p>
+                    </div>
+                    <button className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors shadow-sm">
+                      <Send size={14} />
+                      Send via SMS Gateway
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

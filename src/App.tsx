@@ -9,8 +9,9 @@ import { AssessmentSetup } from './components/AssessmentSetup';
 import { AnalysisResults } from './components/AnalysisResults';
 import { StudentProfile } from './components/StudentProfile';
 import { ClassRoster } from './components/ClassRoster';
+import { DistrictOverview } from './components/DistrictOverview';
 
-type View = 'roster' | 'new-assessment' | 'student-profile';
+type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('roster');
@@ -35,6 +36,8 @@ export default function App() {
         );
       case 'student-profile':
         return <StudentProfile />;
+      case 'district-overview':
+        return <DistrictOverview />;
       default:
         return <ClassRoster />;
     }
@@ -83,6 +86,16 @@ export default function App() {
               }`}
             >
               Student Profiles
+            </button>
+            <button
+              onClick={() => setCurrentView('district-overview')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                currentView === 'district-overview'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              District Analytics
             </button>
           </nav>
         </div>
