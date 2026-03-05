@@ -135,6 +135,7 @@ export default function App() {
                 assessmentType={lastAssessmentData?.assessmentType}
                 imageBase64={lastAssessmentData?.imageBase64}
                 dialectContext={lastAssessmentData?.dialect}
+                onAnalysisComplete={() => setAnalysisStatus('results')}
               />
             </div>
           </div>

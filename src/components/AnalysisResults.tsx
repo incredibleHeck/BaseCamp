@@ -22,10 +22,11 @@ interface AnalysisResultsProps {
   studentId?: string;
   assessmentType?: string;
   imageBase64?: string | null;
-  dialectContext?: string;
+  dialectContext?: string | null;
+  onAnalysisComplete?: () => void;
 }
 
-export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, dialectContext }: AnalysisResultsProps) {
+export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, dialectContext, onAnalysisComplete }: AnalysisResultsProps) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
@@ -35,9 +36,9 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
   const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
   
   useEffect(() => {
-    if (status === 'analyzing' && imageBase64 && assessmentType && dialectContext) {
+    if (status === 'analyzing' && imageBase64 && assessmentType) {
       const getAnalysis = async () => {
-        const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext);
+        const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext || "");
         if (result) {
           // The AI response is simpler, so we'll have to mock or derive the other fields
           const fullReport: DiagnosticReport = {
@@ -48,11 +49,14 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
             smsDraft: `BaseCamp Update: ${studentId} is making progress in ${assessmentType}. We are focusing on: ${result.diagnosis}.`
           };
           setReportData(fullReport);
+          if (onAnalysisComplete) {
+            onAnalysisComplete();
+          }
         }
       };
       getAnalysis();
     }
-  }, [status, imageBase64, assessmentType, studentId, dialectContext]);
+  }, [status, imageBase64, assessmentType, studentId, dialectContext, onAnalysisComplete]);
 
   // Fallback data in case of rendering errors
   const data = reportData || {
