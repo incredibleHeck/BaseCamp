@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2 } from 'lucide-react';
+import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2, Check } from 'lucide-react';
+import { saveAssessment, Assessment } from '../services/assessmentService';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
@@ -19,13 +20,18 @@ interface AnalysisResultsProps {
   status: AnalysisStatus;
   reportData?: DiagnosticReport | null;
   onSaveProfile: () => void;
+  isOffline?: boolean;
+  studentId?: string;
+  assessmentType?: string;
 }
 
-export function AnalysisResults({ status, reportData, onSaveProfile }: AnalysisResultsProps) {
+export function AnalysisResults({ status, reportData, onSaveProfile, isOffline = false, studentId, assessmentType }: AnalysisResultsProps) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   // Fallback data in case of rendering errors
   const data = reportData || {
@@ -47,6 +53,36 @@ export function AnalysisResults({ status, reportData, onSaveProfile }: AnalysisR
   const handleGenerateAudio = () => {
     setIsGeneratingAudio(true);
     setTimeout(() => setIsGeneratingAudio(false), 2000);
+  };
+
+  const handleSave = async () => {
+    if (!studentId || !assessmentType) return;
+    
+    const assessment: Assessment = {
+      studentId,
+      type: assessmentType.toLowerCase().includes('lit') ? 'Literacy' : 'Numeracy',
+      diagnosis: data.criticalGap,
+      remedialPlan: data.lessonPlan?.instructions.join('\n') || data.recommendations.join('\n'),
+      timestamp: Date.now(),
+      status: 'Completed'
+    };
+
+    if (isOffline) {
+      console.warn("Device is offline. Saving assessment to local storage fallback.");
+      const offlineQueue = JSON.parse(localStorage.getItem('offlineAssessments') || '[]');
+      offlineQueue.push(assessment);
+      localStorage.setItem('offlineAssessments', JSON.stringify(offlineQueue));
+      setIsSaved(true);
+      return;
+    }
+
+    setIsSaving(true);
+    const resultId = await saveAssessment(assessment);
+    setIsSaving(false);
+
+    if (resultId) {
+      setIsSaved(true);
+    }
   };
 
   return (
@@ -160,10 +196,19 @@ export function AnalysisResults({ status, reportData, onSaveProfile }: AnalysisR
                 Guardian Communication
               </button>
               <button 
-                onClick={onSaveProfile}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                onClick={handleSave}
+                disabled={isSaving || isSaved}
+                className={`text-sm font-medium transition-all flex items-center gap-1.5 ${
+                  isSaved ? 'text-emerald-600' : 'text-blue-600 hover:text-blue-800'
+                }`}
               >
-                + Save to Longitudinal Learner Profile
+                {isSaving ? (
+                  <><Loader2 size={16} className="animate-spin" /> Saving...</>
+                ) : isSaved ? (
+                  <><Check size={16} /> Saved to Profile</>
+                ) : (
+                  '+ Save to Longitudinal Learner Profile'
+                )}
               </button>
             </div>
 

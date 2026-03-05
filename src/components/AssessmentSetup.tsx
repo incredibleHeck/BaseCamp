@@ -15,10 +15,11 @@ export interface AssessmentData {
 interface AssessmentSetupProps {
   onDiagnose: (data: AssessmentData) => void;
   isProcessing?: boolean;
+  initialStudentId?: string;
 }
 
-export function AssessmentSetup({ onDiagnose, isProcessing = false }: AssessmentSetupProps) {
-  const [selectedStudent, setSelectedStudent] = useState('');
+export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStudentId = '' }: AssessmentSetupProps) {
+  const [selectedStudent, setSelectedStudent] = useState(initialStudentId);
   const [assessmentType, setAssessmentType] = useState('');
   const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
   const [isLocalDialect, setIsLocalDialect] = useState(false);

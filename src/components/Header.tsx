@@ -12,11 +12,11 @@ export interface UserData {
 interface HeaderProps {
   onLogout?: () => void;
   user?: UserData | null;
+  isOffline: boolean;
+  setIsOffline: (offline: boolean) => void;
 }
 
-export function Header({ onLogout, user }: HeaderProps) {
-  // 2. State driven by the actual browser environment
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+export function Header({ onLogout, user, isOffline, setIsOffline }: HeaderProps) {
   const [showBanner, setShowBanner] = useState(false);
 
   // 3. Listen to real browser network events
@@ -41,7 +41,7 @@ export function Header({ onLogout, user }: HeaderProps) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [setIsOffline]);
 
   const getRoleTitle = (role: string) => {
     const titles = {

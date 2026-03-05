@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { User, Building2, School, Loader2, ArrowLeft, Lock } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
 
 type Role = 'teacher' | 'headteacher' | 'district' | null;
 
@@ -11,15 +13,20 @@ export function Login({ onLogin }: LoginProps) {
   const [selectedRole, setSelectedRole] = useState<Role>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSimulatedLogin = (e: React.FormEvent) => {
+  const handleSimulatedLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
     
     setIsLoading(true);
-    // Simulate network request
-    setTimeout(() => {
+    try {
+      // Mock role assignment by storing it in localStorage before signing in
+      localStorage.setItem('mockUserRole', selectedRole);
+      await signInAnonymously(auth);
       onLogin(selectedRole);
-    }, 1500);
+    } catch (error) {
+      console.error("Authentication failed:", error);
+      setIsLoading(false);
+    }
   };
 
   return (

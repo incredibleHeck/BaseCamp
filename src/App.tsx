@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header, UserData } from './components/Header';
-import { AssessmentSetup } from './components/AssessmentSetup';
-import { AnalysisResults } from './components/AnalysisResults';
+import { AssessmentSetup, AssessmentData } from './components/AssessmentSetup';
+import { AnalysisResults, AnalysisStatus, DiagnosticReport } from './components/AnalysisResults';
 import { StudentProfile } from './components/StudentProfile';
 import { ClassRoster } from './components/ClassRoster';
 import { DistrictOverview } from './components/DistrictOverview';
 import { SchoolOverview } from './components/SchoolOverview';
 import { Login } from './components/Login';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // 1. Scalable Types
 type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview' | 'school-overview' | 'teacher-directory';
@@ -22,24 +24,92 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [currentView, setCurrentView] = useState<View>('roster');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // 3. Handlers
+  // Assessment flow states
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
+  const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
+  const [lastAssessmentData, setLastAssessmentData] = useState<AssessmentData | null>(null);
+
+  // 3. Listen to Auth State
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Retrieve the mock role we stored during login
+        const storedRole = localStorage.getItem('mockUserRole') as UserData['role'] || 'teacher';
+        
+        const mockUser: UserData = {
+          id: user.uid,
+          role: storedRole,
+          name: storedRole.charAt(0).toUpperCase() + storedRole.slice(1) + ' User',
+          location: storedRole === 'district' ? 'Greater Accra' : 'Mando Basic School'
+        };
+        
+        setCurrentUser(mockUser);
+        setCurrentView(storedRole === 'teacher' ? 'roster' : storedRole === 'headteacher' ? 'school-overview' : 'district-overview');
+      } else {
+        setCurrentUser(null);
+      }
+      setIsAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 4. Handlers
   const handleLogin = (role: UserData['role']) => {
-    // In a real app, this data comes from the Auth provider
-    const mockUser: UserData = {
-      id: 'u123',
-      role: role,
-      name: role.charAt(0).toUpperCase() + role.slice(1) + ' User',
-      location: role === 'district' ? 'Greater Accra' : 'Mando Basic School'
-    };
-    
-    setCurrentUser(mockUser);
-    setCurrentView(role === 'teacher' ? 'roster' : role === 'headteacher' ? 'school-overview' : 'district-overview');
+    // Handled by onAuthStateChanged
+  };
+
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('mockUserRole');
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
   };
 
   const handleStartAssessment = (studentId: string) => {
     setSelectedStudentId(studentId);
+    setAnalysisStatus('empty');
+    setReportData(null);
     setCurrentView('new-assessment');
+  };
+
+  const handleDiagnose = (data: AssessmentData) => {
+    setLastAssessmentData(data);
+    setAnalysisStatus('analyzing');
+    
+    // Simulate AI Diagnosis process
+    setTimeout(() => {
+      const mockReport: DiagnosticReport = {
+        criticalGap: data.assessmentType.includes('num') 
+          ? "Struggles with carrying over numbers in multi-digit addition." 
+          : "Difficulty identifying main ideas in complex paragraphs.",
+        masteredConcepts: data.assessmentType.includes('num')
+          ? "Basic addition and subtraction of single digits."
+          : "Basic phonemic awareness and sentence structure.",
+        recommendations: [
+          "Use physical manipulatives (stones) to represent place value.",
+          "Daily 10-minute targeted practice session.",
+          "Incorporate visual aids for regrouping."
+        ],
+        lessonPlan: {
+          title: "Visualizing Place Value with Local Materials",
+          instructions: [
+            "Gather 20 small sticks and some string.",
+            "Demonstrate bundling 10 sticks to make 'one ten'.",
+            "Practice adding digits that exceed 10 by creating new bundles."
+          ]
+        },
+        smsDraft: `BaseCamp Update: ${data.studentId} is making progress in ${data.assessmentType}. We are focusing on place value this week. Please encourage them to practice counting objects at home.`
+      };
+      
+      setReportData(mockReport);
+      setAnalysisStatus('results');
+    }, 2500);
   };
 
   const handleViewProfile = (studentId: string) => {
@@ -47,7 +117,7 @@ export default function App() {
     setCurrentView('student-profile');
   };
 
-  // 4. Expert View Rendering
+  // 5. Expert View Rendering
   const renderContent = () => {
     switch (currentView) {
       case 'roster':
@@ -56,10 +126,21 @@ export default function App() {
         return (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
             <div className="lg:col-span-1">
-              <AssessmentSetup initialStudentId={selectedStudentId || undefined} />
+              <AssessmentSetup 
+                initialStudentId={selectedStudentId || undefined} 
+                onDiagnose={handleDiagnose}
+                isProcessing={analysisStatus === 'analyzing'}
+              />
             </div>
             <div className="lg:col-span-2">
-              <AnalysisResults status="empty" onSaveProfile={() => setCurrentView('student-profile')} />
+              <AnalysisResults 
+                status={analysisStatus} 
+                reportData={reportData}
+                onSaveProfile={() => setCurrentView('student-profile')}
+                isOffline={isOffline}
+                studentId={lastAssessmentData?.studentId}
+                assessmentType={lastAssessmentData?.assessmentType}
+              />
             </div>
           </div>
         );
@@ -74,11 +155,20 @@ export default function App() {
     }
   };
 
+  if (isAuthLoading) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-500">Loading BaseCamp...</p></div>;
+  }
+
   if (!currentUser) return <Login onLogin={handleLogin} />;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <Header onLogout={() => setCurrentUser(null)} user={currentUser} />
+      <Header 
+        onLogout={handleLogout} 
+        user={currentUser} 
+        isOffline={isOffline} 
+        setIsOffline={setIsOffline} 
+      />
       
       <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="mb-6 animate-in slide-in-from-left duration-500">
