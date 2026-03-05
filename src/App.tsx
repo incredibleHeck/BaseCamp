@@ -7,8 +7,9 @@ import { ClassRoster } from './components/ClassRoster';
 import { DistrictOverview } from './components/DistrictOverview';
 import { SchoolOverview } from './components/SchoolOverview';
 import { Login } from './components/Login';
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 // 1. Scalable Types
 type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview' | 'school-overview' | 'teacher-directory';
@@ -34,20 +35,46 @@ export default function App() {
 
   // 3. Listen to Auth State
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Retrieve the mock role we stored during login
-        const storedRole = localStorage.getItem('mockUserRole') as UserData['role'] || 'teacher';
-        
-        const mockUser: UserData = {
-          id: user.uid,
-          role: storedRole,
-          name: storedRole.charAt(0).toUpperCase() + storedRole.slice(1) + ' User',
-          location: storedRole === 'district' ? 'Greater Accra' : 'Mando Basic School'
-        };
-        
-        setCurrentUser(mockUser);
-        setCurrentView(storedRole === 'teacher' ? 'roster' : storedRole === 'headteacher' ? 'school-overview' : 'district-overview');
+        try {
+          // Fetch the user's role from Firestore
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          let role: UserData['role'] = 'teacher'; // Fallback
+          let name = 'Teacher User';
+          let location = 'Mando Basic School';
+
+          if (userDocSnap.exists()) {
+            const data = userDocSnap.data();
+            role = data.role as UserData['role'] || 'teacher';
+            name = data.name || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
+            location = data.location || (role === 'district' ? 'Greater Accra' : 'Mando Basic School');
+          } else {
+            console.warn(`User document for ${user.uid} not found. Defaulting to teacher role.`);
+            // Optionally, we could still check localStorage for the mock fallback during development
+            const fallbackRole = localStorage.getItem('mockUserRole') as UserData['role'];
+            if (fallbackRole) {
+               role = fallbackRole;
+               name = `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
+               location = role === 'district' ? 'Greater Accra' : 'Mando Basic School';
+            }
+          }
+          
+          const loadedUser: UserData = {
+            id: user.uid,
+            role,
+            name,
+            location
+          };
+          
+          setCurrentUser(loadedUser);
+          setCurrentView(role === 'teacher' ? 'roster' : role === 'headteacher' ? 'school-overview' : 'district-overview');
+        } catch (error) {
+          console.error("Failed to fetch user data:", error);
+          setCurrentUser(null);
+        }
       } else {
         setCurrentUser(null);
       }
@@ -58,13 +85,9 @@ export default function App() {
   }, []);
 
   // 4. Handlers
-  const handleLogin = (role: UserData['role']) => {
-    // Handled by onAuthStateChanged
-  };
-
   const handleLogout = async () => {
     try {
-      localStorage.removeItem('mockUserRole');
+      localStorage.removeItem('mockUserRole'); // Clean up fallback just in case
       await signOut(auth);
     } catch (error) {
       console.error("Logout failed", error);
@@ -159,7 +182,7 @@ export default function App() {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-500">Loading BaseCamp...</p></div>;
   }
 
-  if (!currentUser) return <Login onLogin={handleLogin} />;
+  if (!currentUser) return <Login />;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
