@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface Student {
@@ -38,5 +38,25 @@ export const getStudents = async (): Promise<Student[]> => {
   } catch (error) {
     console.error('Error fetching students: ', error);
     return [];
+  }
+};
+
+/**
+ * Retrieves a single student by ID from the Firestore "students" collection.
+ * @param studentId The ID of the student.
+ * @returns The Student object or null if not found.
+ */
+export const getStudent = async (studentId: string): Promise<Student | null> => {
+  try {
+    const docRef = doc(db, 'students', studentId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Student;
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error('Error fetching student: ', error);
+    return null;
   }
 };

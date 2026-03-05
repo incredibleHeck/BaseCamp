@@ -2,7 +2,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export interface DiagnosticReport {
   diagnosis: string;
+  masteredConcepts: string;
+  recommendations: string[];
   remedialPlan: string;
+  lessonPlan: {
+    title: string;
+    instructions: string[];
+  };
+  smsDraft: string;
   score: number;
 }
 
@@ -20,7 +27,7 @@ function cleanJsonResponse(jsonString: string): string {
 }
 
 /**
- * Analyzes a student's worksheet image using the Gemini 1.5 Flash model.
+ * Analyzes a student's worksheet image using the Gemini 3 Flash Preview model.
  * 
  * @param imageBase64 The base64 encoded image string (including the data URL prefix).
  * @param subject The subject of the worksheet ('literacy' or 'numeracy').
@@ -56,14 +63,21 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
       
       ${dialectContext ? `IMPORTANT CONTEXT: This student primarily speaks ${dialectContext} at home. Factor this into your analysis, distinguishing between genuine learning gaps and potential English as a Second Language (ESL) translation challenges.` : ''}
 
-      Analyze the image to identify the student's primary learning gap. Based on this, provide a concise diagnosis and a simple, 5-minute remedial activity that a teacher can perform using locally available materials (like stones, sticks, bottle caps, etc.). Finally, provide a score from 0-100 representing the student's mastery of the topic shown.
+      Analyze the image to identify the student's primary learning gap. Based on this, provide a concise diagnosis, mastered concepts, recommendations, a simple remedial activity using local materials, a structured lesson plan, and a professional SMS draft to a guardian. Finally, provide a score from 0-100 representing the student's mastery of the topic shown.
 
       Your response MUST be in a strict JSON format. Do not include any text or formatting outside of the JSON object.
 
       The JSON structure must be:
       {
         "diagnosis": "A string clearly explaining the primary learning gap identified.",
+        "masteredConcepts": "A string listing concepts the student seems to understand.",
+        "recommendations": ["An array of strings providing simple remedial actions"],
         "remedialPlan": "A string describing a simple, 5-minute remedial activity using local Ghanaian materials.",
+        "lessonPlan": {
+          "title": "A short, engaging title for the activity.",
+          "instructions": ["Step 1", "Step 2", "Step 3"]
+        },
+        "smsDraft": "A short, professional draft SMS message to the parent summarizing progress and the focus area.",
         "score": A number from 0 to 100 representing the student's mastery level on this specific worksheet.
       }
     `;

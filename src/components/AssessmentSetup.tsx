@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileUploadZone } from './FileUploadZone';
 import { Camera, Edit3, Loader2, Zap } from 'lucide-react';
 import { compressImage } from '../utils/imageCompression';
+import { getStudents, Student } from '../services/studentService';
 
 // 1. Define the shape of the data we will submit
 export interface AssessmentData {
@@ -21,6 +22,7 @@ interface AssessmentSetupProps {
 }
 
 export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStudentId = '' }: AssessmentSetupProps) {
+  const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState(initialStudentId);
   const [assessmentType, setAssessmentType] = useState<'numeracy' | 'literacy' | ''>('');
   const [inputMode, setInputMode] = useState<'upload' | 'manual'>('upload');
@@ -34,6 +36,14 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
   // Manual entry states
   const [selectedRubrics, setSelectedRubrics] = useState<string[]>([]);
   const [observations, setObservations] = useState('');
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      const fetchedStudents = await getStudents();
+      setStudents(fetchedStudents);
+    };
+    fetchStudents();
+  }, []);
 
   const handleFileProcessed = (file: File) => {
     const reader = new FileReader();
@@ -95,9 +105,11 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
           >
             <option value="" disabled>Select a student...</option>
-            <option value="kwame_m">Kwame Mensah (Primary 6)</option>
-            <option value="ama_o">Ama Osei (Primary 6)</option>
-            <option value="kojo_a">Kojo Appiah (Primary 5)</option>
+            {students.map((student) => (
+              <option key={student.id} value={student.id}>
+                {student.name} ({student.grade})
+              </option>
+            ))}
           </select>
 
           <div className="mt-3">

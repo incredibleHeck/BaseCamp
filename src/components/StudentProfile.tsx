@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Mountain, LineChart, Flag, Loader2 } from 'lucide-react';
 import { getStudentHistory, Assessment } from '../services/assessmentService';
+import { getStudent, Student as StudentModel } from '../services/studentService';
 
 // 1. Data Models
 export interface HistoricalScore {
@@ -10,16 +11,7 @@ export interface HistoricalScore {
   notes: string;
 }
 
-export interface StudentData {
-  id: string;
-  name: string;
-  currentGrade: string;
-  historicalData: HistoricalScore[];
-  masteredConceptsCount: number; // Used for the gamified view
-}
-
 interface StudentProfileProps {
-  student?: StudentData;
   studentId?: string;
 }
 
@@ -47,58 +39,81 @@ const getReadinessDetails = (finalScore: number, trajectory: number): Readiness 
   return { level: 'Medium', color: 'text-yellow-700 bg-yellow-50 border-yellow-200', icon: <AlertTriangle className="w-5 h-5 text-yellow-600" /> };
 };
 
-export function StudentProfile({ student, studentId }: StudentProfileProps) {
+export function StudentProfile({ studentId }: StudentProfileProps) {
   const [viewMode, setViewMode] = useState<'analytical' | 'gamified'>('analytical');
   const [history, setHistory] = useState<Assessment[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [studentInfo, setStudentInfo] = useState<StudentModel | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch real assessment history
+  // Fetch real student info and assessment history
   useEffect(() => {
-    const fetchHistory = async () => {
-      // Use the provided studentId or fallback to student.id
-      const idToFetch = studentId || student?.id;
-      if (!idToFetch) return;
+    const fetchData = async () => {
+      if (!studentId) {
+        setIsLoading(false);
+        return;
+      }
       
-      setIsLoadingHistory(true);
-      const data = await getStudentHistory(idToFetch);
-      setHistory(data);
-      setIsLoadingHistory(false);
+      setIsLoading(true);
+      try {
+        const [studentData, historyData] = await Promise.all([
+          getStudent(studentId),
+          getStudentHistory(studentId)
+        ]);
+        
+        setStudentInfo(studentData);
+        setHistory(historyData);
+      } catch (error) {
+        console.error("Failed to fetch student data", error);
+      }
+      setIsLoading(false);
     };
 
-    fetchHistory();
-  }, [studentId, student]);
+    fetchData();
+  }, [studentId]);
 
-  // Fallback data if API hasn't loaded yet
-  const data = student || {
-    id: studentId || '1',
-    name: studentId === 'kwame_m' ? 'Kwame Mensah' : studentId === 'ama_o' ? 'Ama Osei' : studentId === 'kojo_a' ? 'Kojo Appiah' : 'Kwame Mensah',
-    currentGrade: 'Primary 6 - Transitioning to JHS 1',
-    masteredConceptsCount: 15,
-    historicalData: [
-      { grade: 'Primary 4', literacy: 60, numeracy: 50, notes: 'Baseline: Needs Intervention (Fractions)' },
-      { grade: 'Primary 5', literacy: 70, numeracy: 45, notes: 'Mid-Year: Approaching Target' },
-      { grade: 'Primary 6', literacy: 75, numeracy: 40, notes: 'Recent AI Diagnosis: Critical Gap' },
-    ]
-  };
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 mt-8 w-full flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-4" />
+        <p className="text-gray-500 font-medium">Loading Learner Profile...</p>
+      </div>
+    );
+  }
 
-  const numeracyScores = data.historicalData.map(d => d.numeracy);
+  if (!studentId || !studentInfo) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 mt-8 w-full flex flex-col items-center justify-center">
+        <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
+        <h3 className="text-lg font-bold text-gray-900 mb-2">No Student Selected</h3>
+        <p className="text-gray-500 text-center max-w-md">Please select a student from the Class Roster or perform a New Assessment to view their longitudinal profile.</p>
+      </div>
+    );
+  }
+
+  // Real data calculations
+  const hasRealData = history.length > 0;
+  
+  // Calculate a "JHS Readiness Score" based on real history
+  // For demo: starts at 50, +5 for each completed assessment, max 100
+  const realReadinessScore = Math.min(100, 50 + (history.length * 5));
+  const mountainProgress = Math.min((history.length / 10) * 100, 100);
+
+  // Mock baseline data just to show the charts if history is empty
+  const fallbackHistoricalData = [
+    { grade: 'Primary 4', literacy: 60, numeracy: 50, notes: 'Baseline: Needs Intervention' },
+    { grade: 'Primary 5', literacy: 70, numeracy: 45, notes: 'Mid-Year: Approaching Target' },
+    { grade: 'Primary 6', literacy: 75, numeracy: 40, notes: 'Recent Assessment: Target Not Met' },
+  ];
+
+  const numeracyScores = fallbackHistoricalData.map(d => d.numeracy);
   const numeracyTrajectory = calculateTrajectory(numeracyScores);
   const numeracyReadiness = getReadinessDetails(numeracyScores[numeracyScores.length - 1], numeracyTrajectory);
 
-  const literacyScores = data.historicalData.map(d => d.literacy);
+  const literacyScores = fallbackHistoricalData.map(d => d.literacy);
   const literacyTrajectory = calculateTrajectory(literacyScores);
   const literacyReadiness = getReadinessDetails(literacyScores[literacyScores.length - 1], literacyTrajectory);
   
   const isHighRisk = numeracyReadiness.level === 'Low' || literacyReadiness.level === 'Low';
-
-  // Real data calculations
-  const hasRealData = history.length > 0;
-  // Calculate a "JHS Readiness Score" based on real history: starts at 50, +5 for each completed assessment, max 100
-  const realReadinessScore = Math.min(100, 50 + (history.length * 5));
-  const realMountainProgress = Math.min((history.length / 10) * 100, 100);
-
-  // Calculate mountain progress (fallback vs real)
-  const mountainProgress = hasRealData ? realMountainProgress : Math.min((data.masteredConceptsCount / 20) * 100, 100);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-8 w-full animate-in fade-in duration-500">
@@ -109,13 +124,13 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
             <User size={32} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">{data.name}</h2>
-            <p className="text-gray-600 font-medium">{data.currentGrade}</p>
+            <h2 className="text-2xl font-bold text-gray-900">{studentInfo.name}</h2>
+            <p className="text-gray-600 font-medium">{studentInfo.grade}</p>
           </div>
         </div>
         
         <div className="flex items-center gap-3">
-          {/* 3. View Toggle for Gamification */}
+          {/* View Toggle for Gamification */}
           <div className="bg-gray-100 p-1 rounded-lg flex items-center">
             <button 
               onClick={() => setViewMode('analytical')}
@@ -142,12 +157,7 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-6">Longitudinal History</h3>
             
-            {isLoadingHistory ? (
-              <div className="flex flex-col items-center justify-center py-10">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-                <p className="text-sm text-gray-500">Loading assessment history...</p>
-              </div>
-            ) : hasRealData ? (
+            {hasRealData ? (
               <div className="relative border-l-2 border-gray-200 ml-3 space-y-8">
                 {history.map((assessment, index) => {
                   const date = new Date(assessment.timestamp as number);
@@ -162,19 +172,22 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
                         <h4 className="font-semibold text-gray-900">{assessment.type} Assessment</h4>
                         <span className="text-xs font-medium text-gray-500">{date.toLocaleDateString()}</span>
                       </div>
-                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">{assessment.diagnosis}</p>
-                      <button className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
-                        View Full Diagnosis →
-                      </button>
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mt-2">
+                        <p className="text-sm text-gray-800 font-semibold mb-1">Diagnosis:</p>
+                        <p className="text-sm text-gray-600 mb-3">{assessment.diagnosis}</p>
+                        
+                        <p className="text-sm text-emerald-800 font-semibold mb-1">Recommended Remedial Plan:</p>
+                        <p className="text-sm text-gray-600">{assessment.remedialPlan}</p>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
               <>
-                <p className="text-sm text-gray-500 italic mb-6">Showing baseline placeholder data. No real assessments found.</p>
+                <p className="text-sm text-gray-500 italic mb-6">No real AI assessments found for this student. Showing baseline placeholder data.</p>
                 <div className="relative border-l-2 border-gray-200 ml-3 space-y-8 opacity-70">
-                  {[...data.historicalData].reverse().map((record, index) => (
+                  {[...fallbackHistoricalData].reverse().map((record, index) => (
                     <div key={record.grade} className="relative pl-6">
                       <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-sm ${
                         index === 0 ? 'bg-red-500' : index === 1 ? 'bg-yellow-500' : 'bg-orange-500'
@@ -200,7 +213,7 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
                       </div>
                       <div>
                         <span className="text-sm font-medium text-blue-900 block">Overall Readiness</span>
-                        <span className="text-xs text-blue-700 mt-0.5 block">Based on {history.length} recent assessments</span>
+                        <span className="text-xs text-blue-700 mt-0.5 block">Based on {history.length} recent AI assessments</span>
                       </div>
                     </div>
                     <span className="text-3xl font-black text-blue-700">{realReadinessScore}%</span>
@@ -209,7 +222,7 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
                     <div className="bg-blue-600 h-4 rounded-full transition-all duration-1000" style={{ width: `${realReadinessScore}%` }}></div>
                   </div>
                   <p className="text-sm text-blue-800 mt-4 font-medium">
-                    {realReadinessScore >= 70 ? "Student is on track for Junior High School." : "Student requires targeted intervention to reach JHS readiness."}
+                    {realReadinessScore >= 70 ? "Student is on track for Junior High School." : "Student requires targeted intervention using the recommended lesson plans to reach JHS readiness."}
                   </p>
                 </div>
               </div>
@@ -276,7 +289,7 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
           </div>
         </div>
       ) : (
-        /* 4. The Gamified Mountain View */
+        /* The Gamified Mountain View */
         <div className="py-8 animate-in slide-in-from-bottom-4 duration-500 flex flex-col items-center">
           <div className="text-center mb-8">
             <h3 className="text-2xl font-black text-gray-900 tracking-tight">Your BaseCamp Journey</h3>
@@ -292,10 +305,10 @@ export function StudentProfile({ student, studentId }: StudentProfileProps) {
             {/* Student Progress Indicator */}
             <div 
               className="absolute z-10 transition-all duration-1000 ease-out flex flex-col items-center"
-              style={{ bottom: `${mountainProgress}%`, left: '50%', transform: 'translateX(-50%)' }}
+              style={{ bottom: `${hasRealData ? mountainProgress : 10}%`, left: '50%', transform: 'translateX(-50%)' }}
             >
               <div className="bg-white px-3 py-1 rounded-full text-xs font-bold text-purple-700 shadow-md mb-2 animate-bounce">
-                {hasRealData ? `${history.length} Assessments Complete!` : `${data.masteredConceptsCount} Concepts Mastered!`}
+                {hasRealData ? `${history.length} Assessments Complete!` : `Start your Journey!`}
               </div>
               <Flag className="text-red-500 fill-red-500 w-8 h-8" />
             </div>

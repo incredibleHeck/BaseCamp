@@ -40,13 +40,10 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
       const getAnalysis = async () => {
         const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext || "");
         if (result) {
-          // The AI response is simpler, so we'll have to mock or derive the other fields
+          // Now we use the data directly from the AI response
           const fullReport: DiagnosticReport = {
             ...result,
-            criticalGap: result.diagnosis, // Map diagnosis to criticalGap
-            masteredConcepts: "To be determined by AI", // This field would need to be added to the AI prompt response
-            recommendations: [result.remedialPlan],
-            smsDraft: `BaseCamp Update: ${studentId} is making progress in ${assessmentType}. We are focusing on: ${result.diagnosis}.`
+            criticalGap: result.diagnosis, // Map diagnosis to criticalGap for UI compatibility if needed
           };
           setReportData(fullReport);
           if (onAnalysisComplete) {
