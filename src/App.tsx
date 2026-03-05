@@ -10,6 +10,7 @@ import { Login } from './components/Login';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // 1. Scalable Types
 type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview' | 'school-overview' | 'teacher-directory';
@@ -30,7 +31,6 @@ export default function App() {
 
   // Assessment flow states
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
-  const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
   const [lastAssessmentData, setLastAssessmentData] = useState<AssessmentData | null>(null);
 
   // 3. Listen to Auth State
@@ -97,42 +97,13 @@ export default function App() {
   const handleStartAssessment = (studentId: string) => {
     setSelectedStudentId(studentId);
     setAnalysisStatus('empty');
-    setReportData(null);
+    setLastAssessmentData(null);
     setCurrentView('new-assessment');
   };
 
   const handleDiagnose = (data: AssessmentData) => {
     setLastAssessmentData(data);
     setAnalysisStatus('analyzing');
-    
-    // Simulate AI Diagnosis process
-    setTimeout(() => {
-      const mockReport: DiagnosticReport = {
-        criticalGap: data.assessmentType.includes('num') 
-          ? "Struggles with carrying over numbers in multi-digit addition." 
-          : "Difficulty identifying main ideas in complex paragraphs.",
-        masteredConcepts: data.assessmentType.includes('num')
-          ? "Basic addition and subtraction of single digits."
-          : "Basic phonemic awareness and sentence structure.",
-        recommendations: [
-          "Use physical manipulatives (stones) to represent place value.",
-          "Daily 10-minute targeted practice session.",
-          "Incorporate visual aids for regrouping."
-        ],
-        lessonPlan: {
-          title: "Visualizing Place Value with Local Materials",
-          instructions: [
-            "Gather 20 small sticks and some string.",
-            "Demonstrate bundling 10 sticks to make 'one ten'.",
-            "Practice adding digits that exceed 10 by creating new bundles."
-          ]
-        },
-        smsDraft: `BaseCamp Update: ${data.studentId} is making progress in ${data.assessmentType}. We are focusing on place value this week. Please encourage them to practice counting objects at home.`
-      };
-      
-      setReportData(mockReport);
-      setAnalysisStatus('results');
-    }, 2500);
   };
 
   const handleViewProfile = (studentId: string) => {
@@ -158,11 +129,12 @@ export default function App() {
             <div className="lg:col-span-2">
               <AnalysisResults 
                 status={analysisStatus} 
-                reportData={reportData}
                 onSaveProfile={() => setCurrentView('student-profile')}
                 isOffline={isOffline}
                 studentId={lastAssessmentData?.studentId}
                 assessmentType={lastAssessmentData?.assessmentType}
+                imageBase64={lastAssessmentData?.imageBase64}
+                dialectContext={lastAssessmentData?.dialect}
               />
             </div>
           </div>
@@ -185,49 +157,50 @@ export default function App() {
   if (!currentUser) return <Login />;
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <Header 
-        onLogout={handleLogout} 
-        user={currentUser} 
-        isOffline={isOffline} 
-        setIsOffline={setIsOffline} 
-      />
-      
-      <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="mb-6 animate-in slide-in-from-left duration-500">
-          <h2 className="text-2xl font-bold text-gray-900">
-            {DASHBOARD_CONFIG[currentUser.role].title}
-          </h2>
-          <p className="text-gray-600 mt-1">
-            Welcome back, {currentUser.name}. {DASHBOARD_CONFIG[currentUser.role].welcome}
-          </p>
-        </div>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+        <Header 
+          onLogout={handleLogout} 
+          user={currentUser} 
+          isOffline={isOffline} 
+          setIsOffline={setIsOffline} 
+        />
 
-        {/* 5. Expert Navigation: Automated based on Role */}
-        <div className="border-b border-gray-200 mb-8 overflow-x-auto">
-          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-            <NavTab 
-              label="Overview" 
-              active={currentView === 'roster' || currentView === 'school-overview' || currentView === 'district-overview'} 
-              onClick={() => setCurrentView(currentUser.role === 'teacher' ? 'roster' : currentUser.role === 'headteacher' ? 'school-overview' : 'district-overview')} 
-            />
-            {currentUser.role === 'teacher' && (
-              <>
-                <NavTab label="New Assessment" active={currentView === 'new-assessment'} onClick={() => setCurrentView('new-assessment')} />
-                <NavTab label="Student Profiles" active={currentView === 'student-profile'} onClick={() => setCurrentView('student-profile')} />
-              </>
-            )}
-            {currentUser.role === 'headteacher' && (
-              <NavTab label="Teacher Directory" active={currentView === 'teacher-directory'} onClick={() => setCurrentView('teacher-directory')} />
-            )}
-          </nav>
-        </div>
+        <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+          <div className="mb-6 animate-in slide-in-from-left duration-500">
+            <h2 className="text-2xl font-bold text-gray-900">
+              {DASHBOARD_CONFIG[currentUser.role].title}
+            </h2>
+            <p className="text-gray-600 mt-1">
+              Welcome back, {currentUser.name}. {DASHBOARD_CONFIG[currentUser.role].welcome}
+            </p>
+          </div>
 
-        {renderContent()}
-      </main>
-    </div>
-  );
-}
+          {/* 5. Expert Navigation: Automated based on Role */}
+          <div className="border-b border-gray-200 mb-8 overflow-x-auto">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <NavTab 
+                label="Overview" 
+                active={currentView === 'roster' || currentView === 'school-overview' || currentView === 'district-overview'} 
+                onClick={() => setCurrentView(currentUser.role === 'teacher' ? 'roster' : currentUser.role === 'headteacher' ? 'school-overview' : 'district-overview')} 
+              />
+              {currentUser.role === 'teacher' && (
+                <>
+                  <NavTab label="New Assessment" active={currentView === 'new-assessment'} onClick={() => setCurrentView('new-assessment')} />
+                  <NavTab label="Student Profiles" active={currentView === 'student-profile'} onClick={() => setCurrentView('student-profile')} />
+                </>
+              )}
+              {currentUser.role === 'headteacher' && (
+                <NavTab label="Teacher Directory" active={currentView === 'teacher-directory'} onClick={() => setCurrentView('teacher-directory')} />
+              )}
+            </nav>
+          </div>
+
+          {renderContent()}
+        </main>
+      </div>
+    </ErrorBoundary>
+  );}
 
 // Reusable Navigation Component
 function NavTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

@@ -28,13 +28,13 @@ export function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* Decorative background elements for a polished look */}
-      <div className="absolute top-0 left-0 w-full h-96 bg-blue-600 transform -skew-y-6 -translate-y-32 z-0"></div>
+      <div className="absolute top-0 left-0 w-full h-96 bg-amber-500 transform -skew-y-6 -translate-y-32 z-0"></div>
 
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden z-10">
         <div className="p-8">
           <div className="text-center mb-8">
-            <div className="mx-auto w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg transform -rotate-3 transition-transform hover:rotate-0">
-              <span className="text-white font-bold text-2xl tracking-tighter">HT</span>
+            <div className="mx-auto w-16 h-16 bg-amber-500 rounded-xl flex items-center justify-center mb-6 shadow-lg transform -rotate-3 transition-transform hover:rotate-0">
+              <span className="text-black font-bold text-2xl tracking-tighter">HT</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">BaseCamp Diagnostics</h1>
             <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">by HeckTeck</p>

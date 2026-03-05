@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2, Check } from 'lucide-react';
 import { saveAssessment, Assessment } from '../services/assessmentService';
+import { analyzeWorksheet, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
-// 1. Define the interface for the AI response
-export interface DiagnosticReport {
-  criticalGap: string;
+export interface DiagnosticReport extends AIDiagnosticReport {
   masteredConcepts: string;
   recommendations: string[];
   lessonPlan?: {
@@ -18,26 +17,51 @@ export interface DiagnosticReport {
 
 interface AnalysisResultsProps {
   status: AnalysisStatus;
-  reportData?: DiagnosticReport | null;
   onSaveProfile: () => void;
   isOffline?: boolean;
   studentId?: string;
   assessmentType?: string;
+  imageBase64?: string | null;
+  dialectContext?: string;
 }
 
-export function AnalysisResults({ status, reportData, onSaveProfile, isOffline = false, studentId, assessmentType }: AnalysisResultsProps) {
+export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, dialectContext }: AnalysisResultsProps) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
+  
+  useEffect(() => {
+    if (status === 'analyzing' && imageBase64 && assessmentType && dialectContext) {
+      const getAnalysis = async () => {
+        const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext);
+        if (result) {
+          // The AI response is simpler, so we'll have to mock or derive the other fields
+          const fullReport: DiagnosticReport = {
+            ...result,
+            criticalGap: result.diagnosis, // Map diagnosis to criticalGap
+            masteredConcepts: "To be determined by AI", // This field would need to be added to the AI prompt response
+            recommendations: [result.remedialPlan],
+            smsDraft: `BaseCamp Update: ${studentId} is making progress in ${assessmentType}. We are focusing on: ${result.diagnosis}.`
+          };
+          setReportData(fullReport);
+        }
+      };
+      getAnalysis();
+    }
+  }, [status, imageBase64, assessmentType, studentId, dialectContext]);
 
   // Fallback data in case of rendering errors
   const data = reportData || {
+    diagnosis: "No data available.",
     criticalGap: "No data available.",
     masteredConcepts: "No data available.",
     recommendations: [],
+    remedialPlan: "",
+    score: 0,
     smsDraft: ""
   };
 
@@ -61,8 +85,8 @@ export function AnalysisResults({ status, reportData, onSaveProfile, isOffline =
     const assessment: Assessment = {
       studentId,
       type: assessmentType.toLowerCase().includes('lit') ? 'Literacy' : 'Numeracy',
-      diagnosis: data.criticalGap,
-      remedialPlan: data.lessonPlan?.instructions.join('\n') || data.recommendations.join('\n'),
+      diagnosis: data.diagnosis,
+      remedialPlan: data.remedialPlan,
       timestamp: Date.now(),
       status: 'Completed'
     };
@@ -100,7 +124,7 @@ export function AnalysisResults({ status, reportData, onSaveProfile, isOffline =
         </div>
       )}
 
-      {status === 'analyzing' && (
+      {(status === 'analyzing' || (status === 'results' && !reportData)) && (
         <div className="flex-grow flex flex-col items-center justify-center text-center p-8">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-6" />
           <h3 className="text-lg font-medium text-gray-900 mb-2 animate-pulse">
@@ -112,7 +136,7 @@ export function AnalysisResults({ status, reportData, onSaveProfile, isOffline =
         </div>
       )}
 
-      {status === 'results' && (
+      {status === 'results' && reportData && (
         <div className="flex-grow flex flex-col animate-in fade-in duration-500">
           <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4 mt-8 sm:mt-0">
             <h3 className="text-xl font-bold text-gray-900">AI Diagnostic Report</h3>
@@ -126,7 +150,7 @@ export function AnalysisResults({ status, reportData, onSaveProfile, isOffline =
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-red-50 border border-red-100 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-red-800 mb-2">Critical Learning Gap Detected</h4>
-                <p className="text-sm text-red-700">{data.criticalGap}</p>
+                <p className="text-sm text-red-700">{data.diagnosis}</p>
               </div>
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-blue-800 mb-2">Mastered Concepts</h4>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { UploadCloud, Loader2, AlertTriangle, CheckCircle, X, ArrowRight, Camera, Zap } from 'lucide-react';
+import { UploadCloud, Loader2, AlertTriangle, CheckCircle, X, ArrowRight, Camera, Image, Zap } from 'lucide-react';
 // Assuming this exists in your project
 import { compressImage, CompressedImageResult } from '../utils/imageCompression';
 
@@ -7,16 +7,21 @@ type ScanStatus = 'idle' | 'dragging' | 'scanning' | 'warning' | 'error' | 'pass
 
 interface FileUploadZoneProps {
   onFileProcessed?: (file: File, compressionData?: CompressedImageResult) => void;
+  onFileReadyChange?: (isReady: boolean) => void;
 }
 
-export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
+export function FileUploadZone({ onFileProcessed, onFileReadyChange }: FileUploadZoneProps) {
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [fileName, setFileName] = useState<string | null>(null);
   const [compressionResult, setCompressionResult] = useState<CompressedImageResult | null>(null);
   const [processedFile, setProcessedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs for the new file inputs
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File) => {
+    onFileReadyChange?.(false);
     setFileName(file.name);
     setScanStatus('scanning');
     
@@ -31,21 +36,27 @@ export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
         // Mock logic: if file is large, throw warning, else pass
         if (file.size > 2000000) {
           setScanStatus('warning');
+          onFileReadyChange?.(true); // Still ready, but with warning
         } else {
           setScanStatus('passed');
+          onFileReadyChange?.(true);
           if (onFileProcessed) onFileProcessed(file, result);
         }
       }, 1500);
     } catch (error) {
       console.error("Image processing failed", error);
       setScanStatus('error');
+      onFileReadyChange?.(false); // Reset to not ready on error
     }
   };
 
+  // Unified file selection handler
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
     }
+    // Clear the input value so the same file can be selected again
+    if (e.target) e.target.value = '';
   };
 
   // --- Expert Upgrade: Real Drag & Drop Handlers ---
@@ -67,18 +78,23 @@ export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       processFile(e.dataTransfer.files[0]);
     }
+    setScanStatus('idle'); // Reset dragging status after drop
   }, []);
 
   const handleRetake = () => {
+    onFileReadyChange?.(false);
     setScanStatus('idle');
     setFileName(null);
     setCompressionResult(null);
     setProcessedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    // Clear both input refs
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   const handleProceed = () => {
     setScanStatus('passed');
+    onFileReadyChange?.(true);
     if (onFileProcessed && processedFile) {
       onFileProcessed(processedFile, compressionResult || undefined);
     }
@@ -89,7 +105,7 @@ export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
       <label className="block text-sm font-medium text-gray-700 mb-2">Upload Assessment</label>
       
       <div 
-        onClick={() => (scanStatus === 'idle' || scanStatus === 'error') ? fileInputRef.current?.click() : undefined}
+        onClick={() => galleryInputRef.current?.click()} // Fallback for clicking the dropzone
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -100,14 +116,27 @@ export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
         }`}
       >
         {(scanStatus === 'idle' || scanStatus === 'dragging') && (
-          <div className="group pointer-events-none">
-            <div className={`p-3 rounded-full mb-3 inline-block transition-colors ${scanStatus === 'dragging' ? 'bg-blue-200' : 'bg-blue-50 group-hover:bg-blue-100'}`}>
-              <UploadCloud className={`w-6 h-6 ${scanStatus === 'dragging' ? 'text-blue-700' : 'text-blue-600'}`} />
+          <div className="w-full">
+            <div className="mb-3 text-sm text-gray-500 pointer-events-none">Drag and drop worksheet photo, or</div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              {/* Take Photo Button */}
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+              >
+                <Camera size={16} /> Take Photo
+              </button>
+              {/* Browse Gallery Button */}
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+              >
+                <Image size={16} /> Browse Gallery
+              </button>
             </div>
-            <p className="text-sm font-medium text-gray-900 mb-1">
-              {scanStatus === 'dragging' ? 'Drop assessment here...' : 'Drag and drop worksheet photo, or click'}
-            </p>
-            <p className="text-xs text-gray-500">Supports JPG, PNG (Max 5MB)</p>
+            <p className="text-xs text-gray-500 mt-3 pointer-events-none">Supports JPG, PNG (Max 5MB)</p>
           </div>
         )}
 
@@ -157,7 +186,9 @@ export function FileUploadZone({ onFileProcessed }: FileUploadZoneProps) {
           </div>
         )}
 
-        <input ref={fileInputRef} type="file" className="hidden" accept=".jpg,.jpeg,.png" onChange={handleFileSelect} />
+        {/* Hidden File Inputs */}
+        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleFileSelect} />
+        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
       </div>
     </div>
   );

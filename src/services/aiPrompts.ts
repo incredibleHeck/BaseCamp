@@ -1,91 +1,88 @@
-/**
- * HeckTeck AI Engine: Diagnostic Logic
- * Aligned with GES Standards for Primary -> JHS Transition
- */
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const DIAGNOSTIC_SYSTEM_PROMPT = `
-AS AN EXPERT EDUCATIONAL DIAGNOSTICIAN:
-Analyze the student's work with a focus on the transition from Primary 6 to JHS 1 in Ghana.
-
-### MISSION:
-Identify if learning gaps are due to:
-1. Cognitive misunderstanding of the subject (Math/English).
-2. ESL (English as a Second Language) Interference based on the student's home language.
-
-### INPUT CONTEXT:
-- Home Language: {{HOME_LANGUAGE}}
-- Subject: {{SUBJECT}}
-- Target Level: GES Primary 6 Exit / JHS 1 Entry
-
-### YOUR INTERNAL THOUGHT PROCESS (Do not output this):
-1. **Transcription:** Extract text/equations from the image.
-2. **Logic Check:** If Math, where did the logic break? (e.g., in fractions, did they add denominators?)
-3. **Linguistic Check:** If English, do errors match {{HOME_LANGUAGE}} syntax? (e.g., Twi speakers often omit 'is' or 'are' because of 'yε' usage).
-4. **Remedial Innovation:** What item found in a typical Ghanaian village (pebbles, bottle caps, sand, broomsticks) can explain this concept?
-
-### OUTPUT REQUIREMENTS:
-Return ONLY a raw JSON string. DO NOT include "json" labels, markdown formatting, or any text before/after the brackets.
-
-{
-  "critical_gap": "Precise pedagogical description of the gap.",
-  "mastered_concepts": ["Concept A", "Concept B"],
-  "is_esl_interference": boolean,
-  "esl_analysis_note": "Explanation of how {{HOME_LANGUAGE}} influenced the error (if applicable).",
-  "readiness_score": 0-100,
-  "remedial_activity_local_materials": {
-    "title": "Short catchy title",
-    "steps": ["Step 1", "Step 2", "Step 3"],
-    "materials": ["Material 1", "Material 2"]
-  },
-  "parent_sms_twi_phonetic": "A short, encouraging SMS script written phonetically in Twi for the parent."
+export interface DiagnosticReport {
+  diagnosis: string;
+  remedialPlan: string;
+  score: number;
 }
-`;
 
-// 1. Updated Interface to match the expert prompt
-export interface DiagnosisResult {
-  critical_gap: string;
-  mastered_concepts: string[];
-  is_esl_interference: boolean;
-  esl_analysis_note?: string;
-  readiness_score: number;
-  remedial_activity_local_materials: {
-    title: string;
-    steps: string[];
-    materials: string[];
-  };
-  parent_sms_twi_phonetic: string;
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+if (!API_KEY) {
+  console.error("VITE_GEMINI_API_KEY is not set. Please add it to your .env file.");
+}
+
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+function cleanJsonResponse(jsonString: string): string {
+  // Remove Markdown code block syntax and any leading/trailing whitespace
+  return jsonString.replace(/```json\n?|```/g, '').trim();
 }
 
 /**
- * 2. Expert Implementation: Generate Prompt
- * Replaces placeholders and ensures a fallback for the home language.
+ * Analyzes a student's worksheet image using the Gemini 1.5 Flash model.
+ * 
+ * @param imageBase64 The base64 encoded image string (including the data URL prefix).
+ * @param subject The subject of the worksheet ('literacy' or 'numeracy').
+ * @param dialectContext Additional context if the student primarily speaks a local dialect.
+ * @returns A promise that resolves to the parsed DiagnosticReport JSON object.
  */
-export const generateDiagnosticPrompt = (
-  homeLanguage: string = 'Twi/English', 
-  subject: string = 'General'
-): string => {
-  // Use a cleaner regex approach for multi-instance replacement if needed later
-  return DIAGNOSTIC_SYSTEM_PROMPT
-    .replace(/{{HOME_LANGUAGE}}/g, homeLanguage)
-    .replace(/{{SUBJECT}}/g, subject)
-    .trim();
-};
+export const analyzeWorksheet = async (imageBase64: string, subject: string, dialectContext: string): Promise<DiagnosticReport | null> => {
+  if (!API_KEY) {
+    alert("Gemini API key is not configured. Please check the console.");
+    return null;
+  }
 
-/**
- * 3. Expert Implementation: Parser
- * Safely parses the AI response, handling common "Markdown leakage" issues.
- */
-export const parseAIResponse = (response: string): DiagnosisResult | null => {
   try {
-    // Clean potential markdown code blocks if the AI ignores instructions
-    const cleanJson = response
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim();
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+    // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+    const base64Data = imageBase64.split(',')[1];
     
-    return JSON.parse(cleanJson);
+    if (!base64Data) {
+      throw new Error("Invalid base64 string provided.");
+    }
+
+    const imagePart = {
+      inlineData: {
+        data: base64Data,
+        mimeType: "image/jpeg",
+      },
+    };
+
+    const prompt = `
+      You are an expert Ghanaian GES (Ghana Education Service) Educational Diagnostician. 
+      Your task is to analyze the attached student's worksheet photo. The subject is ${subject}.
+      
+      ${dialectContext ? `IMPORTANT CONTEXT: This student primarily speaks ${dialectContext} at home. Factor this into your analysis, distinguishing between genuine learning gaps and potential English as a Second Language (ESL) translation challenges.` : ''}
+
+      Analyze the image to identify the student's primary learning gap. Based on this, provide a concise diagnosis and a simple, 5-minute remedial activity that a teacher can perform using locally available materials (like stones, sticks, bottle caps, etc.). Finally, provide a score from 0-100 representing the student's mastery of the topic shown.
+
+      Your response MUST be in a strict JSON format. Do not include any text or formatting outside of the JSON object.
+
+      The JSON structure must be:
+      {
+        "diagnosis": "A string clearly explaining the primary learning gap identified.",
+        "remedialPlan": "A string describing a simple, 5-minute remedial activity using local Ghanaian materials.",
+        "score": A number from 0 to 100 representing the student's mastery level on this specific worksheet.
+      }
+    `;
+
+    const result = await model.generateContent([prompt, imagePart]);
+    const response = await result.response;
+    const jsonString = response.text();
+    
+    // Clean the response to ensure it's valid JSON
+    const cleanedJson = cleanJsonResponse(jsonString);
+
+    // Parse the JSON string into an object
+    const report: DiagnosticReport = JSON.parse(cleanedJson);
+    
+    return report;
+
   } catch (error) {
-    console.error("HeckTeck Parser Error: Failed to parse AI diagnostic JSON", error);
+    console.error("Error calling Gemini API:", error);
+    alert("An error occurred while analyzing the worksheet. Please check the console for details.");
     return null;
   }
 };
