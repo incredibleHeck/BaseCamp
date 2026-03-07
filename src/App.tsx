@@ -34,8 +34,10 @@ export default function App() {
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
   const [lastAssessmentData, setLastAssessmentData] = useState<AssessmentData | null>(null);
 
-  // 3. Listen to Auth State
+  // 3. Listen to Auth State (with timeout so we never hang on loading)
   useEffect(() => {
+    const loadingTimeout = setTimeout(() => setIsAuthLoading(false), 4000);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
@@ -82,7 +84,10 @@ export default function App() {
       setIsAuthLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(loadingTimeout);
+      unsubscribe();
+    };
   }, []);
 
   // 4. Handlers
