@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2, Check } from 'lucide-react';
 import { saveAssessment, Assessment } from '../services/assessmentService';
-import { analyzeWorksheet, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
+import { analyzeWorksheet, analyzeManualEntry, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
 export interface DiagnosticReport extends AIDiagnosticReport {
-  masteredConcepts: string;
-  recommendations: string[];
-  lessonPlan?: {
-    title: string;
-    instructions: string[];
-  };
-  smsDraft: string;
+  criticalGap?: string;
 }
 
 interface AnalysisResultsProps {
@@ -23,10 +17,12 @@ interface AnalysisResultsProps {
   assessmentType?: string;
   imageBase64?: string | null;
   dialectContext?: string | null;
+  manualRubric?: string[] | null;
+  observations?: string | null;
   onAnalysisComplete?: () => void;
 }
 
-export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, dialectContext, onAnalysisComplete }: AnalysisResultsProps) {
+export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, dialectContext, manualRubric, observations, onAnalysisComplete }: AnalysisResultsProps) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
@@ -36,34 +32,57 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
   const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
   
   useEffect(() => {
-    if (status === 'analyzing' && imageBase64 && assessmentType) {
+    if (status !== 'analyzing') return;
+
+    if (imageBase64 && assessmentType) {
       const getAnalysis = async () => {
         const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext || "");
         if (result) {
-          // Now we use the data directly from the AI response
           const fullReport: DiagnosticReport = {
             ...result,
-            criticalGap: result.diagnosis, // Map diagnosis to criticalGap for UI compatibility if needed
+            criticalGap: result.diagnosis,
+            lessonPlan: result.lessonPlan ?? { title: "No lesson plan", instructions: [] },
           };
           setReportData(fullReport);
-          if (onAnalysisComplete) {
-            onAnalysisComplete();
-          }
+          onAnalysisComplete?.();
+        }
+      };
+      getAnalysis();
+      return;
+    }
+
+    if (assessmentType && (manualRubric?.length || (observations?.trim() ?? '').length > 0)) {
+      const getAnalysis = async () => {
+        const result = await analyzeManualEntry(
+          assessmentType,
+          dialectContext || "",
+          manualRubric ?? [],
+          observations?.trim() ?? ""
+        );
+        if (result) {
+          const fullReport: DiagnosticReport = {
+            ...result,
+            criticalGap: result.diagnosis,
+            lessonPlan: result.lessonPlan ?? { title: "No lesson plan", instructions: [] },
+          };
+          setReportData(fullReport);
+          onAnalysisComplete?.();
         }
       };
       getAnalysis();
     }
-  }, [status, imageBase64, assessmentType, studentId, dialectContext, onAnalysisComplete]);
+  }, [status, imageBase64, assessmentType, studentId, dialectContext, manualRubric, observations, onAnalysisComplete]);
 
-  // Fallback data in case of rendering errors
-  const data = reportData || {
+  // Fallback data in case of rendering errors (includes lessonPlan for safe UI access)
+  const data: DiagnosticReport = reportData || {
     diagnosis: "No data available.",
     criticalGap: "No data available.",
     masteredConcepts: "No data available.",
     recommendations: [],
     remedialPlan: "",
     score: 0,
-    smsDraft: ""
+    smsDraft: "",
+    lessonPlan: { title: "No lesson plan", instructions: [] },
   };
 
   const handleGenerateLesson = () => {

@@ -2,7 +2,7 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# BaseCamp Diagnostics
 
 This contains everything you need to run your app locally.
 
@@ -10,11 +10,23 @@ View your app in AI Studio: https://ai.studio/apps/ec58a563-8013-4579-90d6-536bf
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+2. Copy [.env.example](.env.example) to `.env.local` and fill in your keys.
+3. **Gemini:** Set `VITE_GEMINI_API_KEY` in `.env.local` to your Gemini API key.
+4. **Firebase (Auth & Firestore):** Set these in `.env.local` so the app can sign in and read/write data:
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
+5. **Firestore index:** For student assessment history, Firestore needs a composite index on the `assessments` collection: `studentId` (Ascending) and `timestamp` (Descending). If you see an index error at runtime, create the index via the link in the error message (Firebase Console).
+6. Run the app:
+   ```bash
+   npm run dev
+   ```

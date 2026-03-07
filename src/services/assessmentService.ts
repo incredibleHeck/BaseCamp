@@ -62,3 +62,44 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
     return [];
   }
 };
+
+export interface AssessmentSummaryEntry {
+  lastDate: number;
+  count: number;
+  lastDiagnosis: string | null;
+}
+
+/**
+ * Fetches all assessments and groups by studentId for roster/summary views.
+ * Returns a Map of studentId -> { lastDate (ms), count, lastDiagnosis }.
+ */
+export const getAssessmentSummaryByStudent = async (): Promise<Map<string, AssessmentSummaryEntry>> => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'assessments'));
+    const map = new Map<string, AssessmentSummaryEntry>();
+
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const studentId = data.studentId as string;
+      const rawTs = data.timestamp;
+      const tsMs = typeof rawTs === 'number' ? rawTs : (rawTs && typeof (rawTs as { toMillis?: () => number }).toMillis === 'function')
+        ? (rawTs as { toMillis: () => number }).toMillis()
+        : typeof rawTs === 'object' && rawTs !== null && 'seconds' in rawTs
+          ? (rawTs as { seconds: number }).seconds * 1000
+          : 0;
+      const diagnosis = (data.diagnosis as string) ?? null;
+      const existing = map.get(studentId);
+      const count = (existing?.count ?? 0) + 1;
+      if (!existing || tsMs > existing.lastDate) {
+        map.set(studentId, { lastDate: tsMs, count, lastDiagnosis: diagnosis });
+      } else {
+        map.set(studentId, { lastDate: existing.lastDate, count, lastDiagnosis: existing.lastDiagnosis });
+      }
+    });
+
+    return map;
+  } catch (error) {
+    console.error('Error fetching assessment summary: ', error);
+    return new Map();
+  }
+};

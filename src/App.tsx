@@ -6,6 +6,7 @@ import { StudentProfile } from './components/StudentProfile';
 import { ClassRoster } from './components/ClassRoster';
 import { DistrictOverview } from './components/DistrictOverview';
 import { SchoolOverview } from './components/SchoolOverview';
+import { TeacherDirectory } from './components/TeacherDirectory';
 import { Login } from './components/Login';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -135,6 +136,8 @@ export default function App() {
                 assessmentType={lastAssessmentData?.assessmentType}
                 imageBase64={lastAssessmentData?.imageBase64}
                 dialectContext={lastAssessmentData?.dialect}
+                manualRubric={lastAssessmentData?.manualRubric ?? undefined}
+                observations={lastAssessmentData?.observations ?? undefined}
                 onAnalysisComplete={() => setAnalysisStatus('results')}
               />
             </div>
@@ -146,6 +149,8 @@ export default function App() {
         return <DistrictOverview />;
       case 'school-overview':
         return <SchoolOverview />;
+      case 'teacher-directory':
+        return <TeacherDirectory />;
       default:
         return <div className="p-12 text-center text-gray-400">View under construction.</div>;
     }

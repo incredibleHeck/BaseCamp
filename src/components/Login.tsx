@@ -125,7 +125,7 @@ function RoleCard({
         {isLoading ? (
           <Loader2 className="w-6 h-6 animate-spin" />
         ) : (
-          React.cloneElement(icon as React.ReactElement, { className: "w-6 h-6" })
+          React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-6 h-6" })
         )}
       </div>
       <div className="ml-4 flex-grow">

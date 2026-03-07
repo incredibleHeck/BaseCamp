@@ -100,3 +100,64 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
     return null;
   }
 };
+
+/**
+ * Generates a diagnostic report from manual rubric selection and teacher observations (no image).
+ * Uses the same DiagnosticReport shape as analyzeWorksheet for consistent UI.
+ */
+export const analyzeManualEntry = async (
+  subject: string,
+  dialectContext: string,
+  manualRubrics: string[],
+  observations: string
+): Promise<DiagnosticReport | null> => {
+  if (!API_KEY) {
+    alert("Gemini API key is not configured. Please check the console.");
+    return null;
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+    const rubricsText = manualRubrics.length > 0 ? manualRubrics.map((r) => `- ${r}`).join("\n") : "None selected.";
+    const prompt = `
+      You are an expert Ghanaian GES (Ghana Education Service) Educational Diagnostician.
+      A teacher has submitted a manual assessment for the subject: ${subject}.
+      ${dialectContext ? `The student primarily speaks ${dialectContext} at home. Factor this into your analysis (ESL vs cognitive gaps).` : ""}
+
+      Teacher-identified rubrics / focus areas:
+      ${rubricsText}
+
+      Teacher observations:
+      ${observations.trim() || "No additional observations provided."}
+
+      Based only on this information, provide a concise diagnosis, what the student has likely mastered, recommendations, a simple 5-minute remedial activity using local Ghanaian materials, a structured lesson plan, and a professional SMS draft to a guardian. Provide a score from 0-100 representing estimated mastery for this topic.
+
+      Your response MUST be in strict JSON format with no text outside the JSON object:
+
+      {
+        "diagnosis": "A string clearly explaining the primary learning gap.",
+        "masteredConcepts": "A string listing concepts the student likely understands.",
+        "recommendations": ["An array of strings with simple remedial actions"],
+        "remedialPlan": "A string describing a simple 5-minute remedial activity using local materials.",
+        "lessonPlan": {
+          "title": "A short, engaging title for the activity.",
+          "instructions": ["Step 1", "Step 2", "Step 3"]
+        },
+        "smsDraft": "A short, professional draft SMS to the parent.",
+        "score": A number from 0 to 100
+      }
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const jsonString = response.text();
+    const cleanedJson = cleanJsonResponse(jsonString);
+    const report: DiagnosticReport = JSON.parse(cleanedJson);
+    return report;
+  } catch (error) {
+    console.error("Error calling Gemini API (manual entry):", error);
+    alert("An error occurred while generating the diagnosis. Please check the console for details.");
+    return null;
+  }
+};

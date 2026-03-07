@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Search, UserPlus, FileText, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp, Loader2 } from 'lucide-react';
 import { getStudents, Student } from '../services/studentService';
+import { getAssessmentSummaryByStudent } from '../services/assessmentService';
 import { AddStudentForm } from './AddStudentForm';
+
+function formatLastAssessment(lastDateMs: number): string {
+  const now = Date.now();
+  const diffDays = Math.floor((now - lastDateMs) / (24 * 60 * 60 * 1000));
+  if (diffDays <= 0) return 'Today';
+  if (diffDays === 1) return '1 day ago';
+  return `${diffDays} days ago`;
+}
+
+function diagnosisToShortGap(diagnosis: string | null): string | null {
+  if (!diagnosis || diagnosis.length < 3) return null;
+  const maxLen = 40;
+  return diagnosis.length <= maxLen ? diagnosis : diagnosis.slice(0, maxLen).trim() + '…';
+}
 
 export interface StudentListItem {
   id: string;
@@ -30,15 +45,31 @@ export function ClassRoster({
   useEffect(() => {
     const fetchStudents = async () => {
       setIsLoading(true);
-      const fetchedStudents = await getStudents();
-      // Map Firestore Student to StudentListItem, adding mock data for now
-      const studentListItems = fetchedStudents.map(s => ({
-        id: s.id!,
-        name: s.name,
-        readinessScore: Math.floor(Math.random() * 60 + 40), // Mock score
-        lastAssessmentDate: `${Math.floor(Math.random() * 10 + 1)} Days Ago`, // Mock date
-        criticalGap: Math.random() > 0.5 ? 'Fractions' : null // Mock gap
-      }));
+      const [fetchedStudents, summaryMap] = await Promise.all([
+        getStudents(),
+        getAssessmentSummaryByStudent(),
+      ]);
+      const studentListItems = fetchedStudents.map((s) => {
+        const id = s.id!;
+        const summary = summaryMap.get(id);
+        if (summary) {
+          const readinessScore = Math.min(100, 40 + summary.count * 12);
+          return {
+            id,
+            name: s.name,
+            readinessScore,
+            lastAssessmentDate: formatLastAssessment(summary.lastDate),
+            criticalGap: diagnosisToShortGap(summary.lastDiagnosis),
+          };
+        }
+        return {
+          id,
+          name: s.name,
+          readinessScore: 50,
+          lastAssessmentDate: 'No assessment yet',
+          criticalGap: null as string | null,
+        };
+      });
       setStudents(studentListItems);
       setIsLoading(false);
     };
@@ -46,15 +77,14 @@ export function ClassRoster({
   }, []);
 
   const handleStudentAdded = (newStudent: Student) => {
-    // Add the new student to the list with some mock data
     const newStudentItem: StudentListItem = {
       id: newStudent.id!,
       name: newStudent.name,
       readinessScore: 50,
-      lastAssessmentDate: 'Just now',
-      criticalGap: null
+      lastAssessmentDate: 'No assessment yet',
+      criticalGap: null,
     };
-    setStudents(prev => [newStudentItem, ...prev]);
+    setStudents((prev) => [newStudentItem, ...prev]);
     setIsAddStudentOpen(false);
   };
 
