@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Mountain, LineChart, Flag, Loader2 } from 'lucide-react';
 import { getStudentHistory, Assessment } from '../services/assessmentService';
-import { getStudent, Student as StudentModel } from '../services/studentService';
+import { getStudent, getStudents, Student as StudentModel } from '../services/studentService';
 
 // 1. Data Models
 export interface HistoricalScore {
@@ -39,27 +39,60 @@ const getReadinessDetails = (finalScore: number, trajectory: number): Readiness 
   return { level: 'Medium', color: 'text-yellow-700 bg-yellow-50 border-yellow-200', icon: <AlertTriangle className="w-5 h-5 text-yellow-600" /> };
 };
 
-export function StudentProfile({ studentId }: StudentProfileProps) {
+/** Normalize Firestore timestamp to milliseconds for Date display */
+function timestampToMs(ts: Date | { toMillis?: () => number; seconds?: number } | number): number {
+  if (typeof ts === 'number') return ts;
+  if (ts && typeof (ts as { toMillis: () => number }).toMillis === 'function') return (ts as { toMillis: () => number }).toMillis();
+  if (ts && typeof (ts as { seconds: number }).seconds === 'number') return (ts as { seconds: number }).seconds * 1000;
+  return 0;
+}
+
+function formatAssessmentDateTime(ts: Date | { toMillis?: () => number; seconds?: number } | number): string {
+  const ms = timestampToMs(ts);
+  return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+export function StudentProfile({ studentId: initialStudentId }: StudentProfileProps) {
+  const [students, setStudents] = useState<StudentModel[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | undefined>(initialStudentId);
   const [viewMode, setViewMode] = useState<'analytical' | 'gamified'>('analytical');
   const [history, setHistory] = useState<Assessment[]>([]);
   const [studentInfo, setStudentInfo] = useState<StudentModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(true);
 
-  // Fetch real student info and assessment history
+  // Sync from parent when e.g. user clicked "View Profile" from roster
+  useEffect(() => {
+    if (initialStudentId) setSelectedStudentId(initialStudentId);
+  }, [initialStudentId]);
+
+  // Fetch students list for dropdown
+  useEffect(() => {
+    const load = async () => {
+      setStudentsLoading(true);
+      const list = await getStudents();
+      setStudents(list);
+      setStudentsLoading(false);
+      if (list.length > 0 && !selectedStudentId) setSelectedStudentId(list[0].id);
+    };
+    load();
+  }, []);
+
+  // Fetch profile and history for selected student
   useEffect(() => {
     const fetchData = async () => {
-      if (!studentId) {
+      if (!selectedStudentId) {
+        setStudentInfo(null);
+        setHistory([]);
         setIsLoading(false);
         return;
       }
-      
       setIsLoading(true);
       try {
         const [studentData, historyData] = await Promise.all([
-          getStudent(studentId),
-          getStudentHistory(studentId)
+          getStudent(selectedStudentId),
+          getStudentHistory(selectedStudentId),
         ]);
-        
         setStudentInfo(studentData);
         setHistory(historyData);
       } catch (error) {
@@ -67,9 +100,27 @@ export function StudentProfile({ studentId }: StudentProfileProps) {
       }
       setIsLoading(false);
     };
-
     fetchData();
-  }, [studentId]);
+  }, [selectedStudentId]);
+
+  if (studentsLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 mt-8 w-full flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-4" />
+        <p className="text-gray-500 font-medium">Loading students...</p>
+      </div>
+    );
+  }
+
+  if (students.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 mt-8 w-full flex flex-col items-center justify-center">
+        <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
+        <h3 className="text-lg font-bold text-gray-900 mb-2">No Students Yet</h3>
+        <p className="text-gray-500 text-center max-w-md">Add students from the Class Roster to view their profiles here.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -80,12 +131,22 @@ export function StudentProfile({ studentId }: StudentProfileProps) {
     );
   }
 
-  if (!studentId || !studentInfo) {
+  if (!selectedStudentId || !studentInfo) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 mt-8 w-full flex flex-col items-center justify-center">
-        <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
-        <h3 className="text-lg font-bold text-gray-900 mb-2">No Student Selected</h3>
-        <p className="text-gray-500 text-center max-w-md">Please select a student from the Class Roster or perform a New Assessment to view their longitudinal profile.</p>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 w-full">
+        <label htmlFor="student-select" className="block text-sm font-medium text-gray-700 mb-2">Select student</label>
+        <select
+          id="student-select"
+          value={selectedStudentId ?? ''}
+          onChange={(e) => setSelectedStudentId(e.target.value || undefined)}
+          className="w-full max-w-xs border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
+        >
+          <option value="">Choose a student...</option>
+          {students.map((s) => (
+            <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>
+          ))}
+        </select>
+        <p className="mt-4 text-gray-500 text-sm">Select a student above to view their profile and assessment history.</p>
       </div>
     );
   }
@@ -117,6 +178,21 @@ export function StudentProfile({ studentId }: StudentProfileProps) {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-8 w-full animate-in fade-in duration-500">
+      {/* Student selector dropdown */}
+      <div className="mb-6">
+        <label htmlFor="profile-student-select" className="block text-sm font-medium text-gray-700 mb-1">View profile for</label>
+        <select
+          id="profile-student-select"
+          value={selectedStudentId}
+          onChange={(e) => setSelectedStudentId(e.target.value)}
+          className="w-full max-w-md border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white flex items-center gap-2"
+        >
+          {students.map((s) => (
+            <option key={s.id} value={s.id}>{s.name} ({s.grade})</option>
+          ))}
+        </select>
+      </div>
+
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
@@ -160,9 +236,8 @@ export function StudentProfile({ studentId }: StudentProfileProps) {
             {hasRealData ? (
               <div className="relative border-l-2 border-gray-200 ml-3 space-y-8">
                 {history.map((assessment, index) => {
-                  const date = new Date(assessment.timestamp as number);
                   const isRecent = index === 0;
-                  
+                  const dateTimeStr = formatAssessmentDateTime(assessment.timestamp);
                   return (
                     <div key={assessment.id || index} className="relative pl-6">
                       <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-sm ${
@@ -170,7 +245,7 @@ export function StudentProfile({ studentId }: StudentProfileProps) {
                       }`}></div>
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold text-gray-900">{assessment.type} Assessment</h4>
-                        <span className="text-xs font-medium text-gray-500">{date.toLocaleDateString()}</span>
+                        <span className="text-xs font-medium text-gray-500">{dateTimeStr}</span>
                       </div>
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mt-2">
                         <p className="text-sm text-gray-800 font-semibold mb-1">Diagnosis:</p>

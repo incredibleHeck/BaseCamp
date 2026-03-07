@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2, Check } from 'lucide-react';
 import { saveAssessment, Assessment } from '../services/assessmentService';
-import { analyzeWorksheet, analyzeManualEntry, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
+import { analyzeWorksheet, analyzeManualEntry, generateRemedialLessonPlan, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
@@ -30,7 +30,14 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
-  
+  const [regeneratedLessonPlan, setRegeneratedLessonPlan] = useState<{ title: string; instructions: string[] } | null>(null);
+
+  // When report data changes (e.g. new assessment), clear any regenerated lesson so the report's plan shows
+  useEffect(() => {
+    setRegeneratedLessonPlan(null);
+  }, [reportData]);
+
+  // Run analysis only when user has clicked "Run AI Diagnosis" (status is set to 'analyzing' from that action only).
   useEffect(() => {
     if (status !== 'analyzing') return;
 
@@ -85,13 +92,57 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
     lessonPlan: { title: "No lesson plan", instructions: [] },
   };
 
-  const handleGenerateLesson = () => {
-    // In a real app, this would trigger an API call to Gemini
+  const handleGenerateLesson = async () => {
     setIsGeneratingLesson(true);
-    setTimeout(() => {
-      setIsGeneratingLesson(false);
+    setRegeneratedLessonPlan(null);
+    const subject = assessmentType === 'literacy' ? 'literacy' : 'numeracy';
+    const result = await generateRemedialLessonPlan(data.diagnosis, data.remedialPlan, subject);
+    setIsGeneratingLesson(false);
+    if (result) {
+      setRegeneratedLessonPlan(result);
       setShowLessonPlan(true);
-    }, 2000);
+    }
+  };
+
+  const displayLessonPlan = regeneratedLessonPlan ?? data.lessonPlan;
+  const displayInstructions = displayLessonPlan?.instructions?.length
+    ? displayLessonPlan.instructions
+    : ["Gather 10 small stones or pebbles.", "Ask the student to divide the stones into two equal groups.", "Physically demonstrate the concept."];
+
+  const handlePrintActivity = () => {
+    const title = displayLessonPlan?.title ?? "5-Minute Remedial Activity";
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    ol { margin: 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <p><strong>Instructions:</strong></p>
+  <ol>${displayInstructions.map((step: string) => `<li>${step.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}</ol>
+  <p style="margin-top: 2rem; font-size: 0.875rem; color: #666;">BaseCamp Diagnostics · HeckTeck AI</p>
+</body>
+</html>`;
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      win.onload = () => {
+        win.print();
+        win.onafterprint = () => win.close();
+      };
+    } else {
+      alert("Please allow pop-ups to print the activity.");
+    }
   };
 
   const handleGenerateAudio = () => {
@@ -186,13 +237,13 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
                 ))}
               </ul>
               
-              {!showLessonPlan && !isGeneratingLesson && (
+              {!isGeneratingLesson && (
                 <button 
                   onClick={handleGenerateLesson}
                   className="inline-flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2 px-4 rounded-lg transition-colors border border-yellow-200"
                 >
                   <Sparkles size={16} />
-                  ✨ Generate 5-Minute Remedial Activity
+                  {(showLessonPlan || data.lessonPlan?.instructions?.length) ? 'Regenerate 5-Minute Remedial Activity' : '✨ Generate 5-Minute Remedial Activity'}
                 </button>
               )}
 
@@ -203,28 +254,28 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
                 </div>
               )}
 
-              {/* 3. Render dynamic lesson plan if it exists in data or after generation */}
+              {/* Lesson plan: from API report or regenerated via Generate/Regenerate */}
               {(showLessonPlan || data.lessonPlan) && (
                 <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-5 animate-in fade-in slide-in-from-top-2">
                   <div className="flex justify-between items-start mb-3">
                     <h5 className="text-base font-bold text-gray-900">
-                      {data.lessonPlan?.title || "Visualizing Concepts with Local Materials"}
+                      {displayLessonPlan?.title ?? "Visualizing Concepts with Local Materials"}
                     </h5>
                     <Sparkles size={16} className="text-yellow-600" />
                   </div>
                   <div className="space-y-3 mb-4">
                     <p className="text-sm text-gray-800 font-medium">Instructions:</p>
                     <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">
-                      {(data.lessonPlan?.instructions || [
-                        "Gather 10 small stones or pebbles.",
-                        "Ask the student to divide the stones into two equal groups.",
-                        "Physically demonstrate the concept."
-                      ]).map((step, idx) => (
+                      {displayInstructions.map((step, idx) => (
                         <li key={idx}>{step}</li>
                       ))}
                     </ol>
                   </div>
-                  <button className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline">
+                  <button
+                    type="button"
+                    onClick={handlePrintActivity}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+                  >
                     <Printer size={14} /> Print Activity
                   </button>
                 </div>
