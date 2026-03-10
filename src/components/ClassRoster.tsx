@@ -116,20 +116,20 @@ export function ClassRoster({
             <p className="text-sm text-gray-500 mt-1">{students.length} Students Enrolled</p>
           </div>
           
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64 min-w-0">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
               <input 
                 type="text" 
                 placeholder="Find student..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none w-full sm:w-64 transition-all bg-gray-50 focus:bg-white"
+                className="pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none w-full transition-all bg-gray-50 focus:bg-white"
               />
             </div>
             <button 
               onClick={() => setIsAddStudentOpen(true)}
-              className="hidden sm:flex items-center gap-2 bg-amber-500 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors border border-amber-600"
+              className="flex items-center justify-center gap-2 bg-amber-500 text-white px-4 py-2.5 sm:py-2 min-h-[44px] rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors border border-amber-600 shrink-0 w-full sm:w-auto"
             >
               <UserPlus size={16} />
               Add Student
@@ -183,18 +183,18 @@ export function ClassRoster({
                           <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                             <button 
                               onClick={() => onNewAssessment(student.id)}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded hover:bg-amber-600 transition-colors shadow-sm"
+                              className="flex items-center gap-1 px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 bg-amber-500 text-white text-xs font-medium rounded hover:bg-amber-600 transition-colors shadow-sm"
                               title="New Assessment"
                             >
                               <FileText size={14} />
-                              <span className="hidden lg:inline">Assess</span>
+                              <span className="inline">Assess</span>
                             </button>
                             <button 
                               onClick={() => onViewProfile(student.id)}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-medium rounded hover:bg-gray-50 transition-colors shadow-sm"
+                              className="flex items-center gap-1 px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 bg-white border border-gray-300 text-gray-700 text-xs font-medium rounded hover:bg-gray-50 transition-colors shadow-sm"
                               title="View Profile"
                             >
-                              <span className="hidden lg:inline">Profile</span>
+                              <span className="inline">Profile</span>
                               <ChevronRight size={14} />
                             </button>
                           </div>

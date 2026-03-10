@@ -221,7 +221,7 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
               <Mountain size={16} /> Student View
             </button>
           </div>
-          <button className="hidden sm:inline-flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors shadow-sm">
+          <button className="inline-flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors shadow-sm">
             <Download size={18} /> Export
           </button>
         </div>

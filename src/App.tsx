@@ -177,19 +177,19 @@ export default function App() {
           setIsOffline={setIsOffline} 
         />
 
-        <main className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-          <div className="mb-6 animate-in slide-in-from-left duration-500">
-            <h2 className="text-2xl font-bold text-gray-900">
+        <main className="pt-20 sm:pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+          <div className="mb-6 sm:mb-8">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
               {DASHBOARD_CONFIG[currentUser.role].title}
             </h2>
-            <p className="text-gray-600 mt-1">
+            <p className="text-gray-600 mt-0.5 sm:mt-1 text-sm sm:text-base">
               Welcome back, {currentUser.name}. {DASHBOARD_CONFIG[currentUser.role].welcome}
             </p>
           </div>
 
-          {/* 5. Expert Navigation: Automated based on Role */}
-          <div className="border-b border-gray-200 mb-8 overflow-x-auto">
-            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+          {/* Navigation tabs */}
+          <div className="border-b border-gray-200 mb-6 sm:mb-8 overflow-x-auto min-w-0 -mx-4 sm:mx-0 px-4 sm:px-0">
+            <nav className="-mb-px flex space-x-6 sm:space-x-8 min-w-max" aria-label="Tabs">
               <NavTab 
                 label="Overview" 
                 active={currentView === 'roster' || currentView === 'school-overview' || currentView === 'district-overview'} 
@@ -218,7 +218,7 @@ function NavTab({ label, active, onClick }: { label: string; active: boolean; on
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-all duration-200 ${
+      className={`whitespace-nowrap py-3 sm:py-4 px-1 min-h-[44px] sm:min-h-0 flex items-center border-b-2 font-medium text-sm transition-colors ${
         active ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
       }`}
     >

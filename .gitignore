@@ -4,5 +4,6 @@ dist/
 coverage/
 .DS_Store
 *.log
+# Local env files (secrets) - do not commit to GitHub
 .env*
 !.env.example

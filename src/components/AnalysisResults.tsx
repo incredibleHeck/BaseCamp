@@ -240,7 +240,7 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
               {!isGeneratingLesson && (
                 <button 
                   onClick={handleGenerateLesson}
-                  className="inline-flex items-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2 px-4 rounded-lg transition-colors border border-yellow-200"
+                  className="inline-flex items-center justify-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors border border-yellow-200 w-full sm:w-auto"
                 >
                   <Sparkles size={16} />
                   {(showLessonPlan || data.lessonPlan?.instructions?.length) ? 'Regenerate 5-Minute Remedial Activity' : '✨ Generate 5-Minute Remedial Activity'}
@@ -274,7 +274,7 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
                   <button
                     type="button"
                     onClick={handlePrintActivity}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1.5 min-h-[44px] hover:underline py-2"
                   >
                     <Printer size={14} /> Print Activity
                   </button>
@@ -282,10 +282,10 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
               )}
             </div>
 
-            <div className="mt-auto pt-4 flex flex-col sm:flex-row items-center justify-end gap-4">
+            <div className="mt-auto pt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-4">
               <button 
                 onClick={() => setShowSmsDraft(!showSmsDraft)}
-                className="text-sm font-medium text-emerald-600 hover:text-emerald-800 transition-colors border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg flex items-center gap-2"
+                className="text-sm font-medium text-emerald-600 hover:text-emerald-800 transition-colors border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 min-h-[44px] rounded-lg flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 <MessageSquare size={16} />
                 Guardian Communication
@@ -293,7 +293,7 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
               <button 
                 onClick={handleSave}
                 disabled={isSaving || isSaved}
-                className={`text-sm font-medium transition-all flex items-center gap-1.5 ${
+                className={`text-sm font-medium transition-all flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 w-full sm:w-auto rounded-lg ${
                   isSaved ? 'text-emerald-600' : 'text-blue-600 hover:text-blue-800'
                 }`}
               >

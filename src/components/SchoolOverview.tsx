@@ -114,7 +114,7 @@ export function SchoolOverview({
       {/* Bottom Section: Recent Critical Alerts */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Critical Learning Gaps</h3>
-        <div className="overflow-hidden border border-gray-200 rounded-lg shadow-sm">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

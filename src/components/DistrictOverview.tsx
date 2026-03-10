@@ -105,7 +105,7 @@ export function DistrictOverview({
       {/* Bottom Section: School Breakdown mapped dynamically */}
       <div>
         <h3 className="text-lg font-semibold text-gray-800 mb-4">School Performance Breakdown</h3>
-        <div className="overflow-hidden border border-gray-200 rounded-lg shadow-sm">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
