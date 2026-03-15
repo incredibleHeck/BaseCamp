@@ -140,6 +140,7 @@ export default function App() {
                 studentId={lastAssessmentData?.studentId}
                 assessmentType={lastAssessmentData?.assessmentType}
                 imageBase64={lastAssessmentData?.imageBase64}
+                imageBase64s={lastAssessmentData?.imageBase64s ?? undefined}
                 dialectContext={lastAssessmentData?.dialect}
                 manualRubric={lastAssessmentData?.manualRubric ?? undefined}
                 observations={lastAssessmentData?.observations ?? undefined}

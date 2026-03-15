@@ -13,6 +13,7 @@ export interface AssessmentData {
   manualRubric?: string[];
   observations?: string;
   imageBase64?: string | null;
+  imageBase64s?: string[];
 }
 
 interface AssessmentSetupProps {
@@ -29,10 +30,9 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
   const [isLocalDialect, setIsLocalDialect] = useState(false);
   const [selectedDialect, setSelectedDialect] = useState('');
   
-  // File upload state
-  const [isFileReady, setIsFileReady] = useState(false);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
-  
+  // File upload state (multiple pages)
+  const [imageBase64s, setImageBase64s] = useState<string[]>([]);
+
   // Manual entry states
   const [selectedRubrics, setSelectedRubrics] = useState<string[]>([]);
   const [observations, setObservations] = useState('');
@@ -45,17 +45,28 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
     fetchStudents();
   }, []);
 
-  const handleFileProcessed = (file: File) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImageBase64(reader.result as string);
-      setIsFileReady(true);
-    };
-    reader.onerror = (error) => {
-      console.error("Error converting file to base64:", error);
-      setIsFileReady(false);
-    };
-    reader.readAsDataURL(file);
+  const handleFilesProcessed = (files: File[]) => {
+    if (files.length === 0) {
+      setImageBase64s([]);
+      return;
+    }
+    let completed = 0;
+    const results: string[] = new Array(files.length);
+    files.forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        results[index] = reader.result as string;
+        completed++;
+        if (completed === files.length) {
+          setImageBase64s(results.filter(Boolean));
+        }
+      };
+      reader.onerror = () => {
+        completed++;
+        if (completed === files.length) setImageBase64s(results.filter(Boolean));
+      };
+      reader.readAsDataURL(file);
+    });
   };
   
   const handleRubricToggle = (rubric: string) => {
@@ -80,12 +91,13 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
       dialect: isLocalDialect ? selectedDialect : null,
       manualRubric: inputMode === 'manual' ? selectedRubrics : undefined,
       observations: inputMode === 'manual' ? observations : undefined,
-      imageBase64: inputMode === 'upload' ? imageBase64 : null,
+      imageBase64: inputMode === 'upload' && imageBase64s.length === 1 ? imageBase64s[0] : undefined,
+      imageBase64s: inputMode === 'upload' ? imageBase64s : undefined,
     });
   };
 
   const isFormValid = !!selectedStudent && !!assessmentType;
-  const isUploadModeValid = isFormValid && isFileReady;
+  const isUploadModeValid = isFormValid && imageBase64s.length > 0;
   const isManualModeValid = isFormValid && (selectedRubrics.length > 0 || observations.length > 0);
 
   return (
@@ -192,7 +204,7 @@ export function AssessmentSetup({ onDiagnose, isProcessing = false, initialStude
         </div>
 
         {inputMode === 'upload' ? (
-          <FileUploadZone onFileProcessed={handleFileProcessed} />
+          <FileUploadZone onFilesProcessed={handleFilesProcessed} />
         ) : (
           <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
             <div>

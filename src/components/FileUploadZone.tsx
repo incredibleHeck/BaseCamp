@@ -1,195 +1,241 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { UploadCloud, Loader2, AlertTriangle, CheckCircle, X, ArrowRight, Camera, Image, Zap } from 'lucide-react';
-// Assuming this exists in your project
-import { compressImage, CompressedImageResult } from '../utils/imageCompression';
+import { Loader2, AlertTriangle, CheckCircle, X, Camera, Image } from 'lucide-react';
+import { compressImage } from '../utils/imageCompression';
 
-type ScanStatus = 'idle' | 'dragging' | 'scanning' | 'warning' | 'error' | 'passed';
+const MAX_PAGES = 10;
 
 interface FileUploadZoneProps {
-  onFileProcessed?: (file: File, compressionData?: CompressedImageResult) => void;
-  onFileReadyChange?: (isReady: boolean) => void;
+  onFilesProcessed?: (files: File[]) => void;
 }
 
-export function FileUploadZone({ onFileProcessed, onFileReadyChange }: FileUploadZoneProps) {
-  const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [compressionResult, setCompressionResult] = useState<CompressedImageResult | null>(null);
-  const [processedFile, setProcessedFile] = useState<File | null>(null);
+export function FileUploadZone({ onFilesProcessed }: FileUploadZoneProps) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
 
-  // Refs for the new file inputs
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = async (file: File) => {
-    onFileReadyChange?.(false);
-    setFileName(file.name);
-    setScanStatus('scanning');
-    
-    try {
-      // Simulate real compression/scanning time
-      const result = await compressImage(file);
-      setCompressionResult(result);
-      setProcessedFile(file); // In reality, this would be the newly compressed file
-      
-      // Artificial delay to let the user see the scanning animation (good UX)
-      setTimeout(() => {
-        // Mock logic: if file is large, throw warning, else pass
-        if (file.size > 2000000) {
-          setScanStatus('warning');
-          onFileReadyChange?.(true); // Still ready, but with warning
-        } else {
-          setScanStatus('passed');
-          onFileReadyChange?.(true);
-          if (onFileProcessed) onFileProcessed(file, result);
+  const processFiles = useCallback(
+    async (newFiles: File[]) => {
+      if (newFiles.length === 0) return;
+      const remaining = MAX_PAGES - files.length;
+      const toAdd = Array.from(newFiles).slice(0, remaining);
+      if (toAdd.length === 0) return;
+
+      setScanning(true);
+      setScanError(null);
+
+      try {
+        const processed: File[] = [];
+        for (const file of toAdd) {
+          const result = await compressImage(file);
+          processed.push(file);
         }
-      }, 1500);
-    } catch (error) {
-      console.error("Image processing failed", error);
-      setScanStatus('error');
-      onFileReadyChange?.(false); // Reset to not ready on error
-    }
-  };
+        const updated = [...files, ...processed];
+        setFiles(updated);
+        onFilesProcessed?.(updated);
+      } catch (err) {
+        console.error("Image processing failed", err);
+        setScanError("Failed to process one or more images.");
+      } finally {
+        setScanning(false);
+      }
+    },
+    [files, onFilesProcessed]
+  );
 
-  // Unified file selection handler
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
+    const selected = e.target.files;
+    if (selected && selected.length > 0) {
+      processFiles(Array.from(selected));
     }
-    // Clear the input value so the same file can be selected again
-    if (e.target) e.target.value = '';
+    e.target.value = "";
   };
 
-  // --- Expert Upgrade: Real Drag & Drop Handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (scanStatus === 'idle') setScanStatus('dragging');
-  }, [scanStatus]);
+    setDragActive(true);
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (scanStatus === 'dragging') setScanStatus('idle');
-  }, [scanStatus]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
-    }
-    setScanStatus('idle'); // Reset dragging status after drop
+    setDragActive(false);
   }, []);
 
-  const handleRetake = () => {
-    onFileReadyChange?.(false);
-    setScanStatus('idle');
-    setFileName(null);
-    setCompressionResult(null);
-    setProcessedFile(null);
-    // Clear both input refs
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
-    if (galleryInputRef.current) galleryInputRef.current.value = '';
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processFiles(Array.from(e.dataTransfer.files));
+      }
+    },
+    [processFiles]
+  );
+
+  const removeFile = (index: number) => {
+    const updated = files.filter((_, i) => i !== index);
+    setFiles(updated);
+    onFilesProcessed?.(updated);
   };
 
-  const handleProceed = () => {
-    setScanStatus('passed');
-    onFileReadyChange?.(true);
-    if (onFileProcessed && processedFile) {
-      onFileProcessed(processedFile, compressionResult || undefined);
-    }
+  const clearAll = () => {
+    setFiles([]);
+    setScanError(null);
+    onFilesProcessed?.([]);
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   };
+
+  const canAddMore = files.length < MAX_PAGES && !scanning;
 
   return (
     <div className="mt-6">
-      <label className="block text-sm font-medium text-gray-700 mb-2">Upload Assessment</label>
-      
-      <div 
-        onClick={() => galleryInputRef.current?.click()} // Fallback for clicking the dropzone
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={`border-2 rounded-lg p-6 flex flex-col items-center justify-center text-center transition-all duration-200 relative overflow-hidden min-h-[200px] ${
-          scanStatus === 'idle' || scanStatus === 'error' ? 'border-dashed border-gray-300 cursor-pointer hover:bg-gray-50 hover:border-blue-400' : 
-          scanStatus === 'dragging' ? 'border-dashed border-blue-500 bg-blue-50 scale-[1.02]' : 
-          'border-solid border-gray-200 bg-gray-50'
-        }`}
-      >
-        {(scanStatus === 'idle' || scanStatus === 'dragging') && (
-          <div className="w-full">
-            <div className="mb-3 text-sm text-gray-500 pointer-events-none">Drag and drop worksheet photo, or</div>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              {/* Take Photo Button */}
-              <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
-              >
-                <Camera size={16} /> Take Photo
-              </button>
-              {/* Browse Gallery Button */}
-              <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
-              >
-                <Image size={16} /> Browse Gallery
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-3 pointer-events-none">Supports JPG, PNG (Max 5MB)</p>
-          </div>
-        )}
+      <label className="block text-sm font-medium text-gray-700 mb-2">Upload Assessment (worksheet or exercise book pages)</label>
 
-        {scanStatus === 'scanning' && (
-          <div className="animate-in fade-in zoom-in duration-300">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3 mx-auto" />
-            <p className="text-sm font-medium text-blue-700">Optimizing for AI analysis...</p>
-          </div>
-        )}
+      {files.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <ul className="space-y-2">
+            {files.map((file, index) => (
+              <li
+                key={`${file.name}-${index}`}
+                className="flex items-center justify-between gap-2 py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg"
+              >
+                <span className="text-sm text-gray-800 truncate flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Page {index + 1}: {file.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="p-1.5 text-gray-400 hover:text-red-600 rounded transition-colors"
+                  aria-label={`Remove page ${index + 1}`}
+                >
+                  <X size={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-500">
+            {files.length} page(s). Max {MAX_PAGES} pages. Add more below if needed.
+          </p>
+        </div>
+      )}
 
-        {scanStatus === 'warning' && (
-          <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left shadow-sm">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-sm font-semibold text-yellow-800 mb-1">Low Image Quality Detected</h4>
-                  <p className="text-sm text-yellow-700 mb-3 leading-relaxed">
-                    Image appears dark or blurry. For the most accurate AI diagnosis, please retake near a natural light source.
-                  </p>
-                  <div className="flex gap-3 mt-4">
-                    <button onClick={(e) => { e.stopPropagation(); handleRetake(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-yellow-300 text-yellow-700 text-xs font-medium rounded hover:bg-yellow-50 transition-colors">
-                      <Camera size={14} /> Retake Photo
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleProceed(); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 text-white text-xs font-medium rounded hover:bg-yellow-700 transition-colors shadow-sm">
-                      Proceed Anyway <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </div>
+      {scanError && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertTriangle size={16} />
+          {scanError}
+        </div>
+      )}
+
+      {scanning && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Optimizing for AI analysis...
+        </div>
+      )}
+
+      {canAddMore && (
+        <div
+          onClick={() => galleryInputRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`border-2 rounded-lg p-4 flex flex-col items-center justify-center text-center transition-all duration-200 min-h-[120px] ${
+            dragActive
+              ? "border-blue-500 bg-blue-50 border-dashed"
+              : "border-dashed border-gray-300 hover:bg-gray-50 hover:border-blue-400 cursor-pointer"
+          }`}
+        >
+          {files.length === 0 ? (
+            <>
+              <div className="mb-2 text-sm text-gray-500">Drag and drop worksheet photo(s), or</div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cameraInputRef.current?.click();
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                >
+                  <Camera size={16} /> Take Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    galleryInputRef.current?.click();
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                >
+                  <Image size={16} /> Browse Gallery
+                </button>
               </div>
-            </div>
-          </div>
-        )}
+              <p className="text-xs text-gray-500 mt-2">Supports JPG, PNG. You can add multiple pages.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-2">Add another page</p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cameraInputRef.current?.click();
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                >
+                  <Camera size={14} /> Take Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    galleryInputRef.current?.click();
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+                >
+                  <Image size={14} /> Browse
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
-        {scanStatus === 'passed' && (
-          <div className="animate-in fade-in zoom-in duration-300">
-            <div className="bg-emerald-50 p-3 rounded-full mb-3 inline-block">
-              <CheckCircle className="w-8 h-8 text-emerald-600" />
-            </div>
-            <p className="text-sm font-medium text-gray-900 mb-1">{fileName}</p>
-            <div className="flex flex-col items-center gap-1">
-              <p className="text-xs text-emerald-600 font-medium flex items-center justify-center gap-1">Ready for AI Analysis</p>
-            </div>
-            <button onClick={(e) => { e.stopPropagation(); handleRetake(); }} className="mt-4 text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 mx-auto transition-colors z-10 relative">
-              <X size={12} /> Remove file
-            </button>
-          </div>
-        )}
+      {files.length > 0 && (
+        <button
+          type="button"
+          onClick={clearAll}
+          className="mt-2 text-xs text-gray-400 hover:text-red-500 transition-colors"
+        >
+          Remove all pages
+        </button>
+      )}
 
-        {/* Hidden File Inputs */}
-        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleFileSelect} />
-        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
-      </div>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*"
+        multiple
+        onChange={handleFileSelect}
+      />
     </div>
   );
 }

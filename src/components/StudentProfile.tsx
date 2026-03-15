@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
 import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Mountain, LineChart, Flag, Loader2 } from 'lucide-react';
 import { getStudentHistory, Assessment } from '../services/assessmentService';
 import { getStudent, getStudents, Student as StudentModel } from '../services/studentService';
@@ -60,6 +61,7 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   const [studentInfo, setStudentInfo] = useState<StudentModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [studentsLoading, setStudentsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Sync from parent when e.g. user clicked "View Profile" from roster
   useEffect(() => {
@@ -176,6 +178,84 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   
   const isHighRisk = numeracyReadiness.level === 'Low' || literacyReadiness.level === 'Low';
 
+  const handleExportPdf = () => {
+    if (!studentInfo) return;
+    setIsExporting(true);
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const margin = 14;
+      const maxWidth = 180;
+      let y = 20;
+      const lineHeight = 6;
+      const smallLineHeight = 5;
+
+      const addText = (text: string, fontSize?: number, isBold?: boolean) => {
+        if (y > 277) {
+          doc.addPage();
+          y = 20;
+        }
+        if (fontSize) doc.setFontSize(fontSize);
+        if (isBold) doc.setFont('helvetica', 'bold');
+        const lines = doc.splitTextToSize(text, maxWidth);
+        doc.text(lines, margin, y);
+        y += lines.length * (fontSize && fontSize <= 10 ? smallLineHeight : lineHeight);
+        if (isBold) doc.setFont('helvetica', 'normal');
+      };
+
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Student Profile Report', margin, y);
+      y += 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      addText(`${studentInfo.name} — ${studentInfo.grade}`);
+      y += 4;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Longitudinal History', margin, y);
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+
+      if (hasRealData) {
+        history.forEach((assessment, index) => {
+          const dateStr = formatAssessmentDateTime(assessment.timestamp);
+          addText(`${assessment.type} Assessment — ${dateStr}`, 10, true);
+          addText('Diagnosis:', 10, true);
+          addText(assessment.diagnosis, 10);
+          addText('Recommended Remedial Plan:', 10, true);
+          addText(assessment.remedialPlan, 10);
+          y += 4;
+        });
+        doc.setFont('helvetica', 'bold');
+        addText(`JHS Readiness Score: ${realReadinessScore}% (based on ${history.length} assessment(s))`, 11);
+        doc.setFont('helvetica', 'normal');
+        addText(
+          realReadinessScore >= 70
+            ? 'Student is on track for Junior High School.'
+            : 'Student requires targeted intervention using the recommended lesson plans to reach JHS readiness.',
+          10
+        );
+      } else {
+        addText('No AI assessments on record. Baseline / placeholder summary below.', 10);
+        y += 2;
+        fallbackHistoricalData.forEach((record) => {
+          addText(`${record.grade}: ${record.notes}`, 10);
+          addText(`Literacy ${record.literacy}% — Numeracy ${record.numeracy}%`, 10);
+          y += 2;
+        });
+        addText(`Predictive JHS Readiness — Numeracy: ${numeracyReadiness.level}, Literacy: ${literacyReadiness.level}`, 10, true);
+      }
+
+      const safeName = studentInfo.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Student';
+      doc.save(`BaseCamp-Report-${safeName}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed', err);
+    }
+    setIsExporting(false);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-8 w-full animate-in fade-in duration-500">
       {/* Student selector dropdown */}
@@ -221,8 +301,13 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
               <Mountain size={16} /> Student View
             </button>
           </div>
-          <button className="inline-flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors shadow-sm">
-            <Download size={18} /> Export
+          <button
+            onClick={handleExportPdf}
+            disabled={isExporting}
+            className="inline-flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            {isExporting ? 'Exporting…' : 'Export'}
           </button>
         </div>
       </div>

@@ -101,6 +101,75 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
   }
 };
 
+const MAX_WORKSHEET_PAGES = 10;
+
+/**
+ * Analyzes multiple worksheet/exercise book page images in one request and returns a single combined DiagnosticReport.
+ * Use when the teacher uploads more than one photo (e.g. multi-page worksheet).
+ */
+export const analyzeWorksheetMultiple = async (
+  imageBase64s: string[],
+  subject: string,
+  dialectContext: string
+): Promise<DiagnosticReport | null> => {
+  if (!API_KEY) {
+    alert("Gemini API key is not configured. Please check the console.");
+    return null;
+  }
+  if (!imageBase64s.length) return null;
+  const capped = imageBase64s.slice(0, MAX_WORKSHEET_PAGES);
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+    const imageParts = capped.map((imageBase64) => {
+      const base64Data = imageBase64.split(",")[1];
+      if (!base64Data) throw new Error("Invalid base64 string in one of the images.");
+      return {
+        inlineData: {
+          data: base64Data,
+          mimeType: "image/jpeg",
+        },
+      };
+    });
+
+    const prompt = `
+      You are an expert Ghanaian GES (Ghana Education Service) Educational Diagnostician.
+      The following ${imageParts.length} image(s) are multiple pages of the same worksheet or exercise book. Analyze all pages together and provide a single combined diagnosis and report.
+
+      The subject is ${subject}.
+      ${dialectContext ? `IMPORTANT CONTEXT: This student primarily speaks ${dialectContext} at home. Factor this into your analysis (genuine learning gaps vs ESL/translation).` : ""}
+
+      Analyze every page to identify the student's primary learning gap across the work. Provide one concise diagnosis, what the student has mastered, recommendations, a simple 5-minute remedial activity using local Ghanaian materials, a structured lesson plan, and a professional SMS draft to a guardian. Give one score from 0-100 for overall mastery across the pages.
+
+      Your response MUST be strict JSON only, no other text:
+      {
+        "diagnosis": "A string clearly explaining the primary learning gap across the pages.",
+        "masteredConcepts": "A string listing concepts the student seems to understand.",
+        "recommendations": ["An array of strings with simple remedial actions"],
+        "remedialPlan": "A string describing a simple 5-minute remedial activity using local materials.",
+        "lessonPlan": {
+          "title": "A short, engaging title for the activity.",
+          "instructions": ["Step 1", "Step 2", "Step 3"]
+        },
+        "smsDraft": "A short, professional draft SMS to the parent.",
+        "score": A number from 0 to 100 for overall mastery across the worksheet.
+      }
+    `;
+
+    const result = await model.generateContent([prompt, ...imageParts]);
+    const response = await result.response;
+    const jsonString = response.text();
+    const cleanedJson = cleanJsonResponse(jsonString);
+    const report: DiagnosticReport = JSON.parse(cleanedJson);
+    return report;
+  } catch (error) {
+    console.error("Error calling Gemini API (multi-page):", error);
+    alert("An error occurred while analyzing the worksheet. Please check the console for details.");
+    return null;
+  }
+};
+
 /**
  * Generates a diagnostic report from manual rubric selection and teacher observations (no image).
  * Uses the same DiagnosticReport shape as analyzeWorksheet for consistent UI.
