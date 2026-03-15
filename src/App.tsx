@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header, UserData } from './components/Header';
 import { AssessmentSetup, AssessmentData } from './components/AssessmentSetup';
 import { AnalysisResults, AnalysisStatus, DiagnosticReport } from './components/AnalysisResults';
@@ -90,6 +90,13 @@ export default function App() {
     };
   }, []);
 
+  // When leaving the assessment view, clear 'analyzing' so we don't show the loader when returning
+  useEffect(() => {
+    if (currentView !== 'new-assessment') {
+      setAnalysisStatus((s) => (s === 'analyzing' ? 'results' : s));
+    }
+  }, [currentView]);
+
   // 4. Handlers
   const handleLogout = async () => {
     try {
@@ -116,6 +123,10 @@ export default function App() {
     setSelectedStudentId(studentId);
     setCurrentView('student-profile');
   };
+
+  const handleAnalysisComplete = useCallback(() => {
+    setAnalysisStatus('results');
+  }, []);
 
   // 5. Expert View Rendering
   const renderContent = () => {
@@ -144,7 +155,7 @@ export default function App() {
                 dialectContext={lastAssessmentData?.dialect}
                 manualRubric={lastAssessmentData?.manualRubric ?? undefined}
                 observations={lastAssessmentData?.observations ?? undefined}
-                onAnalysisComplete={() => setAnalysisStatus('results')}
+                onAnalysisComplete={handleAnalysisComplete}
               />
             </div>
           </div>

@@ -26,6 +26,14 @@ function cleanJsonResponse(jsonString: string): string {
   return jsonString.replace(/```json\n?|```/g, '').trim();
 }
 
+/** Only inject translation rule when a dialect is actually selected (not "None" or empty). */
+function getDialectInstruction(dialectContext: string): string {
+  const hasDialect = dialectContext && dialectContext !== 'None' && dialectContext.trim() !== '';
+  return hasDialect
+    ? `CRITICAL ESL CONTEXT: The student's primary home language is ${dialectContext}. If the error is related to an English vocabulary misunderstanding (ESL context), you MUST explicitly include the translation of the misunderstood English mathematical term into ${dialectContext} within the Remedial Plan to help the teacher bridge the linguistic divide.`
+    : `Analyze the error purely based on standard mathematical/literacy concepts without assuming an ESL translation gap.`;
+}
+
 /**
  * Analyzes a student's worksheet image using the Gemini 3 Flash Preview model.
  * 
@@ -57,11 +65,12 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
       },
     };
 
+    const dialectInstruction = getDialectInstruction(dialectContext);
     const prompt = `
       You are an expert Ghanaian GES (Ghana Education Service) Educational Diagnostician. 
       Your task is to analyze the attached student's worksheet photo. The subject is ${subject}.
       
-      ${dialectContext ? `IMPORTANT CONTEXT: This student primarily speaks ${dialectContext} at home. Factor this into your analysis, distinguishing between genuine learning gaps and potential English as a Second Language (ESL) translation challenges.` : ''}
+      ${dialectInstruction}
 
       Analyze the image to identify the student's primary learning gap. Based on this, provide a concise diagnosis, mastered concepts, recommendations, a simple remedial activity using local materials, a structured lesson plan, and a professional SMS draft to a guardian. Finally, provide a score from 0-100 representing the student's mastery of the topic shown.
 
@@ -138,7 +147,7 @@ export const analyzeWorksheetMultiple = async (
       The following ${imageParts.length} image(s) are multiple pages of the same worksheet or exercise book. Analyze all pages together and provide a single combined diagnosis and report.
 
       The subject is ${subject}.
-      ${dialectContext ? `IMPORTANT CONTEXT: This student primarily speaks ${dialectContext} at home. Factor this into your analysis (genuine learning gaps vs ESL/translation).` : ""}
+      ${getDialectInstruction(dialectContext)}
 
       Analyze every page to identify the student's primary learning gap across the work. Provide one concise diagnosis, what the student has mastered, recommendations, a simple 5-minute remedial activity using local Ghanaian materials, a structured lesson plan, and a professional SMS draft to a guardian. Give one score from 0-100 for overall mastery across the pages.
 
@@ -192,7 +201,7 @@ export const analyzeManualEntry = async (
     const prompt = `
       You are an expert Ghanaian GES (Ghana Education Service) Educational Diagnostician.
       A teacher has submitted a manual assessment for the subject: ${subject}.
-      ${dialectContext ? `The student primarily speaks ${dialectContext} at home. Factor this into your analysis (ESL vs cognitive gaps).` : ""}
+      ${getDialectInstruction(dialectContext)}
 
       Teacher-identified rubrics / focus areas:
       ${rubricsText}
