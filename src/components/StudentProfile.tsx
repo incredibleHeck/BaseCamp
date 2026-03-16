@@ -184,17 +184,33 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   // Clamp readiness for student view so the flag would stay on the mountain (legacy), reused conceptually if needed
   const clampedReadiness = hasRealData ? Math.min(90, Math.max(10, realReadinessScore)) : 10;
 
-  const findAssessmentForGap = (gap: string): Assessment | null => {
-    const lower = gap.toLowerCase();
-    const direct = history.find(
-      (a) => (a.gapTags || []).some((tag) => tag.toLowerCase() === lower)
-    );
-    if (direct) return direct;
-    const fallback = history.find(
-      (a) => a.diagnosis && a.diagnosis.toLowerCase().includes(lower)
-    );
-    return fallback || null;
-  };
+  // Group gaps by assessment so multiple targets from the same assessment
+  // show as a single intervention card.
+  const gapInterventions = history.reduce<
+    { assessment: Assessment; gaps: string[] }[]
+  >((acc, assessment) => {
+    const tags = (assessment.gapTags || []).filter((t) => t && t.trim());
+    if (!tags.length) return acc;
+
+    const key = assessment.id || `${timestampToMs(assessment.timestamp)}-${assessment.type}`;
+    const existing = acc.find((entry) => entry.assessment.id === assessment.id || `${timestampToMs(entry.assessment.timestamp)}-${entry.assessment.type}` === key);
+
+    if (existing) {
+      const existingSet = new Set(existing.gaps.map((g) => g.toLowerCase()));
+      tags.forEach((tag) => {
+        if (!existingSet.has(tag.toLowerCase())) {
+          existing.gaps.push(tag);
+        }
+      });
+      return acc;
+    }
+
+    acc.push({ assessment, gaps: Array.from(new Set(tags)) });
+    return acc;
+  }, []).sort(
+    (a, b) =>
+      timestampToMs(b.assessment.timestamp) - timestampToMs(a.assessment.timestamp)
+  );
 
   const handleExportPdf = () => {
     if (!studentInfo) return;
@@ -503,58 +519,90 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
       ) : (
         /* Teacher Action Plan View */
         <div className="py-6 animate-in slide-in-from-bottom-4 duration-500">
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Intervention Action Plan</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            Targeted Interventions
+          </h3>
           <p className="text-sm text-gray-600 mb-6">
-            Use these 5-minute interventions to close this learner&apos;s current gaps.
+            Each card turns a diagnosed gap into a 5-minute classroom playbook.
           </p>
 
-          {recentGaps.length === 0 ? (
+          {gapInterventions.length === 0 ? (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 flex flex-col items-center text-center">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-3" />
-              <h4 className="text-lg font-semibold text-emerald-900 mb-1">No active learning gaps</h4>
+              <h4 className="text-lg font-semibold text-emerald-900 mb-1">
+                No active learning gaps!
+              </h4>
               <p className="text-sm text-emerald-800 max-w-md">
                 This student is currently on track based on recent AI assessments.
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {recentGaps.map((gap) => {
-                const assessment = findAssessmentForGap(gap);
-                if (!assessment) return null;
+            <div className="space-y-5">
+              {gapInterventions.map(({ assessment, gaps }) => {
                 const dateTimeStr = formatAssessmentDateTime(assessment.timestamp);
+                const lessonTitle = assessment.lessonPlan?.title?.trim();
+                const lessonSteps = assessment.lessonPlan?.instructions ?? [];
+
                 return (
                   <div
-                    key={gap}
-                    className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3"
+                    key={assessment.id || `${timestampToMs(assessment.timestamp)}-${assessment.type}`}
+                    className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4"
                   >
+                    {/* Header + meta */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-500" />
-                        <h4 className="text-sm font-semibold text-gray-900">
-                          Gap: {gap}
-                        </h4>
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                          🚧 TARGET: {gaps.join(', ')}
+                        </span>
+                        <p className="text-xs text-gray-500">
+                          From {assessment.type} • {dateTimeStr}
+                        </p>
                       </div>
-                      <span className="text-xs text-gray-500">
-                        From {assessment.type} • {dateTimeStr}
-                      </span>
                     </div>
 
-                    <div>
-                      <p className="text-xs font-semibold text-gray-700 mb-1">
-                        5-minute Activity
-                      </p>
-                      <p className="text-sm text-gray-700">
-                        {assessment.remedialPlan}
-                      </p>
-                    </div>
+                    {/* Objective / summary (remedialPlan) */}
+                    {assessment.remedialPlan && (
+                      <div className="border-l-4 border-amber-300 pl-3">
+                        <p className="text-xs font-semibold text-amber-800 mb-1">
+                          Objective / Summary
+                        </p>
+                        <p className="text-sm text-gray-700 italic">
+                          {assessment.remedialPlan}
+                        </p>
+                      </div>
+                    )}
 
+                    {/* Detailed execution (lessonPlan) */}
+                    {(lessonTitle || lessonSteps.length > 0) && (
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                        {lessonTitle && (
+                          <h4 className="text-sm font-semibold text-blue-900 mb-2">
+                            {lessonTitle}
+                          </h4>
+                        )}
+                        {lessonSteps.length > 0 && (
+                          <>
+                            <p className="text-xs text-blue-800 mb-1 font-medium">
+                              Step-by-step guide:
+                            </p>
+                            <ol className="list-decimal list-inside space-y-1 text-sm text-blue-900">
+                              {lessonSteps.map((step, idx) => (
+                                <li key={idx}>{step}</li>
+                              ))}
+                            </ol>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Share button */}
                     <div className="flex justify-end">
                       <button
                         type="button"
                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-emerald-200 text-emerald-700 text-xs font-medium bg-emerald-50 hover:bg-emerald-100"
                       >
                         <MessageCircle size={14} />
-                        Send to Parent
+                        Share with Parent
                       </button>
                     </div>
                   </div>

@@ -21,9 +21,23 @@ interface AnalysisResultsProps {
   manualRubric?: string[] | null;
   observations?: string | null;
   onAnalysisComplete?: () => void;
+  onAnalysisError?: () => void;
 }
 
-export function AnalysisResults({ status, onSaveProfile, isOffline = false, studentId, assessmentType, imageBase64, imageBase64s, dialectContext, manualRubric, observations, onAnalysisComplete }: AnalysisResultsProps) {
+export function AnalysisResults({
+  status,
+  onSaveProfile,
+  isOffline = false,
+  studentId,
+  assessmentType,
+  imageBase64,
+  imageBase64s,
+  dialectContext,
+  manualRubric,
+  observations,
+  onAnalysisComplete,
+  onAnalysisError,
+}: AnalysisResultsProps) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
@@ -44,15 +58,29 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
 
     if (imageBase64s && imageBase64s.length > 0 && assessmentType) {
       const getAnalysis = async () => {
-        const result = await analyzeWorksheetMultiple(imageBase64s, assessmentType, dialectContext || "");
-        if (result) {
-          const fullReport: DiagnosticReport = {
-            ...result,
-            criticalGap: result.diagnosis,
-            lessonPlan: result.lessonPlan ?? { title: "No lesson plan", instructions: [] },
-          };
-          setReportData(fullReport);
-          onAnalysisComplete?.();
+        try {
+          const result = await analyzeWorksheetMultiple(
+            imageBase64s,
+            assessmentType,
+            dialectContext || ""
+          );
+          if (result) {
+            const fullReport: DiagnosticReport = {
+              ...result,
+              criticalGap: result.diagnosis,
+              lessonPlan: result.lessonPlan ?? {
+                title: "No lesson plan",
+                instructions: [],
+              },
+            };
+            setReportData(fullReport);
+            onAnalysisComplete?.();
+          } else {
+            onAnalysisError?.();
+          }
+        } catch (error) {
+          console.error("AnalysisResults: analyzeWorksheetMultiple failed", error);
+          onAnalysisError?.();
         }
       };
       getAnalysis();
@@ -61,15 +89,29 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
 
     if (imageBase64 && assessmentType) {
       const getAnalysis = async () => {
-        const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext || "");
-        if (result) {
-          const fullReport: DiagnosticReport = {
-            ...result,
-            criticalGap: result.diagnosis,
-            lessonPlan: result.lessonPlan ?? { title: "No lesson plan", instructions: [] },
-          };
-          setReportData(fullReport);
-          onAnalysisComplete?.();
+        try {
+          const result = await analyzeWorksheet(
+            imageBase64,
+            assessmentType,
+            dialectContext || ""
+          );
+          if (result) {
+            const fullReport: DiagnosticReport = {
+              ...result,
+              criticalGap: result.diagnosis,
+              lessonPlan: result.lessonPlan ?? {
+                title: "No lesson plan",
+                instructions: [],
+              },
+            };
+            setReportData(fullReport);
+            onAnalysisComplete?.();
+          } else {
+            onAnalysisError?.();
+          }
+        } catch (error) {
+          console.error("AnalysisResults: analyzeWorksheet failed", error);
+          onAnalysisError?.();
         }
       };
       getAnalysis();
@@ -78,25 +120,46 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
 
     if (assessmentType && (manualRubric?.length || (observations?.trim() ?? '').length > 0)) {
       const getAnalysis = async () => {
-        const result = await analyzeManualEntry(
-          assessmentType,
-          dialectContext || "",
-          manualRubric ?? [],
-          observations?.trim() ?? ""
-        );
-        if (result) {
-          const fullReport: DiagnosticReport = {
-            ...result,
-            criticalGap: result.diagnosis,
-            lessonPlan: result.lessonPlan ?? { title: "No lesson plan", instructions: [] },
-          };
-          setReportData(fullReport);
-          onAnalysisComplete?.();
+        try {
+          const result = await analyzeManualEntry(
+            assessmentType,
+            dialectContext || "",
+            manualRubric ?? [],
+            observations?.trim() ?? ""
+          );
+          if (result) {
+            const fullReport: DiagnosticReport = {
+              ...result,
+              criticalGap: result.diagnosis,
+              lessonPlan: result.lessonPlan ?? {
+                title: "No lesson plan",
+                instructions: [],
+              },
+            };
+            setReportData(fullReport);
+            onAnalysisComplete?.();
+          } else {
+            onAnalysisError?.();
+          }
+        } catch (error) {
+          console.error("AnalysisResults: analyzeManualEntry failed", error);
+          onAnalysisError?.();
         }
       };
       getAnalysis();
     }
-  }, [status, imageBase64, imageBase64s, assessmentType, studentId, dialectContext, manualRubric, observations, onAnalysisComplete]);
+  }, [
+    status,
+    imageBase64,
+    imageBase64s,
+    assessmentType,
+    studentId,
+    dialectContext,
+    manualRubric,
+    observations,
+    onAnalysisComplete,
+    onAnalysisError,
+  ]);
 
   // Fallback data in case of rendering errors (includes lessonPlan for safe UI access)
   const data: DiagnosticReport = reportData || {

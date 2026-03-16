@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { User, Building2, School, Loader2, Lock } from 'lucide-react';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { addStudent } from '../services/studentService';
+import { saveAssessment } from '../services/assessmentService';
 
 type Role = 'teacher' | 'headteacher' | 'district';
 
 export function Login() {
   const [isLoggingIn, setIsLoggingIn] = useState<Role | null>(null);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedDone, setSeedDone] = useState(false);
 
   const handleDemoLogin = async (role: Role) => {
     setIsLoggingIn(role);
@@ -22,6 +27,144 @@ export function Login() {
       console.error(`Authentication failed for ${role}:`, error);
       setIsLoggingIn(null);
       alert('Login failed. Please check the console for details.');
+    }
+  };
+
+  const handleSeedDemoData = async () => {
+    if (seedDone || isSeeding) return;
+    setIsSeeding(true);
+    try {
+      // 1) Wipe existing students and assessments so the demo starts from a clean slate.
+      const assessmentsSnap = await getDocs(collection(db, 'assessments'));
+      await Promise.all(
+        assessmentsSnap.docs.map((d) => deleteDoc(doc(db, 'assessments', d.id)))
+      );
+
+      const studentsSnap = await getDocs(collection(db, 'students'));
+      await Promise.all(
+        studentsSnap.docs.map((d) => deleteDoc(doc(db, 'students', d.id)))
+      );
+
+      // 2) Seed fresh demo students and assessments.
+      const demoStudents = [
+        { name: 'Kofi Boateng', grade: 'Primary 6A' },
+        { name: 'Esi Mensah', grade: 'Primary 6B' },
+        { name: 'Yaw Asante', grade: 'Primary 6C' },
+        { name: 'Ama Owusu', grade: 'Primary 6A' },
+        { name: 'Kwame Adjei', grade: 'Primary 6B' },
+      ];
+
+      const numeracyTemplates = [
+        {
+          diagnosis: 'Struggles with fraction equivalence when denominators differ.',
+          masteredConcepts: 'Understands basic addition and subtraction of whole numbers.',
+          gapTags: ['Fraction Equivalence', 'Word Problems'],
+          masteryTags: ['Addition', 'Subtraction'],
+          remedialPlan:
+            'Use bottle caps to group fractions with different denominators and show they represent the same quantity.',
+          lessonPlan: {
+            title: 'Bottle Cap Fractions',
+            instructions: [
+              'Give the learner 8 bottle caps and draw two fraction bars on paper.',
+              'Label one bar 1/2 and the other 2/4.',
+              'Ask the learner to group caps to show each fraction and discuss why they are the same amount.',
+            ],
+          },
+        },
+        {
+          diagnosis: 'Has difficulty performing multi-step word problems involving division with remainders.',
+          masteredConcepts: 'Comfortable with single-step multiplication facts up to 5×5.',
+          gapTags: ['Division Word Problems', 'Remainders'],
+          masteryTags: ['Multiplication Facts'],
+          remedialPlan:
+            'Use stones in small groups to act out sharing scenarios, asking the learner to explain what the remainder represents.',
+          lessonPlan: {
+            title: 'Sharing Stones Fairly',
+            instructions: [
+              'Give the learner 15 stones and draw 4 circles on the ground.',
+              'Ask them to share the stones equally among the circles.',
+              'Discuss how many are in each group and what to do with the leftover stones.',
+            ],
+          },
+        },
+      ];
+
+      const literacyTemplates = [
+        {
+          diagnosis: 'Struggles to infer meaning from short paragraphs even when decoding is accurate.',
+          masteredConcepts: 'Can read simple sentences with familiar vocabulary.',
+          gapTags: ['Reading Comprehension', 'Inference'],
+          masteryTags: ['Decoding'],
+          remedialPlan:
+            'Use a short local story and pause after each sentence to ask the learner to retell it in their own words.',
+          lessonPlan: {
+            title: 'Retell the Story',
+            instructions: [
+              'Choose a 4–5 sentence story in simple English.',
+              'Read each sentence aloud and ask the learner to explain it in their own words.',
+              'At the end, ask them to retell the full story without looking at the page.',
+            ],
+          },
+        },
+        {
+          diagnosis: 'Has difficulty sounding out multi-syllable words and often guesses based on the first letter.',
+          masteredConcepts: 'Recognises most single-syllable high-frequency words.',
+          gapTags: ['Phonics', 'Multi-syllable Words'],
+          masteryTags: ['High-frequency Words'],
+          remedialPlan:
+            'Break longer words into claps or beats and let the learner tap each syllable while reading it slowly.',
+          lessonPlan: {
+            title: 'Clap the Syllables',
+            instructions: [
+              'Write 5 common two- and three-syllable words on paper (e.g. “teacher”, “banana”).',
+              'Say each word together and clap for each syllable.',
+              'Ask the learner to read the word slowly while tapping each syllable with their finger.',
+            ],
+          },
+        },
+      ];
+
+      const studentIds: string[] = [];
+      for (const s of demoStudents) {
+        const id = await addStudent(s);
+        if (id) studentIds.push(id);
+      }
+
+      const now = Date.now();
+      const oneDayMs = 24 * 60 * 60 * 1000;
+
+      for (let index = 0; index < studentIds.length; index++) {
+        const studentId = studentIds[index];
+        const count = 2 + Math.floor(Math.random() * 3); // 2–4 assessments
+        for (let i = 0; i < count; i++) {
+          const daysAgo = 1 + i * 3;
+          const isNumeracy = i % 2 === 0;
+          const template = isNumeracy
+            ? numeracyTemplates[(index + i) % numeracyTemplates.length]
+            : literacyTemplates[(index + i) % literacyTemplates.length];
+
+          await saveAssessment({
+            studentId,
+            type: isNumeracy ? 'Numeracy' : 'Literacy',
+            diagnosis: template.diagnosis,
+            masteredConcepts: template.masteredConcepts,
+            gapTags: template.gapTags,
+            masteryTags: template.masteryTags,
+            remedialPlan: template.remedialPlan,
+            lessonPlan: template.lessonPlan,
+            timestamp: now - daysAgo * oneDayMs,
+            status: 'Completed',
+          });
+        }
+      }
+
+      setSeedDone(true);
+      alert('Demo students and assessments seeded successfully.');
+    } catch (error) {
+      console.error('Seeding demo data failed', error);
+      alert('Seeding demo data failed. Check the console for details.');
+    } finally {
+      setIsSeeding(false);
     }
   };
 
@@ -71,6 +214,28 @@ export function Login() {
                 disabled={isLoggingIn !== null}
               />
             </div>
+
+            {import.meta.env.DEV && (
+              <div className="mt-6 border-t border-gray-100 pt-4">
+                <button
+                  type="button"
+                  onClick={handleSeedDemoData}
+                  disabled={isSeeding || seedDone}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-dashed border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSeeding ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Seeding demo data…
+                    </>
+                  ) : seedDone ? (
+                    <>Demo data seeded</>
+                  ) : (
+                    <>Seed demo students & assessments</>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
         

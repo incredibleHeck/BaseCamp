@@ -119,6 +119,12 @@ export default function App() {
     setAnalysisStatus('analyzing');
   };
 
+  const handleAnalysisError = useCallback(() => {
+    // If AI analysis fails (network/Gemini issues, etc.), return to the initial state
+    // so the teacher is not stuck on an infinite spinner and can retry.
+    setAnalysisStatus('empty');
+  }, []);
+
   const handleViewProfile = (studentId: string) => {
     setSelectedStudentId(studentId);
     setCurrentView('student-profile');
@@ -156,6 +162,7 @@ export default function App() {
                 manualRubric={lastAssessmentData?.manualRubric ?? undefined}
                 observations={lastAssessmentData?.observations ?? undefined}
                 onAnalysisComplete={handleAnalysisComplete}
+                onAnalysisError={handleAnalysisError}
               />
             </div>
           </div>
