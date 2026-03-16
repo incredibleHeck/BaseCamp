@@ -6,7 +6,11 @@ export interface Assessment {
   studentId: string;
   type: 'Literacy' | 'Numeracy';
   diagnosis: string;
-  remedialPlan: string;
+  masteredConcepts?: string;
+  gapTags?: string[];
+  masteryTags?: string[];
+  remedialPlan?: string;
+  lessonPlan?: { title: string; instructions: string[] };
   timestamp: Date | Timestamp | number;
   status: 'Pending' | 'In Progress' | 'Completed';
 }
@@ -50,7 +54,11 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
         studentId: data.studentId,
         type: data.type,
         diagnosis: data.diagnosis,
-        remedialPlan: data.remedialPlan,
+        masteredConcepts: data.masteredConcepts,
+        gapTags: data.gapTags ?? [],
+        masteryTags: data.masteryTags ?? [],
+        remedialPlan: data.remedialPlan || '',
+        lessonPlan: data.lessonPlan || { title: '', instructions: [] },
         timestamp: data.timestamp,
         status: data.status,
       });

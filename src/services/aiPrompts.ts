@@ -3,6 +3,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export interface DiagnosticReport {
   diagnosis: string;
   masteredConcepts: string;
+  gapTags: string[];
+  masteryTags: string[];
   recommendations: string[];
   remedialPlan: string;
   lessonPlan: {
@@ -24,6 +26,14 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 function cleanJsonResponse(jsonString: string): string {
   // Remove Markdown code block syntax and any leading/trailing whitespace
   return jsonString.replace(/```json\n?|```/g, '').trim();
+}
+
+/** Ensure we always have string[] for tag fields (model may return array or comma-separated string). */
+function normalizeTagArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v) => typeof v === 'string' && v.trim()).map((v) => v.trim());
+  if (typeof value === 'string' && value.trim())
+    return value.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  return [];
 }
 
 /** Only inject translation rule when a dialect is actually selected (not "None" or empty). */
@@ -49,7 +59,7 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
     const base64Data = imageBase64.split(',')[1];
@@ -80,6 +90,8 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
       {
         "diagnosis": "A string clearly explaining the primary learning gap identified.",
         "masteredConcepts": "A string listing concepts the student seems to understand.",
+        "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
+        "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings providing simple remedial actions"],
         "remedialPlan": "A string describing a simple, 5-minute remedial activity using local Ghanaian materials.",
         "lessonPlan": {
@@ -98,9 +110,12 @@ export const analyzeWorksheet = async (imageBase64: string, subject: string, dia
     // Clean the response to ensure it's valid JSON
     const cleanedJson = cleanJsonResponse(jsonString);
 
-    // Parse the JSON string into an object
-    const report: DiagnosticReport = JSON.parse(cleanedJson);
-    
+    const parsedData = JSON.parse(cleanedJson);
+    const report: DiagnosticReport = {
+      ...parsedData,
+      gapTags: normalizeTagArray(parsedData.gapTags),
+      masteryTags: normalizeTagArray(parsedData.masteryTags),
+    };
     return report;
 
   } catch (error) {
@@ -129,7 +144,7 @@ export const analyzeWorksheetMultiple = async (
   const capped = imageBase64s.slice(0, MAX_WORKSHEET_PAGES);
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     const imageParts = capped.map((imageBase64) => {
       const base64Data = imageBase64.split(",")[1];
@@ -155,6 +170,8 @@ export const analyzeWorksheetMultiple = async (
       {
         "diagnosis": "A string clearly explaining the primary learning gap across the pages.",
         "masteredConcepts": "A string listing concepts the student seems to understand.",
+        "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
+        "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings with simple remedial actions"],
         "remedialPlan": "A string describing a simple 5-minute remedial activity using local materials.",
         "lessonPlan": {
@@ -170,7 +187,12 @@ export const analyzeWorksheetMultiple = async (
     const response = await result.response;
     const jsonString = response.text();
     const cleanedJson = cleanJsonResponse(jsonString);
-    const report: DiagnosticReport = JSON.parse(cleanedJson);
+    const parsedData = JSON.parse(cleanedJson);
+    const report: DiagnosticReport = {
+      ...parsedData,
+      gapTags: normalizeTagArray(parsedData.gapTags),
+      masteryTags: normalizeTagArray(parsedData.masteryTags),
+    };
     return report;
   } catch (error) {
     console.error("Error calling Gemini API (multi-page):", error);
@@ -195,7 +217,7 @@ export const analyzeManualEntry = async (
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
     const rubricsText = manualRubrics.length > 0 ? manualRubrics.map((r) => `- ${r}`).join("\n") : "None selected.";
     const prompt = `
@@ -216,6 +238,8 @@ export const analyzeManualEntry = async (
       {
         "diagnosis": "A string clearly explaining the primary learning gap.",
         "masteredConcepts": "A string listing concepts the student likely understands.",
+        "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
+        "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings with simple remedial actions"],
         "remedialPlan": "A string describing a simple 5-minute remedial activity using local materials.",
         "lessonPlan": {
@@ -231,7 +255,12 @@ export const analyzeManualEntry = async (
     const response = await result.response;
     const jsonString = response.text();
     const cleanedJson = cleanJsonResponse(jsonString);
-    const report: DiagnosticReport = JSON.parse(cleanedJson);
+    const parsedData = JSON.parse(cleanedJson);
+    const report: DiagnosticReport = {
+      ...parsedData,
+      gapTags: normalizeTagArray(parsedData.gapTags),
+      masteryTags: normalizeTagArray(parsedData.masteryTags),
+    };
     return report;
   } catch (error) {
     console.error("Error calling Gemini API (manual entry):", error);
@@ -260,7 +289,7 @@ export const generateRemedialLessonPlan = async (
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
     const prompt = `
       You are an expert Ghanaian GES (Ghana Education Service) educator. Create a NEW 5-minute remedial activity for a Primary 6 student.
 

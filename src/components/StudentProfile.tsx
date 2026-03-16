@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Mountain, LineChart, Flag, Loader2 } from 'lucide-react';
+import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, LineChart, ClipboardList, MessageCircle, Loader2 } from 'lucide-react';
 import { getStudentHistory, Assessment } from '../services/assessmentService';
 import { getStudent, getStudents, Student as StudentModel } from '../services/studentService';
 
@@ -56,7 +56,7 @@ function formatAssessmentDateTime(ts: Date | { toMillis?: () => number; seconds?
 export function StudentProfile({ studentId: initialStudentId }: StudentProfileProps) {
   const [students, setStudents] = useState<StudentModel[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | undefined>(initialStudentId);
-  const [viewMode, setViewMode] = useState<'analytical' | 'gamified'>('analytical');
+  const [viewMode, setViewMode] = useState<'analytical' | 'action-plan'>('analytical');
   const [history, setHistory] = useState<Assessment[]>([]);
   const [studentInfo, setStudentInfo] = useState<StudentModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -159,7 +159,6 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   // Calculate a "JHS Readiness Score" based on real history
   // For demo: starts at 50, +5 for each completed assessment, max 100
   const realReadinessScore = Math.min(100, 50 + (history.length * 5));
-  const mountainProgress = Math.min((history.length / 10) * 100, 100);
 
   // Mock baseline data just to show the charts if history is empty
   const fallbackHistoricalData = [
@@ -177,6 +176,25 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   const literacyReadiness = getReadinessDetails(literacyScores[literacyScores.length - 1], literacyTrajectory);
   
   const isHighRisk = numeracyReadiness.level === 'Low' || literacyReadiness.level === 'Low';
+
+  // Deduplicated short tags from AI; strict tag-only for scannable dashboard
+  const recentGaps = Array.from(new Set(history.flatMap((a) => a.gapTags || [])));
+  const recentMastery = Array.from(new Set(history.flatMap((a) => a.masteryTags || [])));
+
+  // Clamp readiness for student view so the flag would stay on the mountain (legacy), reused conceptually if needed
+  const clampedReadiness = hasRealData ? Math.min(90, Math.max(10, realReadinessScore)) : 10;
+
+  const findAssessmentForGap = (gap: string): Assessment | null => {
+    const lower = gap.toLowerCase();
+    const direct = history.find(
+      (a) => (a.gapTags || []).some((tag) => tag.toLowerCase() === lower)
+    );
+    if (direct) return direct;
+    const fallback = history.find(
+      (a) => a.diagnosis && a.diagnosis.toLowerCase().includes(lower)
+    );
+    return fallback || null;
+  };
 
   const handleExportPdf = () => {
     if (!studentInfo) return;
@@ -286,7 +304,7 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
         </div>
         
         <div className="flex items-center gap-3">
-          {/* View Toggle for Gamification */}
+          {/* View Toggle for Data vs Action Plan */}
           <div className="bg-gray-100 p-1 rounded-lg flex items-center">
             <button 
               onClick={() => setViewMode('analytical')}
@@ -295,10 +313,10 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
               <LineChart size={16} /> Data View
             </button>
             <button 
-              onClick={() => setViewMode('gamified')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'gamified' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setViewMode('action-plan')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'action-plan' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              <Mountain size={16} /> Student View
+              <ClipboardList size={16} /> Action Plan
             </button>
           </div>
           <button
@@ -446,38 +464,104 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
                 </div>
               </div>
             )}
+
+            {/* Gaps & Mastered Concepts — longitudinal profile */}
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5 shadow-sm">
+                <h3 className="text-base font-semibold text-emerald-900 mb-3">🏔️ Mastered Concepts</h3>
+                {recentMastery.length > 0 ? (
+                  <ul className="space-y-2 text-sm text-emerald-800">
+                    {recentMastery.map((item, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-emerald-500 shrink-0">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-emerald-700/80 italic">No mastered concepts recorded yet.</p>
+                )}
+              </div>
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-5 shadow-sm">
+                <h3 className="text-base font-semibold text-orange-900 mb-3">🚧 Current Learning Gaps</h3>
+                {recentGaps.length > 0 ? (
+                  <ul className="space-y-2 text-sm text-orange-800">
+                    {recentGaps.map((item, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-orange-500 shrink-0">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-orange-700/80 italic">No learning gaps identified.</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : (
-        /* The Gamified Mountain View */
-        <div className="py-8 animate-in slide-in-from-bottom-4 duration-500 flex flex-col items-center">
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-black text-gray-900 tracking-tight">Your BaseCamp Journey</h3>
-            <p className="text-gray-500">Master concepts to plant your flag at the JHS Summit!</p>
-          </div>
-          
-          <div className="relative w-full max-w-2xl h-64 bg-gradient-to-t from-purple-50 to-white rounded-2xl border border-purple-100 overflow-hidden flex items-end justify-center pb-8">
-            {/* Simple CSS Mountain representation */}
-            <div className="absolute bottom-0 w-[120%] h-48 bg-purple-100 rounded-[100%] blur-sm translate-y-24"></div>
-            <div className="absolute bottom-0 w-3/4 h-56 bg-purple-200 rounded-[100%] translate-y-16"></div>
-            <div className="absolute bottom-0 w-1/2 h-64 bg-purple-300 rounded-t-[100%]"></div>
-            
-            {/* Student Progress Indicator */}
-            <div 
-              className="absolute z-10 transition-all duration-1000 ease-out flex flex-col items-center"
-              style={{ bottom: `${hasRealData ? mountainProgress : 10}%`, left: '50%', transform: 'translateX(-50%)' }}
-            >
-              <div className="bg-white px-3 py-1 rounded-full text-xs font-bold text-purple-700 shadow-md mb-2 animate-bounce">
-                {hasRealData ? `${history.length} Assessments Complete!` : `Start your Journey!`}
-              </div>
-              <Flag className="text-red-500 fill-red-500 w-8 h-8" />
-            </div>
+        /* Teacher Action Plan View */
+        <div className="py-6 animate-in slide-in-from-bottom-4 duration-500">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Intervention Action Plan</h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Use these 5-minute interventions to close this learner&apos;s current gaps.
+          </p>
 
-            {/* Summit Label */}
-            <div className="absolute top-4 font-black text-purple-900/40 text-xl tracking-widest">
-              JHS SUMMIT
+          {recentGaps.length === 0 ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-8 flex flex-col items-center text-center">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-3" />
+              <h4 className="text-lg font-semibold text-emerald-900 mb-1">No active learning gaps</h4>
+              <p className="text-sm text-emerald-800 max-w-md">
+                This student is currently on track based on recent AI assessments.
+              </p>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              {recentGaps.map((gap) => {
+                const assessment = findAssessmentForGap(gap);
+                if (!assessment) return null;
+                const dateTimeStr = formatAssessmentDateTime(assessment.timestamp);
+                return (
+                  <div
+                    key={gap}
+                    className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-500" />
+                        <h4 className="text-sm font-semibold text-gray-900">
+                          Gap: {gap}
+                        </h4>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        From {assessment.type} • {dateTimeStr}
+                      </span>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-gray-700 mb-1">
+                        5-minute Activity
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        {assessment.remedialPlan}
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-emerald-200 text-emerald-700 text-xs font-medium bg-emerald-50 hover:bg-emerald-100"
+                      >
+                        <MessageCircle size={14} />
+                        Send to Parent
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

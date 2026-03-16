@@ -103,6 +103,8 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
     diagnosis: "No data available.",
     criticalGap: "No data available.",
     masteredConcepts: "No data available.",
+    gapTags: [],
+    masteryTags: [],
     recommendations: [],
     remedialPlan: "",
     score: 0,
@@ -175,7 +177,11 @@ export function AnalysisResults({ status, onSaveProfile, isOffline = false, stud
       studentId,
       type: assessmentType.toLowerCase().includes('lit') ? 'Literacy' : 'Numeracy',
       diagnosis: data.diagnosis,
-      remedialPlan: data.remedialPlan,
+      masteredConcepts: data.masteredConcepts,
+      gapTags: data.gapTags ?? [],
+      masteryTags: data.masteryTags ?? [],
+      remedialPlan: data.remedialPlan || '',
+      lessonPlan: data.lessonPlan || { title: '', instructions: [] },
       timestamp: Date.now(),
       status: 'Completed'
     };
