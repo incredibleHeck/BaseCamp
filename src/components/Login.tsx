@@ -215,27 +215,7 @@ export function Login() {
               />
             </div>
 
-            {import.meta.env.DEV && (
-              <div className="mt-6 border-t border-gray-100 pt-4">
-                <button
-                  type="button"
-                  onClick={handleSeedDemoData}
-                  disabled={isSeeding || seedDone}
-                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-dashed border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSeeding ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Seeding demo data…
-                    </>
-                  ) : seedDone ? (
-                    <>Demo data seeded</>
-                  ) : (
-                    <>Seed demo students & assessments</>
-                  )}
-                </button>
-              </div>
-            )}
+            {/* Seed demo button hidden for demo/pitch day — do not show to judges */}
           </div>
         </div>
         
