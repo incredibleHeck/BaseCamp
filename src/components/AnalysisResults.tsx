@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileSearch, Loader2, CheckCircle2, MessageSquare, Send, Sparkles, Printer, Volume2, Check } from 'lucide-react';
-import { saveAssessment, Assessment } from '../services/assessmentService';
+import { saveAssessment, updateAssessment, Assessment } from '../services/assessmentService';
 import { analyzeWorksheet, analyzeWorksheetMultiple, analyzeManualEntry, generateRemedialLessonPlan, DiagnosticReport as AIDiagnosticReport } from '../services/aiPrompts';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
@@ -44,12 +44,15 @@ export function AnalysisResults({
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [savedAssessmentId, setSavedAssessmentId] = useState<string | null>(null);
   const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
   const [regeneratedLessonPlan, setRegeneratedLessonPlan] = useState<{ title: string; instructions: string[] } | null>(null);
 
-  // When report data changes (e.g. new assessment), clear any regenerated lesson so the report's plan shows
+  // When report data changes (e.g. new assessment), clear regenerated lesson and saved id so we don't update wrong doc
   useEffect(() => {
     setRegeneratedLessonPlan(null);
+    setSavedAssessmentId(null);
+    setIsSaved(false);
   }, [reportData]);
 
   // Run analysis only when user has clicked "Run AI Diagnosis" (status is set to 'analyzing' from that action only).
@@ -235,7 +238,8 @@ export function AnalysisResults({
 
   const handleSave = async () => {
     if (!studentId || !assessmentType) return;
-    
+
+    const displayPlan = regeneratedLessonPlan ?? data.lessonPlan ?? { title: '', instructions: [] };
     const assessment: Assessment = {
       studentId,
       type: assessmentType.toLowerCase().includes('lit') ? 'Literacy' : 'Numeracy',
@@ -244,7 +248,7 @@ export function AnalysisResults({
       gapTags: data.gapTags ?? [],
       masteryTags: data.masteryTags ?? [],
       remedialPlan: data.remedialPlan || '',
-      lessonPlan: data.lessonPlan || { title: '', instructions: [] },
+      lessonPlan: displayPlan,
       timestamp: Date.now(),
       status: 'Completed'
     };
@@ -259,11 +263,19 @@ export function AnalysisResults({
     }
 
     setIsSaving(true);
-    const resultId = await saveAssessment(assessment);
-    setIsSaving(false);
-
-    if (resultId) {
-      setIsSaved(true);
+    try {
+      if (savedAssessmentId) {
+        await updateAssessment(savedAssessmentId, { lessonPlan: displayPlan });
+        setIsSaved(true);
+      } else {
+        const resultId = await saveAssessment(assessment);
+        if (resultId) {
+          setSavedAssessmentId(resultId);
+          setIsSaved(true);
+        }
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -379,15 +391,15 @@ export function AnalysisResults({
               </button>
               <button 
                 onClick={handleSave}
-                disabled={isSaving || isSaved}
+                disabled={isSaving}
                 className={`text-sm font-medium transition-all flex items-center justify-center gap-1.5 min-h-[44px] py-2.5 w-full sm:w-auto rounded-lg ${
-                  isSaved ? 'text-emerald-600' : 'text-blue-600 hover:text-blue-800'
+                  isSaved ? 'text-emerald-600 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100' : 'text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100'
                 }`}
               >
                 {isSaving ? (
                   <><Loader2 size={16} className="animate-spin" /> Saving...</>
                 ) : isSaved ? (
-                  <><Check size={16} /> Saved to Profile</>
+                  <><Check size={16} /> Update profile (overwrites saved lesson plan)</>
                 ) : (
                   '+ Save to Longitudinal Learner Profile'
                 )}

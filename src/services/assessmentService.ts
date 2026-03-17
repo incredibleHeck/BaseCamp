@@ -1,4 +1,4 @@
-import { collection, addDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface Assessment {
@@ -11,6 +11,8 @@ export interface Assessment {
   masteryTags?: string[];
   remedialPlan?: string;
   lessonPlan?: { title: string; instructions: string[] };
+  /** Generated practice worksheet; overwritten when regenerated. */
+  worksheet?: { title: string; questions: string[] };
   timestamp: Date | Timestamp | number;
   status: 'Pending' | 'In Progress' | 'Completed';
 }
@@ -27,6 +29,24 @@ export const saveAssessment = async (data: Assessment): Promise<string | null> =
   } catch (error) {
     console.error('Error adding assessment document: ', error);
     return null;
+  }
+};
+
+/**
+ * Updates an existing assessment document (e.g. lesson plan after regenerate).
+ * @param assessmentId Firestore document ID.
+ * @param updates Partial assessment fields to merge.
+ */
+export const updateAssessment = async (
+  assessmentId: string,
+  updates: Partial<Pick<Assessment, 'lessonPlan' | 'remedialPlan' | 'status' | 'worksheet'>>
+): Promise<void> => {
+  try {
+    const ref = doc(db, 'assessments', assessmentId);
+    await updateDoc(ref, updates as Record<string, unknown>);
+  } catch (error) {
+    console.error('Error updating assessment document: ', error);
+    throw error;
   }
 };
 
@@ -59,6 +79,7 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
         masteryTags: data.masteryTags ?? [],
         remedialPlan: data.remedialPlan || '',
         lessonPlan: data.lessonPlan || { title: '', instructions: [] },
+        worksheet: data.worksheet ?? undefined,
         timestamp: data.timestamp,
         status: data.status,
       });

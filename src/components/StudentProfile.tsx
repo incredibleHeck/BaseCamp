@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { jsPDF } from 'jspdf';
-import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, LineChart, ClipboardList, MessageCircle, Loader2 } from 'lucide-react';
-import { getStudentHistory, Assessment } from '../services/assessmentService';
+import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, LineChart, ClipboardList, Loader2, Printer, RefreshCw, Info } from 'lucide-react';
+import { getStudentHistory, updateAssessment, Assessment } from '../services/assessmentService';
+import { analyzeLongitudinalSEN, generateRemedialLessonPlan, generatePracticeWorksheet, SenRiskReport, WorksheetResult } from '../services/aiPrompts';
 import { getStudent, getStudents, Student as StudentModel } from '../services/studentService';
 
 // 1. Data Models
@@ -62,11 +67,23 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   const [isLoading, setIsLoading] = useState(true);
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [regeneratingAssessmentId, setRegeneratingAssessmentId] = useState<string | null>(null);
+  const [generatingSheetFor, setGeneratingSheetFor] = useState<string | null>(null);
+  const [activeWorksheet, setActiveWorksheet] = useState<{ gap: string; data: WorksheetResult } | null>(null);
+  const [lastWorksheetByCard, setLastWorksheetByCard] = useState<Record<string, { gap: string; data: WorksheetResult }>>({});
+  const [senReport, setSenReport] = useState<SenRiskReport | null>(null);
+  const [isAnalyzingSEN, setIsAnalyzingSEN] = useState(false);
 
   // Sync from parent when e.g. user clicked "View Profile" from roster
   useEffect(() => {
     if (initialStudentId) setSelectedStudentId(initialStudentId);
   }, [initialStudentId]);
+
+  // Reset longitudinal SEN report when changing students
+  useEffect(() => {
+    setSenReport(null);
+    setIsAnalyzingSEN(false);
+  }, [selectedStudentId]);
 
   // Fetch students list for dropdown
   useEffect(() => {
@@ -104,6 +121,28 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
     };
     fetchData();
   }, [selectedStudentId]);
+
+  const runDeepPatternAnalysis = async () => {
+    if (isAnalyzingSEN) return;
+    setIsAnalyzingSEN(true);
+    try {
+      const result = await analyzeLongitudinalSEN(history);
+      setSenReport(result);
+    } finally {
+      setIsAnalyzingSEN(false);
+    }
+  };
+
+  // Seed lastWorksheetByCard from assessments that have a saved worksheet (Firebase)
+  useEffect(() => {
+    const next: Record<string, { gap: string; data: WorksheetResult }> = {};
+    history.forEach((a) => {
+      if (!a.worksheet || !a.gapTags?.length) return;
+      const key = `${a.gapTags.join('|')}-${a.type}`;
+      next[key] = { gap: a.gapTags.join(', '), data: a.worksheet };
+    });
+    setLastWorksheetByCard(next);
+  }, [history]);
 
   if (studentsLoading) {
     return (
@@ -290,6 +329,165 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
     setIsExporting(false);
   };
 
+  const handlePrintLessonPlan = (assessment: Assessment) => {
+    const lessonPlan = assessment.lessonPlan;
+    const title = lessonPlan?.title?.trim() || '5-Minute Remedial Activity';
+    const steps = lessonPlan?.instructions?.length ? lessonPlan.instructions : [];
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    ol { margin: 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>${title.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>
+  <p><strong>Instructions:</strong></p>
+  <ol>${steps.map((step: string) => `<li>${step.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}</ol>
+  <p style="margin-top: 2rem; font-size: 0.875rem; color: #666;">BaseCamp Diagnostics</p>
+</body>
+</html>`;
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      win.onload = () => {
+        win.print();
+        win.onafterprint = () => win.close();
+      };
+    } else {
+      alert('Please allow pop-ups to print the activity.');
+    }
+  };
+
+  const handleRegenerateLessonPlan = async (assessment: Assessment) => {
+    if (!assessment.id) return;
+    setRegeneratingAssessmentId(assessment.id);
+    try {
+      const subject = assessment.type === 'Literacy' ? 'Literacy' : 'Numeracy';
+      const result = await generateRemedialLessonPlan(
+        assessment.diagnosis,
+        assessment.remedialPlan || '',
+        subject
+      );
+      if (result) {
+        await updateAssessment(assessment.id, { lessonPlan: result });
+        setHistory((prev) =>
+          prev.map((a) => (a.id === assessment.id ? { ...a, lessonPlan: result } : a))
+        );
+      }
+    } catch (error) {
+      console.error('Regenerate lesson plan failed', error);
+    } finally {
+      setRegeneratingAssessmentId(null);
+    }
+  };
+
+  const handleGeneratePracticeSheet = async (
+    gapsForCard: string[],
+    subject: string,
+    assessment: Assessment
+  ) => {
+    const key = `${gapsForCard.join('|')}-${subject}`;
+    setGeneratingSheetFor(key);
+    try {
+      const grade = studentInfo?.grade ?? 'Primary 6';
+      const context = {
+        diagnosis: assessment.diagnosis || '',
+        remedialPlan: assessment.remedialPlan || '',
+        lessonPlan: assessment.lessonPlan ?? { title: '', instructions: [] },
+      };
+      const result = await generatePracticeWorksheet(gapsForCard, subject, grade, context);
+      if (result && assessment.id) {
+        await updateAssessment(assessment.id, { worksheet: result });
+        setHistory((prev) =>
+          prev.map((a) => (a.id === assessment.id ? { ...a, worksheet: result } : a))
+        );
+        const entry = { gap: gapsForCard.join(', '), data: result };
+        setActiveWorksheet(entry);
+        setLastWorksheetByCard((prev) => ({ ...prev, [key]: entry }));
+      }
+    } catch (error) {
+      console.error('Generate practice sheet failed', error);
+    } finally {
+      setGeneratingSheetFor(null);
+    }
+  };
+
+  const printWorksheetToWindow = (worksheet: { gap: string; data: WorksheetResult }) => {
+    const { data, gap } = worksheet;
+    const title = data.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const gapEscaped = gap.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const questionsBlocks = data.questions
+      .map(
+        (q, idx) => {
+          const qEscaped = q.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const lines = [1, 2, 3, 4]
+            .map(
+              () =>
+                '<div style="border-bottom: 2px dotted #000; height: 2.5rem; width: 100%; margin-bottom: 0.5rem;"></div>'
+            )
+            .join('');
+          return `
+        <div style="margin-bottom: 4rem;">
+          <p style="font-size: 1.125rem; font-weight: 500; color: #111; margin-bottom: 1.5rem;">${idx + 1}. ${qEscaped}</p>
+          <div style="margin-top: 0.5rem;">${lines}</div>
+        </div>`;
+        }
+      )
+      .join('');
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 2rem; background: #fff; color: #000; min-height: 100vh; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #000; }
+    .target { font-size: 0.875rem; color: #374151; margin-bottom: 2rem; }
+    .header-line { margin-bottom: 2rem; }
+    .header-line span { font-weight: 500; }
+    .header-line .line { display: inline-block; border-bottom: 2px dotted #000; width: 12rem; vertical-align: bottom; margin-left: 0.25rem; }
+    .footer { margin-top: 3rem; font-size: 0.875rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <p class="target"><strong>Target:</strong> ${gapEscaped}</p>
+  <div class="header-line"><span>Name:</span> <span class="line"></span></div>
+  <div class="header-line"><span>Date:</span> <span class="line"></span></div>
+  ${questionsBlocks}
+  <p class="footer">BaseCamp Diagnostics</p>
+</body>
+</html>`;
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      win.onload = () => {
+        win.print();
+        win.onafterprint = () => win.close();
+      };
+    } else {
+      alert('Please allow pop-ups to print the worksheet.');
+    }
+  };
+
+  const handlePrintWorksheet = (cardKey: string) => {
+    const stored = lastWorksheetByCard[cardKey];
+    if (!stored) return;
+    printWorksheetToWindow(stored);
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-8 w-full animate-in fade-in duration-500">
       {/* Student selector dropdown */}
@@ -418,6 +616,101 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
                   <p className="text-sm text-blue-800 mt-4 font-medium">
                     {realReadinessScore >= 70 ? "Student is on track for Junior High School." : "Student requires targeted intervention using the recommended lesson plans to reach JHS readiness."}
                   </p>
+                </div>
+
+                {/* Deep Pattern Analysis: Neurodevelopmental & SEN Risk Screening */}
+                <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900">Neurodevelopmental & SEN Risk Screening</h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Deep pattern analysis across longitudinal assessment history (e.g., Dyslexia, Dyscalculia).
+                      </p>
+                    </div>
+                  </div>
+
+                  {history.length < 3 ? (
+                    <div className="mt-4 flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      <Info className="w-5 h-5 text-gray-500 mt-0.5" />
+                      <p className="text-sm text-gray-600">
+                        Insufficient data. At least 3 assessments over time are required to analyze learning disability patterns.
+                      </p>
+                    </div>
+                  ) : !senReport ? (
+                    <div className="mt-4 space-y-3">
+                      <p className="text-sm text-gray-700">
+                        This scans all historical AI assessments to flag repeated traits consistent with learning differences (e.g., reading/number processing patterns).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={runDeepPatternAnalysis}
+                        disabled={isAnalyzingSEN}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold shadow-sm hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isAnalyzingSEN ? <Loader2 size={16} className="animate-spin" /> : null}
+                        🔍 Run Deep Pattern Analysis
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-gray-600">Risk Level</span>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+                            senReport.riskLevel === 'Low'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : senReport.riskLevel === 'Moderate'
+                                ? 'bg-yellow-50 text-yellow-800 border-yellow-200'
+                                : 'bg-red-50 text-red-800 border-red-200'
+                          }`}
+                        >
+                          {senReport.riskLevel}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-2">Identified Patterns</h4>
+                          {senReport.identifiedPatterns.length > 0 ? (
+                            <ul className="space-y-2 text-sm text-gray-700">
+                              {senReport.identifiedPatterns.map((p, idx) => (
+                                <li key={idx} className="flex gap-2">
+                                  <span className="text-gray-400 shrink-0">•</span>
+                                  <span>{p}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic">No clear longitudinal patterns detected.</p>
+                          )}
+                        </div>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-2">Potential Indicators</h4>
+                          {senReport.potentialIndicators.length > 0 ? (
+                            <ul className="space-y-2 text-sm text-gray-700">
+                              {senReport.potentialIndicators.map((p, idx) => (
+                                <li key={idx} className="flex gap-2">
+                                  <span className="text-gray-400 shrink-0">•</span>
+                                  <span>{p}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic">No specific indicators flagged.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+                        <p className="text-xs font-semibold text-indigo-900 mb-1">Specialist Recommendation</p>
+                        <p className="text-sm text-indigo-900">{senReport.specialistRecommendation}</p>
+                      </div>
+
+                      <p className="text-xs text-gray-500">
+                        Note: This is a pedagogical pattern analysis, not a medical diagnosis. Consult a GES Special Education Coordinator for formal evaluation.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -595,15 +888,59 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
                       </div>
                     )}
 
-                    {/* Share button */}
-                    <div className="flex justify-end">
+                    {/* Actions: Regenerate lesson plan, Print lesson plan, Generate worksheet, Print worksheet */}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-emerald-200 text-emerald-700 text-xs font-medium bg-emerald-50 hover:bg-emerald-100"
+                        onClick={() => handleRegenerateLessonPlan(assessment)}
+                        disabled={regeneratingAssessmentId === assessment.id}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-amber-200 text-amber-800 text-xs font-medium bg-amber-50 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        <MessageCircle size={14} />
-                        Share with Parent
+                        {regeneratingAssessmentId === assessment.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <RefreshCw size={14} />
+                        )}
+                        {regeneratingAssessmentId === assessment.id ? 'Regenerating…' : 'Regenerate lesson plan'}
                       </button>
+                      {(lessonTitle || lessonSteps.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => handlePrintLessonPlan(assessment)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-xs font-medium bg-white hover:bg-gray-50"
+                        >
+                          <Printer size={14} />
+                          Print lesson plan
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleGeneratePracticeSheet(gaps, assessment.type, assessment)}
+                        disabled={generatingSheetFor === `${gaps.join('|')}-${assessment.type}`}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-blue-200 text-blue-800 text-xs font-medium bg-blue-50 hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {generatingSheetFor === `${gaps.join('|')}-${assessment.type}` ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : lastWorksheetByCard[`${gaps.join('|')}-${assessment.type}`] ? (
+                          <RefreshCw size={14} />
+                        ) : null}
+                        {generatingSheetFor === `${gaps.join('|')}-${assessment.type}` ? 'Generating…' : lastWorksheetByCard[`${gaps.join('|')}-${assessment.type}`] ? 'Regenerate worksheet' : '📝 Generate worksheet'}
+                      </button>
+                      {(() => {
+                        const cardKey = `${gaps.join('|')}-${assessment.type}`;
+                        const hasWorksheet = !!lastWorksheetByCard[cardKey];
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handlePrintWorksheet(cardKey)}
+                            disabled={!hasWorksheet}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-xs font-medium bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <Printer size={14} />
+                            Print worksheet
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -611,6 +948,72 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
             </div>
           )}
         </div>
+      )}
+
+      {/* Worksheet modal */}
+      {activeWorksheet && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between gap-4 p-4 border-b border-gray-200 print:hidden">
+                <h3 className="text-lg font-semibold text-gray-900">Practice Worksheet</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorksheet(null)}
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => printWorksheetToWindow(activeWorksheet)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 text-blue-800 text-sm font-medium bg-blue-50 hover:bg-blue-100"
+                  >
+                    <Printer size={16} />
+                    Print
+                  </button>
+                </div>
+              </div>
+              <div
+                id="printable-worksheet"
+                className="bg-white text-black min-h-screen p-8 overflow-y-auto flex-1 print:block print:min-h-screen print:p-8 print:bg-white print:text-black"
+              >
+                <h2 className="text-xl font-bold text-gray-900 mb-2 print:text-black print:font-bold">
+                  {activeWorksheet.data.title}
+                </h2>
+                <p className="text-sm text-gray-500 mb-6 print:text-black">
+                  Target: {activeWorksheet.gap}
+                </p>
+                <div className="mb-8 print:mb-8">
+                  <span className="text-base font-medium text-gray-900 print:text-black">Name: </span>
+                  <span className="inline-block border-b-2 border-dotted border-gray-400 w-48 align-bottom print:border-black" />
+                </div>
+                <div className="mb-8 print:mb-8">
+                  <span className="text-base font-medium text-gray-900 print:text-black">Date: </span>
+                  <span className="inline-block border-b-2 border-dotted border-gray-400 w-48 align-bottom print:border-black" />
+                </div>
+                <div className="space-y-16 print:space-y-16">
+                  {activeWorksheet.data.questions.map((q, idx) => (
+                    <div key={idx} className="mb-16 print:mb-16">
+                      <div className="text-lg font-medium text-gray-900 mb-6 print:text-black [&_.katex]:text-inherit">
+                        <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {`${idx + 1}. ${q}`}
+                        </ReactMarkdown>
+                      </div>
+                      <div className="space-y-2">
+                        {[1, 2, 3, 4].map((line) => (
+                          <div
+                            key={line}
+                            className="border-b-2 border-dotted border-gray-400 h-10 w-full print:border-black print:h-10"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
       )}
     </div>
   );
