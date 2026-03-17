@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import katexCss from 'katex/dist/katex.min.css?inline';
+import ReactDOMServer from 'react-dom/server';
 import { jsPDF } from 'jspdf';
 import { Download, User, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, LineChart, ClipboardList, Loader2, Printer, RefreshCw, Info } from 'lucide-react';
 import { getStudentHistory, updateAssessment, Assessment } from '../services/assessmentService';
@@ -56,6 +58,23 @@ function timestampToMs(ts: Date | { toMillis?: () => number; seconds?: number } 
 function formatAssessmentDateTime(ts: Date | { toMillis?: () => number; seconds?: number } | number): string {
   const ms = timestampToMs(ts);
   return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderMarkdownMathToHtml(markdown: string): string {
+  return ReactDOMServer.renderToStaticMarkup(
+    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+      {markdown}
+    </ReactMarkdown>
+  );
 }
 
 export function StudentProfile({ studentId: initialStudentId }: StudentProfileProps) {
@@ -423,12 +442,12 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
 
   const printWorksheetToWindow = (worksheet: { gap: string; data: WorksheetResult }) => {
     const { data, gap } = worksheet;
-    const title = data.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const gapEscaped = gap.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const title = escapeHtml(data.title);
+    const gapEscaped = escapeHtml(gap);
     const questionsBlocks = data.questions
       .map(
         (q, idx) => {
-          const qEscaped = q.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const qHtml = renderMarkdownMathToHtml(q);
           const lines = [1, 2, 3, 4]
             .map(
               () =>
@@ -437,7 +456,7 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
             .join('');
           return `
         <div style="margin-bottom: 4rem;">
-          <p style="font-size: 1.125rem; font-weight: 500; color: #111; margin-bottom: 1.5rem;">${idx + 1}. ${qEscaped}</p>
+          <div style="font-size: 1.125rem; font-weight: 500; color: #111; margin-bottom: 1.5rem;">${idx + 1}. ${qHtml}</div>
           <div style="margin-top: 0.5rem;">${lines}</div>
         </div>`;
         }
@@ -450,6 +469,7 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
   <meta charset="utf-8">
   <title>${title}</title>
   <style>
+    ${katexCss}
     body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 2rem; background: #fff; color: #000; min-height: 100vh; }
     h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #000; }
     .target { font-size: 0.875rem; color: #374151; margin-bottom: 2rem; }
@@ -457,6 +477,11 @@ export function StudentProfile({ studentId: initialStudentId }: StudentProfilePr
     .header-line span { font-weight: 500; }
     .header-line .line { display: inline-block; border-bottom: 2px dotted #000; width: 12rem; vertical-align: bottom; margin-left: 0.25rem; }
     .footer { margin-top: 3rem; font-size: 0.875rem; color: #666; }
+    /* Improve KaTeX legibility on paper */
+    .katex { font-size: 1.05em; }
+    .katex-display { margin: 0.75em 0; }
+    /* Avoid ReactMarkdown adding margins that waste page space */
+    p { margin: 0; }
   </style>
 </head>
 <body>

@@ -18,6 +18,12 @@ function diagnosisToShortGap(diagnosis: string | null): string | null {
   return diagnosis.length <= maxLen ? diagnosis : diagnosis.slice(0, maxLen).trim() + '…';
 }
 
+function calculateReadinessScoreFromAssessmentCount(count: number): number {
+  // Keep this consistent with StudentProfile's demo formula:
+  // starts at 50, +5 per completed assessment, capped at 100.
+  return Math.min(100, 50 + count * 5);
+}
+
 export interface StudentListItem {
   id: string;
   name: string;
@@ -53,7 +59,7 @@ export function ClassRoster({
         const id = s.id!;
         const summary = summaryMap.get(id);
         if (summary) {
-          const readinessScore = Math.min(100, 40 + summary.count * 12);
+          const readinessScore = calculateReadinessScoreFromAssessmentCount(summary.count);
           return {
             id,
             name: s.name,
