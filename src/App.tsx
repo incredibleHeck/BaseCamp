@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Header, UserData } from './components/Header';
 import { AssessmentSetup, AssessmentData } from './components/AssessmentSetup';
-import { AnalysisResults, AnalysisStatus, DiagnosticReport } from './components/AnalysisResults';
+import { AnalysisResults, AnalysisStatus } from './components/AnalysisResults';
 import { StudentProfile } from './components/StudentProfile';
 import { ClassRoster } from './components/ClassRoster';
 import { DistrictOverview } from './components/DistrictOverview';
 import { SchoolOverview } from './components/SchoolOverview';
 import { TeacherDirectory } from './components/TeacherDirectory';
+import { PendingAnalyses } from './components/PendingAnalyses';
 import { Login } from './components/Login';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import ErrorBoundary from './components/ErrorBoundary';
+import { OfflineQueuedModal } from './components/OfflineQueuedModal';
+import { addToQueue, removeFromQueue } from './services/offlineQueueService';
+import { useSyncManager } from './hooks/useSyncManager';
+import { getStudents } from './services/studentService';
 
 // 1. Scalable Types
-type View = 'roster' | 'new-assessment' | 'student-profile' | 'district-overview' | 'school-overview' | 'teacher-directory';
+type View = 'roster' | 'new-assessment' | 'student-profile' | 'pending-analyses' | 'district-overview' | 'school-overview' | 'teacher-directory';
 
 const DASHBOARD_CONFIG = {
   teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
@@ -29,6 +34,12 @@ export default function App() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [showOfflineQueuedModal, setShowOfflineQueuedModal] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ message: string } | null>(null);
+  const [hadQueuedWork, setHadQueuedWork] = useState(false);
+  const [studentNameById, setStudentNameById] = useState<Record<string, string>>({});
+
+  const { isOnline, isSyncing, queueLength, queuedItems, refreshQueue, processQueue } = useSyncManager();
 
   // Assessment flow states
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
@@ -97,6 +108,33 @@ export default function App() {
     }
   }, [currentView]);
 
+  // Cache student names for Pending Analyses display (best-effort; falls back to id when offline)
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStudentNames = async () => {
+      try {
+        if (!currentUser) return;
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+        const students = await getStudents();
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const s of students) {
+          if (s.id && s.name) map[s.id] = s.name;
+        }
+        setStudentNameById(map);
+      } catch (error) {
+        console.error('Failed to load student names', error);
+      }
+    };
+
+    loadStudentNames();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, isOnline]);
+
   // 4. Handlers
   const handleLogout = async () => {
     try {
@@ -114,8 +152,52 @@ export default function App() {
     setCurrentView('new-assessment');
   };
 
-  const handleDiagnose = (data: AssessmentData) => {
+  const handleDiagnose = async (data: AssessmentData) => {
     setLastAssessmentData(data);
+
+    const offlineNow = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);
+    if (offlineNow) {
+      try {
+        const assessmentType =
+          data.assessmentType === 'literacy' ? 'literacy' : 'numeracy';
+
+        if (data.inputMode === 'manual') {
+          await addToQueue({
+            studentId: data.studentId,
+            assessmentType,
+            inputMode: 'manual',
+            manualRubric: data.manualRubric ?? [],
+            observations: data.observations ?? '',
+            dialectContext: data.dialect ?? undefined,
+          });
+        } else {
+          const imageBase64s = (data.imageBase64s ?? []).filter(Boolean);
+          if (imageBase64s.length > 0) {
+            await addToQueue({
+              studentId: data.studentId,
+              assessmentType,
+              inputMode: 'upload',
+              imageBase64s,
+              dialectContext: data.dialect ?? undefined,
+            });
+          } else {
+            // No images; keep UX consistent with existing validation
+            alert('Please upload at least one image before running diagnosis.');
+            return;
+          }
+        }
+
+        await refreshQueue();
+        setAnalysisStatus('empty');
+        setShowOfflineQueuedModal(true);
+        setHadQueuedWork(true);
+      } catch (error) {
+        console.error('Failed to queue offline diagnosis', error);
+        alert('Could not queue this diagnosis offline. Please try again.');
+      }
+      return;
+    }
+
     setAnalysisStatus('analyzing');
   };
 
@@ -133,6 +215,28 @@ export default function App() {
   const handleAnalysisComplete = useCallback(() => {
     setAnalysisStatus('results');
   }, []);
+
+  const handleRemoveQueuedItem = useCallback(async (id: string) => {
+    await removeFromQueue(id);
+    await refreshQueue();
+  }, [refreshQueue]);
+
+  const handleRetryQueuedNow = useCallback(async () => {
+    await processQueue();
+    await refreshQueue();
+  }, [processQueue, refreshQueue]);
+
+  // When we come back online and finish syncing, show a small completion toast
+  useEffect(() => {
+    if (!isOnline) return;
+
+    if (hadQueuedWork && !isSyncing && queueLength === 0) {
+      setHadQueuedWork(false);
+      setSyncToast({ message: 'Queued analyses have been saved to student profiles.' });
+      const t = setTimeout(() => setSyncToast(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [hadQueuedWork, isOnline, isSyncing, queueLength]);
 
   // 5. Expert View Rendering
   const renderContent = () => {
@@ -169,6 +273,18 @@ export default function App() {
         );
       case 'student-profile':
         return <StudentProfile studentId={selectedStudentId || undefined} />;
+      case 'pending-analyses':
+        return (
+          <PendingAnalyses
+            items={queuedItems}
+            isOnline={isOnline}
+            isSyncing={isSyncing}
+            studentNameById={studentNameById}
+            onRemove={handleRemoveQueuedItem}
+            onRetryNow={handleRetryQueuedNow}
+            onStartNewAssessment={() => setCurrentView('new-assessment')}
+          />
+        );
       case 'district-overview':
         return <DistrictOverview />;
       case 'school-overview':
@@ -194,9 +310,16 @@ export default function App() {
           user={currentUser} 
           isOffline={isOffline} 
           setIsOffline={setIsOffline} 
+          queueLength={queueLength}
+          isSyncing={isSyncing}
         />
 
         <main className="pt-20 sm:pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+          {syncToast && (
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium rounded-lg px-4 py-3">
+              {syncToast.message}
+            </div>
+          )}
           <div className="mb-6 sm:mb-8">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
               {DASHBOARD_CONFIG[currentUser.role].title}
@@ -217,6 +340,7 @@ export default function App() {
               {currentUser.role === 'teacher' && (
                 <>
                   <NavTab label="New Assessment" active={currentView === 'new-assessment'} onClick={() => setCurrentView('new-assessment')} />
+                  <NavTab label="Pending Analyses" active={currentView === 'pending-analyses'} onClick={() => setCurrentView('pending-analyses')} />
                   <NavTab label="Student Profiles" active={currentView === 'student-profile'} onClick={() => setCurrentView('student-profile')} />
                 </>
               )}
@@ -228,6 +352,12 @@ export default function App() {
 
           {renderContent()}
         </main>
+
+        <OfflineQueuedModal
+          open={showOfflineQueuedModal}
+          queueLength={queueLength}
+          onClose={() => setShowOfflineQueuedModal(false)}
+        />
       </div>
     </ErrorBoundary>
   );}

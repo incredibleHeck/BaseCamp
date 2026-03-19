@@ -14,9 +14,11 @@ interface HeaderProps {
   user?: UserData | null;
   isOffline: boolean;
   setIsOffline: (offline: boolean) => void;
+  queueLength?: number;
+  isSyncing?: boolean;
 }
 
-export function Header({ onLogout, user, isOffline, setIsOffline }: HeaderProps) {
+export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 0, isSyncing = false }: HeaderProps) {
   const [showBanner, setShowBanner] = useState(false);
 
   // 3. Listen to real browser network events
@@ -96,6 +98,17 @@ export function Header({ onLogout, user, isOffline, setIsOffline }: HeaderProps)
             <span className="hidden sm:inline">{isOffline ? 'Offline' : 'Online'}</span>
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-orange-400' : 'bg-green-500 animate-pulse'}`} />
           </button>
+
+          {queueLength > 0 && (
+            <div
+              className="hidden sm:inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 h-8 text-xs font-medium text-gray-700"
+              title="Queued analyses will run when online"
+              aria-label="Queued analyses"
+            >
+              <span>Queued: {queueLength}</span>
+              {isSyncing && <span className="text-gray-500">Syncing…</span>}
+            </div>
+          )}
 
           {user && (
             <div className="hidden md:flex flex-col items-end text-right">

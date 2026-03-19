@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { analyzeWorksheet } from '../services/aiPrompts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { analyzeManualEntry, analyzeWorksheet, analyzeWorksheetMultiple } from '../services/aiPrompts';
 import { getQueue, removeFromQueue, QueuedAssessment } from '../services/offlineQueueService';
 import { saveAssessment, Assessment } from '../services/assessmentService';
 
@@ -7,6 +7,8 @@ export interface SyncManagerState {
   isOnline: boolean;
   isSyncing: boolean;
   queueLength: number;
+  queuedItems: QueuedAssessment[];
+  refreshQueue: () => Promise<void>;
   processQueue: () => Promise<void>;
 }
 
@@ -16,6 +18,18 @@ export function useSyncManager(): SyncManagerState {
   );
   const [isSyncing, setIsSyncing] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
+  const [queuedItems, setQueuedItems] = useState<QueuedAssessment[]>([]);
+  const isSyncingRef = useRef(false);
+
+  const refreshQueue = useCallback(async () => {
+    try {
+      const queue = await getQueue();
+      setQueuedItems(queue);
+      setQueueLength(queue.length);
+    } catch (error) {
+      console.error('useSyncManager: failed to refresh queue', error);
+    }
+  }, []);
 
   // Initialize queue length on mount
   useEffect(() => {
@@ -25,6 +39,7 @@ export function useSyncManager(): SyncManagerState {
       try {
         const queue = await getQueue();
         if (!cancelled) {
+          setQueuedItems(queue);
           setQueueLength(queue.length);
         }
       } catch (error) {
@@ -68,27 +83,53 @@ export function useSyncManager(): SyncManagerState {
   }, []);
 
   const processQueue = useCallback(async () => {
-    if (!isOnline || isSyncing) {
+    if (!isOnline || isSyncingRef.current) {
       return;
     }
-
-    setIsSyncing(true);
 
     try {
       const queue = await getQueue();
 
       if (!queue.length) {
+        setQueuedItems([]);
         setQueueLength(0);
         return;
       }
 
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+
       for (const item of queue) {
         try {
-          const report = await analyzeWorksheet(
-            item.imageBase64,
-            item.subject,
-            item.dialectContext
-          );
+          let report: Awaited<ReturnType<typeof analyzeWorksheet>> | null = null;
+
+          if (item.inputMode === 'manual') {
+            report = await analyzeManualEntry(
+              item.assessmentType,
+              item.dialectContext ?? '',
+              item.manualRubric ?? [],
+              item.observations?.trim() ?? ''
+            );
+          } else {
+            const imageBase64s = item.imageBase64s ?? [];
+            if (imageBase64s.length > 1) {
+              report = await analyzeWorksheetMultiple(
+                imageBase64s,
+                item.assessmentType,
+                item.dialectContext ?? ''
+              );
+            } else if (imageBase64s.length === 1) {
+              report = await analyzeWorksheet(
+                imageBase64s[0],
+                item.assessmentType,
+                item.dialectContext ?? ''
+              );
+            } else {
+              // Malformed queue item; drop it so we don't spin forever
+              await removeFromQueue(item.id);
+              continue;
+            }
+          }
 
           if (!report) {
             // Keep item in queue to retry later
@@ -96,7 +137,7 @@ export function useSyncManager(): SyncManagerState {
           }
 
           const type: Assessment['type'] =
-            item.subject.toLowerCase() === 'literacy' ? 'Literacy' : 'Numeracy';
+            item.assessmentType.toLowerCase() === 'literacy' ? 'Literacy' : 'Numeracy';
 
           const assessment: Assessment = {
             studentId: item.studentId,
@@ -127,16 +168,11 @@ export function useSyncManager(): SyncManagerState {
     } catch (error) {
       console.error('useSyncManager: processQueue failed', error);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
-
-      try {
-        const remaining = await getQueue();
-        setQueueLength(remaining.length);
-      } catch (error) {
-        console.error('useSyncManager: failed to refresh queue length', error);
-      }
+      await refreshQueue();
     }
-  }, [isOnline, isSyncing]);
+  }, [isOnline, refreshQueue]);
 
   // Auto-process queue when we are online (on load and when coming back online)
   useEffect(() => {
@@ -160,6 +196,8 @@ export function useSyncManager(): SyncManagerState {
     isOnline,
     isSyncing,
     queueLength,
+    queuedItems,
+    refreshQueue,
     processQueue,
   };
 }

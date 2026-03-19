@@ -2,12 +2,25 @@ import { get, set, update } from 'idb-keyval';
 
 const QUEUE_KEY = 'basecamp-offline-queue';
 
+export type QueuedAssessmentInputMode = 'upload' | 'manual';
+
 export interface QueuedAssessment {
   id: string;
   studentId: string;
-  subject: string;
-  imageBase64: string;
-  dialectContext: string;
+  assessmentType: 'numeracy' | 'literacy';
+  inputMode: QueuedAssessmentInputMode;
+  /**
+   * For uploads, always store as an array (single-page uploads have length 1).
+   * For manual entry, omit.
+   */
+  imageBase64s?: string[];
+  /**
+   * For manual entry, include at least one of manualRubric/observations.
+   * For uploads, omit.
+   */
+  manualRubric?: string[];
+  observations?: string;
+  dialectContext?: string;
   timestamp: number;
 }
 

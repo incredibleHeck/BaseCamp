@@ -254,11 +254,7 @@ export function AnalysisResults({
     };
 
     if (isOffline) {
-      console.warn("Device is offline. Saving assessment to local storage fallback.");
-      const offlineQueue = JSON.parse(localStorage.getItem('offlineAssessments') || '[]');
-      offlineQueue.push(assessment);
-      localStorage.setItem('offlineAssessments', JSON.stringify(offlineQueue));
-      setIsSaved(true);
+      alert('You are offline. Please reconnect to save to the learner profile.');
       return;
     }
 
