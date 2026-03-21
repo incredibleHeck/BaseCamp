@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyzeManualEntry, analyzeWorksheet, analyzeWorksheetMultiple } from '../services/aiPrompts';
 import { getQueue, removeFromQueue, QueuedAssessment } from '../services/offlineQueueService';
 import { saveAssessment, Assessment } from '../services/assessmentService';
+import {
+  getDefaultAcademicYear,
+  getDefaultTerm,
+  DEFAULT_CLASS_LABEL,
+} from '../config/academicContext';
+import { playbookKeyFromLessonTitle } from '../utils/playbookKey';
+import { evaluateAndPersistSenAlerts } from '../services/senAlertService';
 
 export interface SyncManagerState {
   isOnline: boolean;
@@ -139,6 +146,7 @@ export function useSyncManager(): SyncManagerState {
           const type: Assessment['type'] =
             item.assessmentType.toLowerCase() === 'literacy' ? 'Literacy' : 'Numeracy';
 
+          const lessonTitle = report.lessonPlan?.title?.trim();
           const assessment: Assessment = {
             studentId: item.studentId,
             type,
@@ -148,6 +156,16 @@ export function useSyncManager(): SyncManagerState {
             masteryTags: report.masteryTags,
             remedialPlan: report.remedialPlan,
             lessonPlan: report.lessonPlan,
+            playbookKey: lessonTitle ? playbookKeyFromLessonTitle(lessonTitle) : undefined,
+            playbookTitle: lessonTitle || undefined,
+            score: typeof report.score === 'number' ? report.score : undefined,
+            term: getDefaultTerm(),
+            academicYear: getDefaultAcademicYear(),
+            classLabel: DEFAULT_CLASS_LABEL,
+            gesObjectiveId: report.gesAlignment?.objectiveId,
+            gesObjectiveTitle: report.gesAlignment?.objectiveTitle,
+            gesCurriculumExcerpt: report.gesAlignment?.excerpt,
+            gesVerified: report.gesAlignment?.verified,
             timestamp: Date.now(),
             status: 'Completed',
           };
@@ -156,6 +174,7 @@ export function useSyncManager(): SyncManagerState {
 
           if (savedId) {
             await removeFromQueue(item.id);
+            void evaluateAndPersistSenAlerts(item.studentId);
           }
         } catch (error) {
           console.error('useSyncManager: failed to process queued item', {

@@ -4,9 +4,13 @@ import { BookOpen, LogOut, Wifi, WifiOff } from 'lucide-react';
 // 1. Define a scalable user object instead of loose strings
 export interface UserData {
   id: string;
-  role: 'teacher' | 'headteacher' | 'district';
+  role: 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
   name: string;
   location: string;
+  /** Scoped org ids (Phase 3 enterprise); optional on older user docs. */
+  districtId?: string;
+  circuitId?: string;
+  schoolId?: string;
 }
 
 interface HeaderProps {
@@ -49,7 +53,10 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
     const titles = {
       teacher: 'Teacher Portal',
       headteacher: 'Headteacher Portal',
-      district: 'District Admin'
+      district: 'District Admin',
+      sen_coordinator: 'SEN Coordinator',
+      circuit_supervisor: 'Circuit Supervisor',
+      super_admin: 'MoE / Super Admin',
     };
     return titles[role as keyof typeof titles] || '';
   };
@@ -73,7 +80,7 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
             <h1 className="text-base sm:text-lg font-semibold text-gray-900 leading-tight truncate">
               BaseCamp Diagnostics
             </h1>
-            <span className="text-[10px] font-medium text-emerald-600 uppercase tracking-wider hidden sm:block">
+            <span className="text-[9px] sm:text-[10px] font-medium text-emerald-600 uppercase tracking-wider truncate">
               Powered by HeckTeck AI
             </span>
           </div>
@@ -86,7 +93,7 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
               setIsOffline(!isOffline);
               if (!isOffline) setShowBanner(true);
             }}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-9 sm:h-8 rounded-full text-xs font-medium transition-colors border shrink-0 ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 h-11 sm:h-8 rounded-full text-xs font-medium transition-colors border shrink-0 ${
               isOffline
                 ? 'bg-gray-100 text-gray-600 border-gray-200'
                 : 'bg-green-50 text-green-700 border-green-200'
@@ -100,22 +107,33 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
           </button>
 
           {queueLength > 0 && (
-            <div
-              className="hidden sm:inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 h-8 text-xs font-medium text-gray-700"
-              title="Queued analyses will run when online"
-              aria-label="Queued analyses"
-            >
-              <span>Queued: {queueLength}</span>
-              {isSyncing && <span className="text-gray-500">Syncing…</span>}
-            </div>
+            <>
+              {/* Compact on very small screens */}
+              <div
+                className="sm:hidden inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-full border border-gray-200 bg-white px-2 text-xs font-semibold text-gray-800 tabular-nums"
+                title={`Queued analyses: ${queueLength}. Will run when online.`}
+                aria-label={`Queued analyses: ${queueLength}`}
+              >
+                {queueLength}
+                {isSyncing && <span className="sr-only">Syncing</span>}
+              </div>
+              <div
+                className="hidden sm:inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 h-8 text-xs font-medium text-gray-700"
+                title="Queued analyses will run when online"
+                aria-label="Queued analyses"
+              >
+                <span>Queued: {queueLength}</span>
+                {isSyncing && <span className="text-gray-500">Syncing…</span>}
+              </div>
+            </>
           )}
 
           {user && (
-            <div className="hidden md:flex flex-col items-end text-right">
-              <span className="text-xs font-medium text-gray-900 leading-tight">
+            <div className="flex flex-col items-end text-right min-w-0 max-w-[5.5rem] sm:max-w-[10rem] md:max-w-none">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-900 leading-tight truncate w-full">
                 {getRoleTitle(user.role)}
               </span>
-              <span className="text-[10px] text-gray-500 leading-tight">
+              <span className="hidden sm:block text-[10px] text-gray-500 leading-tight truncate sm:max-w-[12rem] lg:max-w-none">
                 {user.location}
               </span>
             </div>
@@ -128,7 +146,7 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
           {onLogout && (
             <button
               onClick={onLogout}
-              className="text-gray-500 hover:text-red-600 transition-colors p-2 rounded-full hover:bg-red-50 shrink-0"
+              className="text-gray-500 hover:text-red-600 transition-colors p-2 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 inline-flex items-center justify-center rounded-full hover:bg-red-50 shrink-0"
               aria-label="Log out"
               title="Log out"
             >

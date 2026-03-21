@@ -2,6 +2,8 @@
 
 > Execute this plan on Friday after winning the grant.
 
+**Refactor implementation (code splits):** completed in-repo; **§5 manual smoke tests** still recommended before release.
+
 ---
 
 ## Executive Summary
@@ -12,11 +14,11 @@ Several files in the BaseCamp codebase have grown into "god files"—doing too m
 
 ## Refactoring Candidates
 
-| File | Lines | Priority |
-|------|-------|----------|
-| `src/components/StudentProfile.tsx` | ~1,020 | High |
-| `src/services/aiPrompts.ts` | ~530 | Medium |
-| `src/components/AnalysisResults.tsx` | ~444 | Lower |
+| File | Lines | Priority | Status |
+|------|-------|----------|--------|
+| `src/components/StudentProfile.tsx` | ~1,020 → slim orchestrator + modules | High | **Done** — see extractions below |
+| `src/services/aiPrompts.ts` | ~530 → `src/services/aiPrompts/` | Medium | **Done** |
+| `src/components/AnalysisResults.tsx` | ~500 → hook + card | Lower | **Done** — `useAnalysisFlow.ts` + `DiagnosticReportCard.tsx` |
 
 ---
 
@@ -128,7 +130,7 @@ Recommended sequence for Friday:
 5. **StudentProfileAnalyticalView** – Extract analytical view.
 6. **StudentProfileActionPlanView** – Extract action plan view.
 7. **Slim StudentProfile** – Wire everything together and remove duplicated logic.
-8. **AnalysisResults** (optional) – Extract `DiagnosticReportCard` and `useAnalysisFlow` if time permits.
+8. **AnalysisResults** (optional) – Extract `DiagnosticReportCard` and `useAnalysisFlow` if time permits. ✅ Implemented: `src/hooks/useAnalysisFlow.ts`, `src/components/DiagnosticReportCard.tsx`, thin `AnalysisResults.tsx`.
 
 ---
 

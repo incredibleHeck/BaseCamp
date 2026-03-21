@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, FileText, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp, Loader2 } from 'lucide-react';
+import { Search, UserPlus, FileText, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp, Loader2, Download } from 'lucide-react';
 import { getStudents, Student } from '../services/studentService';
 import { getAssessmentSummaryByStudent } from '../services/assessmentService';
+import { buildGradebookRows, gradebookRowsToCsv, downloadGradebookCsv } from '../services/gradebookExport';
 import { AddStudentForm } from './AddStudentForm';
 
 function formatLastAssessment(lastDateMs: number): string {
@@ -47,6 +48,22 @@ export function ClassRoster({
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [isExportingGradebook, setIsExportingGradebook] = useState(false);
+
+  const handleExportGradebook = async () => {
+    setIsExportingGradebook(true);
+    try {
+      const rows = await buildGradebookRows(className);
+      const csv = gradebookRowsToCsv(rows);
+      const safeName = className.replace(/[^\w\-]+/g, '_').slice(0, 40);
+      downloadGradebookCsv(`basecamp-gradebook-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    } catch (e) {
+      console.error(e);
+      alert('Could not export gradebook. Check your connection and try again.');
+    } finally {
+      setIsExportingGradebook(false);
+    }
+  };
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -140,6 +157,19 @@ export function ClassRoster({
               <UserPlus size={16} />
               Add Student
             </button>
+            <button
+              type="button"
+              onClick={handleExportGradebook}
+              disabled={isExportingGradebook}
+              className="flex items-center justify-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-2.5 sm:py-2 min-h-[44px] rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shrink-0 w-full sm:w-auto disabled:opacity-50"
+            >
+              {isExportingGradebook ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              Export gradebook (CSV)
+            </button>
           </div>
         </div>
 
@@ -168,6 +198,13 @@ export function ClassRoster({
                         <td className="p-4">
                           <div className="font-medium text-gray-900">{student.name}</div>
                           <div className="text-xs text-gray-500 md:hidden mt-1">Updated {student.lastAssessmentDate}</div>
+                          {student.criticalGap ? (
+                            <div className="text-xs text-red-600 font-medium sm:hidden mt-1 line-clamp-2" title={student.criticalGap}>
+                              Gap: {student.criticalGap}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400 italic sm:hidden mt-1">No gap flagged</div>
+                          )}
                         </td>
                         <td className="p-4">
                           <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${status.color}`}>

@@ -1,11 +1,33 @@
-import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, getDoc, updateDoc, query, where, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import {
+  DEFAULT_CIRCUIT_ID,
+  DEFAULT_DISTRICT_ID,
+  DEFAULT_SCHOOL_ID,
+  DEFAULT_SCHOOL_NAME,
+  schoolById,
+} from '../config/organizationDefaults';
 
 export interface Student {
   id?: string;
   name: string;
   grade: string;
-  // Add any other relevant student fields here
+  /** Phase 3: stable IDs for B2G rollups */
+  districtId?: string;
+  circuitId?: string;
+  schoolId?: string;
+  schoolName?: string;
+  /** Phase 4: guardian / WhatsApp */
+  guardianPhone?: string;
+  /** e.g. English, Twi, Ga, Ewe */
+  guardianLanguage?: string;
+  whatsappOptIn?: boolean;
+  /** ms since epoch when guardian consent recorded */
+  consentRecordedAt?: number;
+  /** Lab / portal login code (teacher-provisioned) */
+  portalAccessCode?: string;
+  /** Optional: include de-identified rows in fine-tuning pilot export */
+  trainingDataOptIn?: boolean;
 }
 
 /**
@@ -15,7 +37,23 @@ export interface Student {
  */
 export const addStudent = async (studentData: Student): Promise<string | null> => {
   try {
-    const docRef = await addDoc(collection(db, 'students'), studentData);
+    const schoolId = studentData.schoolId ?? DEFAULT_SCHOOL_ID;
+    const meta = schoolById(schoolId);
+    const payload: Record<string, unknown> = {
+      name: studentData.name,
+      grade: studentData.grade,
+      districtId: studentData.districtId ?? DEFAULT_DISTRICT_ID,
+      schoolId,
+      schoolName: studentData.schoolName ?? meta?.name ?? DEFAULT_SCHOOL_NAME,
+      circuitId: studentData.circuitId ?? meta?.circuitId ?? DEFAULT_CIRCUIT_ID,
+    };
+    if (studentData.guardianPhone !== undefined) payload.guardianPhone = studentData.guardianPhone;
+    if (studentData.guardianLanguage !== undefined) payload.guardianLanguage = studentData.guardianLanguage;
+    if (studentData.whatsappOptIn !== undefined) payload.whatsappOptIn = studentData.whatsappOptIn;
+    if (studentData.consentRecordedAt !== undefined) payload.consentRecordedAt = studentData.consentRecordedAt;
+    if (studentData.portalAccessCode !== undefined) payload.portalAccessCode = studentData.portalAccessCode;
+    if (studentData.trainingDataOptIn !== undefined) payload.trainingDataOptIn = studentData.trainingDataOptIn;
+    const docRef = await addDoc(collection(db, 'students'), payload as Omit<Student, 'id'>);
     return docRef.id;
   } catch (error) {
     console.error('Error adding student document: ', error);
@@ -60,3 +98,38 @@ export const getStudent = async (studentId: string): Promise<Student | null> => 
     return null;
   }
 };
+
+export const updateStudent = async (studentId: string, updates: Partial<Student>): Promise<void> => {
+  const { id: _id, ...rest } = updates as Student & { id?: string };
+  const patch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rest)) {
+    if (v !== undefined) patch[k] = v;
+  }
+  if (Object.keys(patch).length === 0) return;
+  await updateDoc(doc(db, 'students', studentId), patch);
+};
+
+/** Lookup for student portal (lab code). Code is stored normalized uppercase. */
+export const getStudentByPortalCode = async (code: string): Promise<Student | null> => {
+  const normalized = code.trim().toUpperCase();
+  if (normalized.length < 4) return null;
+  try {
+    const q = query(collection(db, 'students'), where('portalAccessCode', '==', normalized), limit(1));
+    const snap = await getDocs(q);
+    let found: Student | null = null;
+    snap.forEach((d) => {
+      found = { id: d.id, ...d.data() } as Student;
+    });
+    return found;
+  } catch (e) {
+    console.error('getStudentByPortalCode', e);
+    return null;
+  }
+};
+
+export function generatePortalAccessCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}

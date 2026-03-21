@@ -13,6 +13,21 @@ export interface Assessment {
   lessonPlan?: { title: string; instructions: string[] };
   /** Generated practice worksheet; overwritten when regenerated. */
   worksheet?: { title: string; questions: string[] };
+  /** 0–100 mastery score from AI diagnostic (Phase 2 gradebook). */
+  score?: number;
+  term?: string;
+  academicYear?: string;
+  /** Class / stream label for exports (e.g. Primary 6A). */
+  classLabel?: string;
+  /** GES curriculum alignment from RAG-assisted diagnosis. */
+  gesObjectiveId?: string;
+  gesObjectiveTitle?: string;
+  gesCurriculumExcerpt?: string;
+  /** True when objectiveId was in the retrieved allowlist for this request. */
+  gesVerified?: boolean;
+  /** Phase 3: remedial playbook identity for A/B style analytics */
+  playbookKey?: string;
+  playbookTitle?: string;
   timestamp: Date | Timestamp | number;
   status: 'Pending' | 'In Progress' | 'Completed';
 }
@@ -39,7 +54,20 @@ export const saveAssessment = async (data: Assessment): Promise<string | null> =
  */
 export const updateAssessment = async (
   assessmentId: string,
-  updates: Partial<Pick<Assessment, 'lessonPlan' | 'remedialPlan' | 'status' | 'worksheet'>>
+  updates: Partial<
+    Pick<
+      Assessment,
+      | 'lessonPlan'
+      | 'remedialPlan'
+      | 'status'
+      | 'worksheet'
+      | 'score'
+      | 'gesObjectiveId'
+      | 'gesObjectiveTitle'
+      | 'gesCurriculumExcerpt'
+      | 'gesVerified'
+    >
+  >
 ): Promise<void> => {
   try {
     const ref = doc(db, 'assessments', assessmentId);
@@ -80,6 +108,16 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
         remedialPlan: data.remedialPlan || '',
         lessonPlan: data.lessonPlan || { title: '', instructions: [] },
         worksheet: data.worksheet ?? undefined,
+        score: typeof data.score === 'number' ? data.score : undefined,
+        term: typeof data.term === 'string' ? data.term : undefined,
+        academicYear: typeof data.academicYear === 'string' ? data.academicYear : undefined,
+        classLabel: typeof data.classLabel === 'string' ? data.classLabel : undefined,
+        gesObjectiveId: typeof data.gesObjectiveId === 'string' ? data.gesObjectiveId : undefined,
+        gesObjectiveTitle: typeof data.gesObjectiveTitle === 'string' ? data.gesObjectiveTitle : undefined,
+        gesCurriculumExcerpt: typeof data.gesCurriculumExcerpt === 'string' ? data.gesCurriculumExcerpt : undefined,
+        gesVerified: typeof data.gesVerified === 'boolean' ? data.gesVerified : undefined,
+        playbookKey: typeof data.playbookKey === 'string' ? data.playbookKey : undefined,
+        playbookTitle: typeof data.playbookTitle === 'string' ? data.playbookTitle : undefined,
         timestamp: data.timestamp,
         status: data.status,
       });

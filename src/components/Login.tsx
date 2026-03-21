@@ -5,8 +5,11 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { addStudent } from '../services/studentService';
 import { saveAssessment } from '../services/assessmentService';
+import { playbookKeyFromLessonTitle } from '../utils/playbookKey';
+import { DEMO_SCHOOLS } from '../config/organizationDefaults';
+import { evaluateAndPersistSenAlerts } from '../services/senAlertService';
 
-type Role = 'teacher' | 'headteacher' | 'district';
+type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
 
 export function Login() {
   const [isLoggingIn, setIsLoggingIn] = useState<Role | null>(null);
@@ -39,6 +42,9 @@ export function Login() {
       await Promise.all(
         assessmentsSnap.docs.map((d) => deleteDoc(doc(db, 'assessments', d.id)))
       );
+
+      const senSnap = await getDocs(collection(db, 'senAlerts'));
+      await Promise.all(senSnap.docs.map((d) => deleteDoc(doc(db, 'senAlerts', d.id))));
 
       const studentsSnap = await getDocs(collection(db, 'students'));
       await Promise.all(
@@ -125,8 +131,15 @@ export function Login() {
       ];
 
       const studentIds: string[] = [];
-      for (const s of demoStudents) {
-        const id = await addStudent(s);
+      for (let i = 0; i < demoStudents.length; i++) {
+        const s = demoStudents[i];
+        const school = DEMO_SCHOOLS[i % DEMO_SCHOOLS.length];
+        const id = await addStudent({
+          ...s,
+          schoolId: school.id,
+          schoolName: school.name,
+          circuitId: school.circuitId,
+        });
         if (id) studentIds.push(id);
       }
 
@@ -142,6 +155,10 @@ export function Login() {
           const template = isNumeracy
             ? numeracyTemplates[(index + i) % numeracyTemplates.length]
             : literacyTemplates[(index + i) % literacyTemplates.length];
+          const title = template.lessonPlan.title;
+          const baseScore = 35 + ((index + i) % 5) * 8;
+          const scoreDelta = i * 5;
+          const score = Math.min(95, baseScore + scoreDelta);
 
           await saveAssessment({
             studentId,
@@ -152,10 +169,41 @@ export function Login() {
             masteryTags: template.masteryTags,
             remedialPlan: template.remedialPlan,
             lessonPlan: template.lessonPlan,
+            playbookKey: playbookKeyFromLessonTitle(title),
+            playbookTitle: title,
+            score,
             timestamp: now - daysAgo * oneDayMs,
             status: 'Completed',
           });
         }
+      }
+
+      // One learner: three most recent numeracy rows with screening pattern (demo SEN inbox)
+      const senStudent = studentIds[studentIds.length - 1];
+      if (senStudent) {
+        for (let j = 0; j < 3; j++) {
+          const title = 'Number Line Estimation';
+          await saveAssessment({
+            studentId: senStudent,
+            type: 'Numeracy',
+            diagnosis: 'Shows persistent difficulty comparing magnitudes on a number line; possible number sense risk.',
+            masteredConcepts: 'Can count aloud to 20.',
+            gapTags: ['Number sense', 'Estimation'],
+            masteryTags: ['Counting'],
+            remedialPlan: 'Use a physical rope with marks and walk the number line together.',
+            lessonPlan: {
+              title,
+              instructions: ['Mark 0 and 10 on the ground.', 'Ask the learner to place a stone at “about 6”.', 'Discuss bigger/smaller.'],
+            },
+            playbookKey: playbookKeyFromLessonTitle(title),
+            playbookTitle: title,
+            score: 38 + j,
+            // More recent than seeded history so the rule engine picks these three
+            timestamp: now - (3 - j) * 120_000,
+            status: 'Completed',
+          });
+        }
+        await evaluateAndPersistSenAlerts(senStudent);
       }
 
       setSeedDone(true);
@@ -211,6 +259,33 @@ export function Login() {
                 desc="View regional analytics" 
                 onClick={() => handleDemoLogin('district')}
                 isLoading={isLoggingIn === 'district'}
+                disabled={isLoggingIn !== null}
+              />
+              <RoleCard
+                role="sen_coordinator"
+                icon={<User />}
+                title="SEN Coordinator"
+                desc="Screening inbox + district context"
+                onClick={() => handleDemoLogin('sen_coordinator')}
+                isLoading={isLoggingIn === 'sen_coordinator'}
+                disabled={isLoggingIn !== null}
+              />
+              <RoleCard
+                role="circuit_supervisor"
+                icon={<School />}
+                title="Circuit Supervisor"
+                desc="Circuit risk map + scoped analytics"
+                onClick={() => handleDemoLogin('circuit_supervisor')}
+                isLoading={isLoggingIn === 'circuit_supervisor'}
+                disabled={isLoggingIn !== null}
+              />
+              <RoleCard
+                role="super_admin"
+                icon={<Building2 />}
+                title="MoE / Super Admin"
+                desc="Full enterprise tabs (demo)"
+                onClick={() => handleDemoLogin('super_admin')}
+                isLoading={isLoggingIn === 'super_admin'}
                 disabled={isLoggingIn !== null}
               />
             </div>

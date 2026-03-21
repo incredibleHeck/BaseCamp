@@ -26,7 +26,10 @@ View your app in AI Studio: https://ai.studio/apps/ec58a563-8013-4579-90d6-536bf
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
 5. **Firestore index:** For student assessment history, Firestore needs a composite index on the `assessments` collection: `studentId` (Ascending) and `timestamp` (Descending). If you see an index error at runtime, create the index via the link in the error message (Firebase Console).
-6. Run the app:
+6. **Voice observations (Phase 2):** Synced clips are stored in the `voiceObservations` collection. Ensure your security rules allow authenticated writes (see `firestore.rules`).
+7. **Phase 3 (enterprise demo):** Screening alerts use the `senAlerts` collection. Create matching Auth users if you use the new login tiles (e.g. `sen_coordinator@basecamp.com`, `circuit_supervisor@basecamp.com`, `super_admin@basecamp.com`) with the same password as other demo accounts, and set `role` (and optional `districtId` / `circuitId` / `schoolId`) on their Firestore `users/{uid}` docs.
+8. **Phase 4 (ecosystem demo):** `whatsappOutbox` (stub queue for HeckTeck Connect), `portalSessions` (student practice summaries). Student portal URL: same app origin with hash **`#/portal`** (teachers set a **portal access code** on the learner profile). MoE **Pilot export** tab (super admin) downloads opted-in JSONL.
+9. Run the app:
    ```bash
    npm run dev
    ```
