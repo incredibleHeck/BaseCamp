@@ -12,8 +12,11 @@ import type { Assessment } from './assessmentService';
 import { getStudentHistory } from './assessmentService';
 import { getStudent } from './studentService';
 import { DEFAULT_DISTRICT_ID } from '../config/organizationDefaults';
+import type { SenWarningFlag } from './aiPrompts/types';
 
 export const SEN_RULE_NUMERACY_PATTERN_V1 = 'numeracy-sen-pattern-consecutive-3';
+/** Created when the longitudinal diagnostic model returns medium/high {@link SenWarningFlag}. */
+export const SEN_RULE_AI_LONGITUDINAL_WARNING_V1 = 'sen-longitudinal-ai-warning-v1';
 export const SEN_RULE_VERSION = '1.0';
 
 /** Educational screening signal — not a clinical diagnosis. */
@@ -60,12 +63,76 @@ export function numeracyAssessmentTriggersSenSignal(a: Assessment): boolean {
   return true;
 }
 
+export type EvaluateSenAlertsOptions = {
+  /** From {@link DiagnosticReport.senWarningFlag} after AI longitudinal screening. */
+  senWarningFlag?: SenWarningFlag | null;
+  /** Firestore assessment doc id just saved (for audit trail). */
+  latestAssessmentId?: string;
+};
+
+async function persistAiLongitudinalSenAlert(
+  studentId: string,
+  flag: SenWarningFlag,
+  latestAssessmentId?: string
+): Promise<void> {
+  const existing = await getDocs(collection(db, COLLECTION));
+  let hasOpen = false;
+  existing.forEach((d) => {
+    const data = d.data() as SenAlert;
+    if (
+      data.studentId === studentId &&
+      data.status === 'open' &&
+      data.ruleId === SEN_RULE_AI_LONGITUDINAL_WARNING_V1
+    ) {
+      hasOpen = true;
+    }
+  });
+  if (hasOpen) return;
+
+  const student = await getStudent(studentId);
+  const districtId = student?.districtId ?? DEFAULT_DISTRICT_ID;
+  const summary = `Longitudinal AI screening (${flag.severity}): ${flag.category}. ${flag.reason}`;
+
+  await addDoc(collection(db, COLLECTION), {
+    studentId,
+    studentName: student?.name ?? 'Learner',
+    districtId,
+    circuitId: student?.circuitId ?? '',
+    schoolId: student?.schoolId ?? '',
+    status: 'open',
+    ruleId: SEN_RULE_AI_LONGITUDINAL_WARNING_V1,
+    ruleVersion: SEN_RULE_VERSION,
+    summary,
+    triggeredByAssessmentIds: latestAssessmentId ? [latestAssessmentId] : [],
+    createdAt: Timestamp.now(),
+    auditLog: [
+      {
+        at: Date.now(),
+        action: 'created',
+        note: 'Model senWarningFlag (medium/high) after assessment save.',
+      },
+    ],
+  });
+}
+
 /**
  * After a new assessment is saved, evaluate longitudinal rules and create SEN screening alerts.
  * Idempotent: skips if an open alert already exists for the same rule + student.
  */
-export async function evaluateAndPersistSenAlerts(studentId: string): Promise<void> {
+export async function evaluateAndPersistSenAlerts(
+  studentId: string,
+  options?: EvaluateSenAlertsOptions
+): Promise<void> {
   try {
+    const flag = options?.senWarningFlag;
+    if (flag && (flag.severity === 'high' || flag.severity === 'medium')) {
+      try {
+        await persistAiLongitudinalSenAlert(studentId, flag, options?.latestAssessmentId);
+      } catch (err) {
+        console.error('persistAiLongitudinalSenAlert', err);
+      }
+    }
+
     const history = await getStudentHistory(studentId);
     const numeracy = history
       .filter((a) => a.type === 'Numeracy')

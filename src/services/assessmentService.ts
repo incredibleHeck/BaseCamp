@@ -1,6 +1,15 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+/** Firestore rejects `undefined` anywhere in a document. */
+function omitUndefinedFields<T extends Record<string, unknown>>(data: T): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
 export interface Assessment {
   id?: string;
   studentId: string;
@@ -71,7 +80,9 @@ export const updateAssessment = async (
 ): Promise<void> => {
   try {
     const ref = doc(db, 'assessments', assessmentId);
-    await updateDoc(ref, updates as Record<string, unknown>);
+    const patch = omitUndefinedFields(updates as unknown as Record<string, unknown>);
+    if (Object.keys(patch).length === 0) return;
+    await updateDoc(ref, patch);
   } catch (error) {
     console.error('Error updating assessment document: ', error);
     throw error;

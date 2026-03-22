@@ -96,7 +96,7 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 
 ### Curriculum / RAG
 
-- **[`gesRagService.ts`](src/services/gesRagService.ts):** GES context retrieval for analysis prompts  
+- **[`curriculumRagService.ts`](src/services/curriculumRagService.ts):** GES + Cambridge curriculum context retrieval for analysis prompts  
 - Pilot / demo data: **[`data/gesCurriculumPilot.ts`](src/data/gesCurriculumPilot.ts)**, **[`data/demoCircuitMap.ts`](src/data/demoCircuitMap.ts)**  
 
 ### Config and utilities
@@ -180,7 +180,7 @@ src/
 │   │   └── phase4Ecosystem.ts
 │   ├── enterpriseAnalyticsService.ts
 │   ├── fineTunePilotService.ts
-│   ├── gesRagService.ts
+│   ├── curriculumRagService.ts
 │   ├── gradebookExport.ts
 │   ├── observationService.ts
 │   ├── offlineQueueService.ts

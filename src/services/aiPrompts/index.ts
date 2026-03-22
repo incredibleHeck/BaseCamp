@@ -6,6 +6,7 @@ export type {
   DiagnosticReport,
   GesAlignment,
   LessonPlanResult,
+  SenWarningFlag,
   PortalPracticeItem,
   PortalPracticeRound,
   SenRiskReport,
@@ -14,10 +15,26 @@ export type {
   WorksheetResult,
 } from './types';
 
-export { analyzeManualEntry, analyzeWorksheet, analyzeWorksheetMultiple } from './worksheetAnalysis';
-export { generateRemedialLessonPlan } from './lessonPlan';
+export {
+  analyzeManualEntry,
+  analyzeWorksheet,
+  analyzeWorksheetMultiple,
+  type AnalyzeWorksheetOptions,
+  type ClassRosterEntry,
+  type WorksheetRagOptions,
+} from './worksheetAnalysis';
+export { generateRemedialLessonPlan, type GenerateLessonPlanOptions } from './lessonPlan';
 export { generatePracticeWorksheet } from './worksheetGeneration';
-export { transcribeAndAnalyzeVoiceObservation } from './voiceObservation';
+export {
+  analyzeHybridTeacherDiagnostic,
+  analyzeMultimodalVoiceObservation,
+  buildStudentContextForHybridPrompt,
+  mimeFromDataUrl,
+  stripInlineBase64,
+  transcribeAndAnalyzeVoiceObservation,
+  type MultimodalVoiceObservationParams,
+  type WorksheetImageInline,
+} from './voiceObservation';
 export { analyzeLongitudinalSEN } from './senAnalysis';
 export {
   generateStudentPortalPracticeRound,

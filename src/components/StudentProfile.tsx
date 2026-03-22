@@ -13,6 +13,7 @@ import type { UserData } from './Header';
 import { Phase4FamilyConnectCard } from './Phase4FamilyConnectCard';
 import { useStudentProfileData } from '../hooks/useStudentProfileData';
 import { exportStudentProfilePdf } from '../utils/pdfExport';
+import { parseGradeLevelFromStudentRecord } from '../utils/longitudinalPromptHelpers';
 import { printLessonPlanWindow, printWorksheetToWindow } from '../utils/printUtils';
 import { StudentProfileAnalyticalView } from './StudentProfileAnalyticalView';
 import { StudentProfileActionPlanView } from './StudentProfileActionPlanView';
@@ -113,7 +114,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         assessment.diagnosis,
         assessment.remedialPlan || '',
         subject,
-        gesAlign
+        gesAlign,
+        {
+          studentGradeLevel: parseGradeLevelFromStudentRecord(studentInfo ?? undefined),
+          dialectContext: studentInfo?.guardianLanguage?.trim() || undefined,
+        }
       );
       if (result) {
         await updateAssessment(assessment.id, { lessonPlan: result });

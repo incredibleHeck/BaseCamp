@@ -1,14 +1,33 @@
 import { get, set, update } from 'idb-keyval';
+import { compressImage } from '../utils/imageCompression';
 
 const QUEUE_KEY = 'basecamp-offline-queue';
 
-export type QueuedAssessmentInputMode = 'upload' | 'manual';
+export type QueuedAssessmentInputMode = 'upload' | 'manual' | 'hybrid_voice' | 'upload_batch';
+
+/**
+ * Context copied onto each worksheet row in a class batch (extend with custom keys as needed).
+ */
+export type WorksheetBatchAssessmentContext = {
+  assessmentType: 'numeracy' | 'literacy';
+  dialectContext?: string;
+} & Record<string, unknown>;
 
 export interface QueuedAssessment {
   id: string;
-  studentId: string;
+  /**
+   * Required for single-learner / hybrid flows. Use `null` when `autoDetectStudent` is true
+   * (class batch worksheets — student resolved after Gemini reads handwritten names).
+   */
+  studentId?: string | null;
   assessmentType: 'numeracy' | 'literacy';
   inputMode: QueuedAssessmentInputMode;
+  /**
+   * Teacher voice clip as data URL or raw base64 (`hybrid_voice` / future voice modes).
+   */
+  audioBase64?: string;
+  /** From Blob.type, e.g. audio/webm */
+  audioMimeType?: string;
   /**
    * For uploads, always store as an array (single-page uploads have length 1).
    * For manual entry, omit.
@@ -21,20 +40,47 @@ export interface QueuedAssessment {
   manualRubric?: string[];
   observations?: string;
   dialectContext?: string;
+  /** Curriculum RAG: Ghana GES pilot vs Cambridge Primary Math taxonomy. */
+  curriculumFramework?: 'GES' | 'Cambridge';
+  /** Parsed from roster grade when available (Cambridge filtering). */
+  gradeLevel?: number;
   timestamp: number;
+  /** Groups multiple queued rows from one class batch enqueue. */
+  batchId?: string;
+  /** When true, `studentId` may be null; sync pipeline must resolve learner before saving. */
+  autoDetectStudent?: boolean;
+  /** Original batch context (immutable snapshot per row). */
+  batchAssessmentContext?: Record<string, unknown>;
+}
+
+function isQuotaExceededError(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const err = e as { name?: string; message?: string };
+  if (err.name === 'QuotaExceededError') return true;
+  const msg = String(err.message ?? '');
+  return /quota/i.test(msg) || msg.includes('QuotaExceeded');
+}
+
+function generateBatchId(): string {
+  const suffix =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `batch_${Date.now()}_${suffix}`;
+}
+
+function newQueueItemId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
  * Adds an assessment to the offline queue. Generates id and timestamp automatically.
  */
-export async function addToQueue(
-  item: Omit<QueuedAssessment, 'id' | 'timestamp'>
-): Promise<void> {
+export async function addToQueue(item: Omit<QueuedAssessment, 'id' | 'timestamp'>): Promise<void> {
   try {
-    const id =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Date.now().toString();
+    const id = newQueueItemId();
     const timestamp = Date.now();
     const queuedItem: QueuedAssessment = { ...item, id, timestamp };
 
@@ -46,6 +92,81 @@ export async function addToQueue(
     console.error('offlineQueueService.addToQueue failed:', error);
     throw error;
   }
+}
+
+export type EnqueueWorksheetBatchResult = {
+  batchId: string;
+  /** Number of files successfully written to IndexedDB (may be less than files.length on quota / errors). */
+  queuedCount: number;
+};
+
+/**
+ * Queues each worksheet image as its own row, all sharing `batchId`, with `studentId: null`
+ * and `autoDetectStudent: true` for a future Gemini name-detection pipeline.
+ *
+ * Uses `compressImage` (same as live upload) then stores a single-page data URL in `imageBase64s`.
+ * On storage quota exhaustion, shows an alert and stops; earlier files remain queued.
+ */
+export async function enqueueWorksheetBatch(
+  files: File[],
+  assessmentContext: WorksheetBatchAssessmentContext
+): Promise<EnqueueWorksheetBatchResult> {
+  const batchId = generateBatchId();
+  if (!files.length) {
+    return { batchId, queuedCount: 0 };
+  }
+
+  if (!assessmentContext?.assessmentType) {
+    console.warn('enqueueWorksheetBatch: missing assessmentType in assessmentContext');
+  }
+
+  const { assessmentType, dialectContext, ...restContext } = assessmentContext;
+  const batchAssessmentContext: Record<string, unknown> = {
+    assessmentType,
+    ...(dialectContext !== undefined ? { dialectContext } : {}),
+    ...restContext,
+  };
+
+  let queuedCount = 0;
+  const total = files.length;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    try {
+      const compressed = await compressImage(file);
+      const dataUrl = compressed.base64;
+      if (!dataUrl?.trim()) {
+        console.warn(`enqueueWorksheetBatch: empty data URL for file index ${i}`, file.name);
+        continue;
+      }
+
+      await addToQueue({
+        studentId: null,
+        assessmentType,
+        inputMode: 'upload_batch',
+        imageBase64s: [dataUrl],
+        dialectContext,
+        batchId,
+        autoDetectStudent: true,
+        batchAssessmentContext,
+      });
+      queuedCount++;
+    } catch (e) {
+      if (isQuotaExceededError(e)) {
+        if (typeof alert !== 'undefined') {
+          alert(
+            `Device storage filled up after ${queuedCount} of ${total} worksheet(s) were saved to the queue. Free some space, then try again to add the remaining photos.`
+          );
+        }
+        console.error('enqueueWorksheetBatch: quota exceeded', { batchId, queuedCount, index: i }, e);
+        break;
+      }
+      console.error(`enqueueWorksheetBatch: failed on file ${i + 1}/${total}`, file.name, e);
+      // Non-quota: skip this file and continue so the rest of the batch can still queue.
+    }
+  }
+
+  return { batchId, queuedCount };
 }
 
 /**

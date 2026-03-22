@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header, type UserData } from './components/Header';
 import { AssessmentSetup, AssessmentData, type AssessmentSetupSnapshot } from './components/AssessmentSetup';
 import { AnalysisResults, AnalysisStatus } from './components/AnalysisResults';
@@ -24,6 +24,7 @@ import { useSyncManager } from './hooks/useSyncManager';
 import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
 import { logWorkflow } from './utils/workflowLog';
+import type { AnalyzeHybridAssessmentFn, HybridAssessmentFlowContext } from './hooks/useAnalysisFlow';
 
 // 1. Scalable Types
 type View =
@@ -88,8 +89,16 @@ export default function App() {
   const [hadQueuedWork, setHadQueuedWork] = useState(false);
   const [studentNameById, setStudentNameById] = useState<Record<string, string>>({});
 
-  const { isOnline, isSyncing, queueLength, queuedItems, refreshQueue, processQueue } = useSyncManager();
-  const { processVoiceQueue } = useVoiceObservationSync(isOnline);
+  const {
+    isOnline,
+    isSyncing,
+    queueLength,
+    queuedItems,
+    batchSyncProgress,
+    refreshQueue,
+    processQueue,
+  } = useSyncManager();
+  useVoiceObservationSync(isOnline);
 
   // Assessment flow states
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
@@ -99,6 +108,46 @@ export default function App() {
   const handleAssessmentSetupStateChange = useCallback((snapshot: AssessmentSetupSnapshot) => {
     setAssessmentSetupSnapshot(snapshot);
   }, []);
+
+  const hybridFlowRunnerRef = useRef<AnalyzeHybridAssessmentFn | null>(null);
+
+  const handleHybridFlowReady = useCallback((runner: AnalyzeHybridAssessmentFn | null) => {
+    hybridFlowRunnerRef.current = runner;
+  }, []);
+
+  const runHybridAssessmentFromSetup = useCallback(
+    async (
+      studentId: string,
+      audioBlob: Blob,
+      optionalImage: Blob | null | undefined,
+      flowContext?: HybridAssessmentFlowContext | null
+    ) => {
+      const fn = hybridFlowRunnerRef.current;
+      if (!fn) return { ok: false as const, error: 'not_ready' };
+
+      const offlineNow = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);
+      if (!offlineNow && flowContext) {
+        setLastAssessmentData({
+          studentId,
+          assessmentType: flowContext.assessmentType,
+          inputMode: 'voice',
+          dialect: flowContext.dialectContext ?? null,
+          curriculumFramework: flowContext.curriculumFramework ?? 'GES',
+          gradeLevel: flowContext.gradeLevel,
+        });
+        setAnalysisStatus('analyzing');
+      }
+
+      return fn(studentId, audioBlob, optionalImage ?? null, flowContext);
+    },
+    [isOffline]
+  );
+
+  const handleHybridQueued = useCallback(() => {
+    setAnalysisStatus('empty');
+    setShowOfflineQueuedModal(true);
+    void refreshQueue();
+  }, [refreshQueue]);
 
   // 3. Listen to Auth State (with timeout so we never hang on loading)
   useEffect(() => {
@@ -262,6 +311,8 @@ export default function App() {
             manualRubric: data.manualRubric ?? [],
             observations: data.observations ?? '',
             dialectContext: data.dialect ?? undefined,
+            curriculumFramework: data.curriculumFramework ?? 'GES',
+            gradeLevel: data.gradeLevel,
           });
         } else {
           const imageBase64s = (data.imageBase64s ?? []).filter(Boolean);
@@ -272,6 +323,8 @@ export default function App() {
               inputMode: 'upload',
               imageBase64s,
               dialectContext: data.dialect ?? undefined,
+              curriculumFramework: data.curriculumFramework ?? 'GES',
+              gradeLevel: data.gradeLevel,
             });
           } else {
             // No images; keep UX consistent with existing validation
@@ -352,7 +405,9 @@ export default function App() {
                 initialStudentId={selectedStudentId || undefined}
                 onDiagnose={handleDiagnose}
                 isProcessing={analysisStatus === 'analyzing'}
-                processVoiceObservationQueue={processVoiceQueue}
+                isOffline={isOffline}
+                analyzeHybridAssessment={runHybridAssessmentFromSetup}
+                onHybridQueued={handleHybridQueued}
                 onSetupStateChange={handleAssessmentSetupStateChange}
               />
             </div>
@@ -368,9 +423,12 @@ export default function App() {
                 dialectContext={lastAssessmentData?.dialect}
                 manualRubric={lastAssessmentData?.manualRubric ?? undefined}
                 observations={lastAssessmentData?.observations ?? undefined}
-                inputMode={assessmentSetupSnapshot?.inputMode ?? lastAssessmentData?.inputMode}
+                curriculumFramework={lastAssessmentData?.curriculumFramework}
+                gradeLevel={lastAssessmentData?.gradeLevel}
+                inputMode={lastAssessmentData?.inputMode ?? assessmentSetupSnapshot?.inputMode}
                 onAnalysisComplete={handleAnalysisComplete}
                 onAnalysisError={handleAnalysisError}
+                onHybridFlowReady={handleHybridFlowReady}
               />
             </div>
           </div>
@@ -385,6 +443,7 @@ export default function App() {
             items={queuedItems}
             isOnline={isOnline}
             isSyncing={isSyncing}
+            batchSyncProgress={batchSyncProgress}
             studentNameById={studentNameById}
             onRemove={handleRemoveQueuedItem}
             onRetryNow={handleRetryQueuedNow}

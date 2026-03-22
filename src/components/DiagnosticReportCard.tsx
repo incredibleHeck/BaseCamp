@@ -106,6 +106,15 @@ export function DiagnosticReportCard({
           )}
         </div>
 
+        {data.alignedStandardCode ? (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+            <h4 className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">
+              Cambridge standard code (judge / British Council)
+            </h4>
+            <p className="font-mono text-lg text-indigo-950 mt-1">{data.alignedStandardCode}</p>
+          </div>
+        ) : null}
+
         <div className="bg-gray-50 border border-gray-100 rounded-lg p-5">
           <h4 className="text-base font-semibold text-gray-900 mb-3">Recommended Intervention</h4>
           <ul className="list-disc list-inside text-sm text-gray-700 space-y-2 mb-4">

@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FileSearch, Loader2, Mic } from 'lucide-react';
-import { useAnalysisFlow, type AnalysisStatus, type DiagnosticReport } from '../hooks/useAnalysisFlow';
+import {
+  useAnalysisFlow,
+  type AnalysisStatus,
+  type DiagnosticReport,
+  type AnalyzeHybridAssessmentFn,
+} from '../hooks/useAnalysisFlow';
 import { DiagnosticReportCard } from './DiagnosticReportCard';
 import type { AssessmentData } from './AssessmentSetup';
+import type { CurriculumFramework } from '../services/curriculumRagService';
 
 export type { AnalysisStatus, DiagnosticReport };
 
@@ -17,10 +23,14 @@ interface AnalysisResultsProps {
   dialectContext?: string | null;
   manualRubric?: string[] | null;
   observations?: string | null;
+  curriculumFramework?: CurriculumFramework;
+  gradeLevel?: number;
   /** Reflects New Assessment form mode for empty-state messaging. */
   inputMode?: AssessmentData['inputMode'];
   onAnalysisComplete?: () => void;
   onAnalysisError?: () => void;
+  /** Lets sibling panels call the hybrid voice+image pipeline (registered after mount). */
+  onHybridFlowReady?: (runner: AnalyzeHybridAssessmentFn | null) => void;
 }
 
 export function AnalysisResults({
@@ -34,23 +44,34 @@ export function AnalysisResults({
   dialectContext,
   manualRubric,
   observations,
+  curriculumFramework,
+  gradeLevel,
   inputMode,
   onAnalysisComplete,
   onAnalysisError,
+  onHybridFlowReady,
 }: AnalysisResultsProps) {
   const flow = useAnalysisFlow({
     status,
     isOffline,
     studentId,
     assessmentType,
+    inputMode,
     imageBase64,
     imageBase64s,
     dialectContext,
     manualRubric,
     observations,
+    curriculumFramework,
+    gradeLevel,
     onAnalysisComplete,
     onAnalysisError,
   });
+
+  useEffect(() => {
+    onHybridFlowReady?.(flow.analyzeHybridAssessment);
+    return () => onHybridFlowReady?.(null);
+  }, [flow.analyzeHybridAssessment, onHybridFlowReady]);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full min-h-[400px] flex flex-col relative">
@@ -68,7 +89,7 @@ export function AnalysisResults({
           </h3>
           <p className="text-gray-500 max-w-sm">
             {inputMode === 'voice'
-              ? 'Use the left panel to record a voice observation. AI worksheet diagnosis appears here when you run a photo or manual assessment.'
+              ? 'Record a voice note on the left, optionally attach a worksheet photo, then tap Run AI Diagnosis. Your multimodal report will appear here.'
               : 'Upload a student assessment or enter data manually to view the AI diagnosis.'}
           </p>
         </div>

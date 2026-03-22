@@ -30,7 +30,7 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 ### Phase 2 checklist (MVP in repo)
 
 - [x] **Pillar 3 – Gradebook** – `score` + term/year/class on assessments; **Export gradebook (CSV)** on class roster (UTF-8 BOM).
-- [x] **Pillar 2 – RAG** – Pilot corpus [`src/data/gesCurriculumPilot.ts`](../../src/data/gesCurriculumPilot.ts); keyword retrieval [`gesRagService.ts`](../../src/services/gesRagService.ts); prompts cite GES IDs; UI in AnalysisResults + profile history.
+- [x] **Pillar 2 – RAG** – Pilot corpus [`src/data/gesCurriculumPilot.ts`](../../src/data/gesCurriculumPilot.ts); keyword retrieval [`curriculumRagService.ts`](../../src/services/curriculumRagService.ts); prompts cite GES IDs; UI in AnalysisResults + profile history.
 - [x] **Pillar 1 – Voice** – IndexedDB queue, Gemini audio transcribe + structured analysis, Firestore `voiceObservations`, recorder on Student Profile.
 
 ### Phase 3 checklist (MVP in repo)
