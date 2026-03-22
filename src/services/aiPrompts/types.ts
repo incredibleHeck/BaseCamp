@@ -35,7 +35,15 @@ export interface DiagnosticReport {
     instructions: string[];
   };
   smsDraft: string;
+  /** 0–100 mastery score from the model (canonical). */
   score: number;
+  /**
+   * Optional raw score when the pipeline exposes it separately from `score`.
+   * Routing uses `rawScore` when present, otherwise `score`.
+   */
+  rawScore?: number;
+  /** When `"mastered"`, triggers A* extension routing alongside high scores. */
+  masteryLevel?: string;
   gesAlignment?: GesAlignment | null;
   /**
    * Official Cambridge shorthand from the standard line (e.g. "1Nc2"), for judge-facing UI.
@@ -46,6 +54,11 @@ export interface DiagnosticReport {
   detectedStudentId?: string | null;
   /** Optional developmental / SEN screening signal from the model (not a medical diagnosis). */
   senWarningFlag?: SenWarningFlag;
+  /**
+   * A* / gifted-extension challenge (markdown). Populated when the learner shows very high mastery (e.g. ≥95%);
+   * distinct from remedial `lessonPlan`.
+   */
+  extensionActivity?: string;
 }
 
 export interface SenRiskReport {

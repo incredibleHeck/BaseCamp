@@ -1,4 +1,8 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
   CheckCircle2,
   Loader2,
@@ -8,8 +12,30 @@ import {
   Printer,
   Volume2,
   Check,
+  Trophy,
 } from 'lucide-react';
 import type { DiagnosticReport } from '../hooks/useAnalysisFlow';
+import type { Components } from 'react-markdown';
+
+const extensionMarkdownComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-xl font-bold text-amber-950 mt-4 first:mt-0 mb-2">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-lg font-bold text-indigo-950 mt-4 first:mt-0 mb-2">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1.5">{children}</h3>
+  ),
+  p: ({ children }) => <p className="text-sm text-gray-800 leading-relaxed my-2.5">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1 text-sm text-gray-800">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1 text-sm text-gray-800">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-amber-950">{children}</strong>,
+  code: ({ children }) => (
+    <code className="rounded bg-indigo-100/80 text-indigo-900 px-1.5 py-0.5 text-xs font-mono">{children}</code>
+  ),
+};
 
 export interface DiagnosticReportCardProps {
   data: DiagnosticReport;
@@ -44,6 +70,9 @@ export function DiagnosticReportCard({
   handleGenerateAudio,
   isGeneratingAudio,
 }: DiagnosticReportCardProps) {
+  const extensionMarkdown = data.extensionActivity?.trim() ?? '';
+  const showExtensionChallenge = extensionMarkdown.length > 0;
+
   return (
     <div className="flex-grow flex flex-col animate-in fade-in duration-500">
       <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4 mt-8 sm:mt-0">
@@ -123,50 +152,84 @@ export function DiagnosticReportCard({
             ))}
           </ul>
 
-          {!isGeneratingLesson && (
-            <button
-              type="button"
-              onClick={() => void handleGenerateLesson()}
-              className="inline-flex items-center justify-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors border border-yellow-200 w-full sm:w-auto"
-            >
-              <Sparkles size={16} />
-              {showLessonPlan || data.lessonPlan?.instructions?.length
-                ? 'Regenerate 5-Minute Remedial Activity'
-                : '✨ Generate 5-Minute Remedial Activity'}
-            </button>
-          )}
-
-          {isGeneratingLesson && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-4 bg-gray-50 rounded-lg border border-gray-200 w-fit">
-              <Loader2 size={16} className="animate-spin text-blue-600" />
-              AI generating localized lesson...
-            </div>
-          )}
-
-          {(showLessonPlan || data.lessonPlan) && (
-            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-5 animate-in fade-in slide-in-from-top-2">
-              <div className="flex justify-between items-start mb-3">
-                <h5 className="text-base font-bold text-gray-900">
-                  {displayLessonPlan?.title ?? 'Visualizing Concepts with Local Materials'}
-                </h5>
-                <Sparkles size={16} className="text-yellow-600" />
+          {showExtensionChallenge ? (
+            <div className="mt-4 rounded-2xl border-2 border-amber-400/70 bg-gradient-to-br from-amber-50 via-white to-indigo-50 p-6 shadow-md ring-1 ring-amber-200/40 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg ring-2 ring-amber-200/60">
+                  <Trophy className="h-7 w-7" strokeWidth={2} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-800/90 mb-1">
+                    Gifted learner extension
+                  </p>
+                  <h5 className="text-lg font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                    <Sparkles className="h-5 w-5 text-amber-500 shrink-0" />
+                    A* Extension Challenge
+                  </h5>
+                  <p className="text-sm text-amber-900/85 mt-2 leading-relaxed">
+                    Outstanding mastery on this assessment — celebrate the learner with this advanced,
+                    real-world challenge instead of a remedial activity.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-3 mb-4">
-                <p className="text-sm text-gray-800 font-medium">Instructions:</p>
-                <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">
-                  {displayInstructions.map((step, idx) => (
-                    <li key={idx}>{step}</li>
-                  ))}
-                </ol>
+              <div className="rounded-xl bg-white/90 border border-indigo-200/50 p-4 sm:p-5 shadow-inner [&_.katex]:text-inherit">
+                <ReactMarkdown
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={extensionMarkdownComponents}
+                >
+                  {extensionMarkdown}
+                </ReactMarkdown>
               </div>
-              <button
-                type="button"
-                onClick={handlePrintActivity}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1.5 min-h-[44px] hover:underline py-2"
-              >
-                <Printer size={14} /> Print Activity
-              </button>
             </div>
+          ) : (
+            <>
+              {!isGeneratingLesson && (
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateLesson()}
+                  className="inline-flex items-center justify-center gap-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-sm font-medium py-2.5 px-4 min-h-[44px] rounded-lg transition-colors border border-yellow-200 w-full sm:w-auto"
+                >
+                  <Sparkles size={16} />
+                  {showLessonPlan || data.lessonPlan?.instructions?.length
+                    ? 'Regenerate 5-Minute Remedial Activity'
+                    : '✨ Generate 5-Minute Remedial Activity'}
+                </button>
+              )}
+
+              {isGeneratingLesson && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 py-2 px-4 bg-gray-50 rounded-lg border border-gray-200 w-fit">
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                  AI generating localized lesson...
+                </div>
+              )}
+
+              {(showLessonPlan || data.lessonPlan) && (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-5 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex justify-between items-start mb-3">
+                    <h5 className="text-base font-bold text-gray-900">
+                      {displayLessonPlan?.title ?? 'Visualizing Concepts with Local Materials'}
+                    </h5>
+                    <Sparkles size={16} className="text-yellow-600" />
+                  </div>
+                  <div className="space-y-3 mb-4">
+                    <p className="text-sm text-gray-800 font-medium">Instructions:</p>
+                    <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">
+                      {displayInstructions.map((step, idx) => (
+                        <li key={idx}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePrintActivity}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1.5 min-h-[44px] hover:underline py-2"
+                  >
+                    <Printer size={14} /> Print Activity
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -195,7 +258,10 @@ export function DiagnosticReportCard({
               </>
             ) : isSaved ? (
               <>
-                <Check size={16} /> Update profile (overwrites saved lesson plan)
+                <Check size={16} />{' '}
+                {showExtensionChallenge
+                  ? 'Update profile (saved extension & report)'
+                  : 'Update profile (overwrites saved lesson plan)'}
               </>
             ) : (
               '+ Save to Longitudinal Learner Profile'

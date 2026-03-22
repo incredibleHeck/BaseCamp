@@ -11,7 +11,10 @@ import {
   analyzeWorksheetMultiple,
   analyzeManualEntry,
   buildStudentContextForHybridPrompt,
+  generateExtensionActivity,
   generateRemedialLessonPlan,
+  MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+  shouldUseExtensionActivity,
   type DiagnosticReport as AIDiagnosticReport,
   type GenerateLessonPlanOptions,
 } from '../services/aiPrompts';
@@ -285,25 +288,63 @@ export function useAnalysisFlow({
           studentGradeLevel: longitudinal.studentGradeLevel,
           dialectContext: effectiveDialect.trim() ? effectiveDialect : undefined,
         };
-        const enrichedLesson = await generateRemedialLessonPlan(
-          report.diagnosis,
-          report.remedialPlan,
-          subjectKey,
-          report.gesAlignment ?? undefined,
-          lessonPlanOpts
-        );
 
-        const mergedReport: AIDiagnosticReport = {
-          ...report,
-          lessonPlan: enrichedLesson ?? report.lessonPlan,
-        };
+        let mergedReport: AIDiagnosticReport;
+        if (shouldUseExtensionActivity(report)) {
+          const ext = await generateExtensionActivity({
+            report,
+            studentGradeLevel: lessonPlanOpts.studentGradeLevel,
+            dialectContext: lessonPlanOpts.dialectContext,
+            curriculumContext: hybridRag.formattedContext,
+          });
+          if (ext) {
+            mergedReport = {
+              ...report,
+              extensionActivity: ext,
+              lessonPlan: MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+            };
+          } else {
+            const enrichedLesson = await generateRemedialLessonPlan(
+              report.diagnosis,
+              report.remedialPlan,
+              subjectKey,
+              report.gesAlignment ?? undefined,
+              lessonPlanOpts
+            );
+            mergedReport = {
+              ...report,
+              lessonPlan: enrichedLesson ?? report.lessonPlan,
+            };
+          }
+        } else {
+          const enrichedLesson = await generateRemedialLessonPlan(
+            report.diagnosis,
+            report.remedialPlan,
+            subjectKey,
+            report.gesAlignment ?? undefined,
+            lessonPlanOpts
+          );
+          mergedReport = {
+            ...report,
+            lessonPlan: enrichedLesson ?? report.lessonPlan,
+          };
+        }
+
         const full = buildFullReport(mergedReport);
         setReportData(full);
-        if (enrichedLesson) setRegeneratedLessonPlan(enrichedLesson);
+        if (
+          mergedReport.lessonPlan &&
+          mergedReport.lessonPlan !== report.lessonPlan &&
+          mergedReport.lessonPlan.title !== MASTERY_EXTENSION_LESSON_PLACEHOLDER.title
+        ) {
+          setRegeneratedLessonPlan(mergedReport.lessonPlan);
+        } else if (mergedReport.extensionActivity) {
+          setRegeneratedLessonPlan(MASTERY_EXTENSION_LESSON_PLACEHOLDER);
+        }
         onAnalysisComplete?.();
         logWorkflow('analysis:hybrid_complete', { studentId });
 
-        const displayPlan = enrichedLesson ?? full.lessonPlan ?? { title: '', instructions: [] };
+        const displayPlan = full.lessonPlan ?? { title: '', instructions: [] };
         const playbookTitle = displayPlan?.title?.trim() || undefined;
         const type: Assessment['type'] = subjectKey === 'literacy' ? 'Literacy' : 'Numeracy';
 
@@ -316,6 +357,7 @@ export function useAnalysisFlow({
           masteryTags: full.masteryTags ?? [],
           remedialPlan: full.remedialPlan || '',
           lessonPlan: displayPlan,
+          extensionActivity: full.extensionActivity,
           playbookKey: playbookTitle ? playbookKeyFromLessonTitle(playbookTitle) : undefined,
           playbookTitle,
           score: typeof full.score === 'number' ? full.score : undefined,
@@ -516,17 +558,56 @@ export function useAnalysisFlow({
       dialectContext: dialectContext?.trim() || undefined,
     };
 
-    const result = await generateRemedialLessonPlan(
-      data.diagnosis,
-      data.remedialPlan,
-      subject,
-      reportData?.gesAlignment,
-      lessonPlanOpts
-    );
-    setIsGeneratingLesson(false);
-    if (result) {
-      setRegeneratedLessonPlan(result);
-      setShowLessonPlan(true);
+    try {
+      if (shouldUseExtensionActivity(data)) {
+        const rag = getCurriculumContext(
+          assessmentType || subject,
+          (data.diagnosis || '').slice(0, 800),
+          curriculumFramework,
+          gradeLevel
+        );
+        const ext = await generateExtensionActivity({
+          report: data as AIDiagnosticReport,
+          studentGradeLevel: lessonPlanOpts.studentGradeLevel,
+          dialectContext: lessonPlanOpts.dialectContext,
+          curriculumContext: rag.formattedContext,
+        });
+        if (ext && reportData) {
+          setReportData({
+            ...reportData,
+            extensionActivity: ext,
+            lessonPlan: MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+          });
+          setRegeneratedLessonPlan(MASTERY_EXTENSION_LESSON_PLACEHOLDER);
+          setShowLessonPlan(true);
+        } else {
+          const result = await generateRemedialLessonPlan(
+            data.diagnosis,
+            data.remedialPlan,
+            subject,
+            reportData?.gesAlignment,
+            lessonPlanOpts
+          );
+          if (result) {
+            setRegeneratedLessonPlan(result);
+            setShowLessonPlan(true);
+          }
+        }
+      } else {
+        const result = await generateRemedialLessonPlan(
+          data.diagnosis,
+          data.remedialPlan,
+          subject,
+          reportData?.gesAlignment,
+          lessonPlanOpts
+        );
+        if (result) {
+          setRegeneratedLessonPlan(result);
+          setShowLessonPlan(true);
+        }
+      }
+    } finally {
+      setIsGeneratingLesson(false);
     }
   };
 
@@ -594,6 +675,7 @@ export function useAnalysisFlow({
       masteryTags: data.masteryTags ?? [],
       remedialPlan: data.remedialPlan || '',
       lessonPlan: displayPlan,
+      extensionActivity: data.extensionActivity,
       playbookKey: playbookTitle ? playbookKeyFromLessonTitle(playbookTitle) : undefined,
       playbookTitle,
       score: typeof data.score === 'number' ? data.score : undefined,
@@ -616,7 +698,10 @@ export function useAnalysisFlow({
     setIsSaving(true);
     try {
       if (savedAssessmentId) {
-        await updateAssessment(savedAssessmentId, { lessonPlan: displayPlan });
+        await updateAssessment(savedAssessmentId, {
+          lessonPlan: displayPlan,
+          ...(data.extensionActivity !== undefined ? { extensionActivity: data.extensionActivity } : {}),
+        });
         setIsSaved(true);
       } else {
         const resultId = await saveAssessment(assessment);

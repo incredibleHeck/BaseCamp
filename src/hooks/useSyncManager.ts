@@ -5,8 +5,11 @@ import {
   analyzeWorksheet,
   analyzeWorksheetMultiple,
   buildStudentContextForHybridPrompt,
+  generateExtensionActivity,
   generateRemedialLessonPlan,
+  MASTERY_EXTENSION_LESSON_PLACEHOLDER,
   mimeFromDataUrl,
+  shouldUseExtensionActivity,
   type DiagnosticReport,
 } from '../services/aiPrompts';
 import { getQueue, removeFromQueue, QueuedAssessment } from '../services/offlineQueueService';
@@ -81,6 +84,7 @@ function buildAssessmentFromReport(
     masteryTags: report.masteryTags,
     remedialPlan: report.remedialPlan,
     lessonPlan: report.lessonPlan,
+    extensionActivity: report.extensionActivity,
     playbookKey: lessonTitle ? playbookKeyFromLessonTitle(lessonTitle) : undefined,
     playbookTitle: lessonTitle || undefined,
     score: typeof report.score === 'number' ? report.score : undefined,
@@ -334,18 +338,47 @@ export function useSyncManager(): SyncManagerState {
 
             if (report) {
               const dialect = item.dialectContext?.trim();
-              const enrichedLesson = await generateRemedialLessonPlan(
-                report.diagnosis,
-                report.remedialPlan,
-                item.assessmentType,
-                report.gesAlignment ?? undefined,
-                {
-                  studentGradeLevel: hybridStudentGrade,
-                  dialectContext: dialect ? dialect : undefined,
+              const lessonPlanOpts = {
+                studentGradeLevel: hybridStudentGrade,
+                dialectContext: dialect ? dialect : undefined,
+              };
+
+              if (shouldUseExtensionActivity(report)) {
+                const ext = await generateExtensionActivity({
+                  report,
+                  studentGradeLevel: lessonPlanOpts.studentGradeLevel,
+                  dialectContext: lessonPlanOpts.dialectContext,
+                  curriculumContext: rag.curriculumContext,
+                });
+                if (ext) {
+                  report = {
+                    ...report,
+                    extensionActivity: ext,
+                    lessonPlan: MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+                  };
+                } else {
+                  const enrichedLesson = await generateRemedialLessonPlan(
+                    report.diagnosis,
+                    report.remedialPlan,
+                    item.assessmentType,
+                    report.gesAlignment ?? undefined,
+                    lessonPlanOpts
+                  );
+                  if (enrichedLesson) {
+                    report = { ...report, lessonPlan: enrichedLesson };
+                  }
                 }
-              );
-              if (enrichedLesson) {
-                report = { ...report, lessonPlan: enrichedLesson };
+              } else {
+                const enrichedLesson = await generateRemedialLessonPlan(
+                  report.diagnosis,
+                  report.remedialPlan,
+                  item.assessmentType,
+                  report.gesAlignment ?? undefined,
+                  lessonPlanOpts
+                );
+                if (enrichedLesson) {
+                  report = { ...report, lessonPlan: enrichedLesson };
+                }
               }
             }
           } else {

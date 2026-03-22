@@ -24,6 +24,12 @@ export {
   type WorksheetRagOptions,
 } from './worksheetAnalysis';
 export { generateRemedialLessonPlan, type GenerateLessonPlanOptions } from './lessonPlan';
+export {
+  generateExtensionActivity,
+  shouldUseExtensionActivity,
+  MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+  type GenerateExtensionActivityOptions,
+} from './extensionActivity';
 export { generatePracticeWorksheet } from './worksheetGeneration';
 export {
   analyzeHybridTeacherDiagnostic,

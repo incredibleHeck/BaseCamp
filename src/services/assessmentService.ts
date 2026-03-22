@@ -20,6 +20,8 @@ export interface Assessment {
   masteryTags?: string[];
   remedialPlan?: string;
   lessonPlan?: { title: string; instructions: string[] };
+  /** A* / gifted extension (markdown); optional. */
+  extensionActivity?: string;
   /** Generated practice worksheet; overwritten when regenerated. */
   worksheet?: { title: string; questions: string[] };
   /** 0–100 mastery score from AI diagnostic (Phase 2 gradebook). */
@@ -48,7 +50,10 @@ export interface Assessment {
  */
 export const saveAssessment = async (data: Assessment): Promise<string | null> => {
   try {
-    const docRef = await addDoc(collection(db, 'assessments'), data);
+    const docRef = await addDoc(
+      collection(db, 'assessments'),
+      omitUndefinedFields(data as unknown as Record<string, unknown>) as Assessment
+    );
     return docRef.id;
   } catch (error) {
     console.error('Error adding assessment document: ', error);
@@ -67,6 +72,7 @@ export const updateAssessment = async (
     Pick<
       Assessment,
       | 'lessonPlan'
+      | 'extensionActivity'
       | 'remedialPlan'
       | 'status'
       | 'worksheet'
@@ -118,6 +124,7 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
         masteryTags: data.masteryTags ?? [],
         remedialPlan: data.remedialPlan || '',
         lessonPlan: data.lessonPlan || { title: '', instructions: [] },
+        extensionActivity: typeof data.extensionActivity === 'string' ? data.extensionActivity : undefined,
         worksheet: data.worksheet ?? undefined,
         score: typeof data.score === 'number' ? data.score : undefined,
         term: typeof data.term === 'string' ? data.term : undefined,
