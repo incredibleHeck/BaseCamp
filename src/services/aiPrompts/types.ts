@@ -89,6 +89,12 @@ export interface MathLessonPlanResult {
   translanguagingCues: string[];
 }
 
+/**
+ * Cambridge Primary English / literacy remedial micro-lesson (5-minute Oracy → Decoding → Application).
+ * Same JSON shape as `MathLessonPlanResult`; returned by `generateEnglishLessonPlan`.
+ */
+export type EnglishLessonPlanResult = MathLessonPlanResult;
+
 export interface WorksheetResult {
   title: string;
   questions: string[];
