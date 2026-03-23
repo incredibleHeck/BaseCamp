@@ -1,34 +1,10 @@
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import { FileText, Loader2, Printer, Sparkles, Trophy } from 'lucide-react';
-import type { Components } from 'react-markdown';
 import type { Assessment } from '../services/assessmentService';
 import type { WorksheetResult } from '../services/aiPrompts';
 import type { GapInterventionEntry } from '../hooks/useStudentProfileData';
 import { formatAssessmentDateTime } from '../utils/studentProfileHelpers';
-
-const extensionMarkdownComponents: Components = {
-  h1: ({ children }) => (
-    <h1 className="text-xl font-bold text-amber-950 mt-4 first:mt-0 mb-2">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-lg font-bold text-indigo-950 mt-4 first:mt-0 mb-2">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1.5">{children}</h3>
-  ),
-  p: ({ children }) => <p className="text-sm text-gray-800 leading-relaxed my-2.5">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1 text-sm text-gray-800">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1 text-sm text-gray-800">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-amber-950">{children}</strong>,
-  code: ({ children }) => (
-    <code className="rounded bg-indigo-100/80 text-indigo-900 px-1.5 py-0.5 text-xs font-mono">{children}</code>
-  ),
-};
+import { ExtensionActivityMarkdown } from './ExtensionActivityMarkdown';
 
 interface StudentProfileActionPlanViewProps {
   gapInterventions: GapInterventionEntry[];
@@ -69,8 +45,8 @@ export function StudentProfileActionPlanView({
       {gapInterventions.map(({ assessment, gaps }) => {
         const subject = assessment.type;
         const cardKey = `${gaps.join('|')}-${subject}`;
-        const extensionMarkdown = assessment.extensionActivity?.trim() ?? '';
-        const hasExtensionChallenge = extensionMarkdown.length > 0;
+        const extensionMarkdown = assessment.extensionActivity ?? '';
+        const hasExtensionChallenge = extensionMarkdown.trim().length > 0;
         const hasLesson =
           !!assessment.lessonPlan?.title?.trim() ||
           (assessment.lessonPlan?.instructions?.length ?? 0) > 0;
@@ -188,14 +164,8 @@ export function StudentProfileActionPlanView({
                     </p>
                   </div>
                 </div>
-                <div className="rounded-xl bg-white/95 border border-amber-200/60 p-4 sm:p-5 shadow-inner [&_.katex]:text-inherit">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={extensionMarkdownComponents}
-                  >
-                    {extensionMarkdown}
-                  </ReactMarkdown>
+                <div className="rounded-xl bg-white/95 border border-amber-200/60 p-4 sm:p-5 shadow-inner">
+                  <ExtensionActivityMarkdown markdown={extensionMarkdown} />
                 </div>
               </div>
             ) : hasLesson && assessment.lessonPlan ? (

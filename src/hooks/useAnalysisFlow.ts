@@ -368,6 +368,7 @@ export function useAnalysisFlow({
           gesObjectiveTitle: full.gesAlignment?.objectiveTitle,
           gesCurriculumExcerpt: full.gesAlignment?.excerpt,
           gesVerified: full.gesAlignment?.verified,
+          senWarningFlag: full.senWarningFlag ?? undefined,
           timestamp: Date.now(),
           status: 'Completed',
         };
@@ -686,6 +687,7 @@ export function useAnalysisFlow({
       gesObjectiveTitle: data.gesAlignment?.objectiveTitle,
       gesCurriculumExcerpt: data.gesAlignment?.excerpt,
       gesVerified: data.gesAlignment?.verified,
+      senWarningFlag: data.senWarningFlag ?? undefined,
       timestamp: Date.now(),
       status: 'Completed',
     };

@@ -1,7 +1,8 @@
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Assessment } from './assessmentService';
-import { getStudents } from './studentService';
+import { getStudentHistory } from './assessmentService';
+import { getStudents, type Student } from './studentService';
 
 export interface GradebookRow {
   studentId: string;
@@ -123,14 +124,122 @@ export function gradebookRowsToCsv(rows: GradebookRow[]): string {
   return lines.join('\r\n');
 }
 
-/** UTF-8 BOM for Excel-friendly CSV */
+/** UTF-8 BOM for Excel-friendly CSV; triggers browser download (legacy helper). */
 export function downloadGradebookCsv(filename: string, csvBody: string): void {
-  const bom = '\uFEFF';
-  const blob = new Blob([bom + csvBody], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  void triggerClientCsvDownload(filename, csvBody);
+}
+
+// --- Class summary gradebook (one row per learner) ---
+
+const SUMMARY_HEADERS = [
+  'Student Name',
+  'Student ID',
+  'Class',
+  'Last Numeracy Score',
+  'Last Literacy Score',
+  'SEN Warning Flags',
+] as const;
+
+function escapeCsvCell(value: string): string {
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function displayClassForStudent(student: Student, history: Assessment[]): string {
+  const g = student.grade?.trim();
+  if (g) return g;
+  for (const a of history) {
+    const c = a.classLabel?.trim();
+    if (c) return c;
+  }
+  return '';
+}
+
+/** History from {@link getStudentHistory} is newest-first. */
+function lastScoreForSubject(history: Assessment[], subject: 'Numeracy' | 'Literacy'): string {
+  for (const a of history) {
+    if (a.type === subject && typeof a.score === 'number' && Number.isFinite(a.score)) {
+      return String(Math.round(Math.max(0, Math.min(100, a.score))));
+    }
+  }
+  return '';
+}
+
+/** Distinct categories from medium/high SEN screening flags (most recent order preserved). */
+function activeSenCategoriesFromHistory(history: Assessment[]): string {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const a of history) {
+    const f = a.senWarningFlag;
+    if (!f?.category) continue;
+    if (f.severity !== 'medium' && f.severity !== 'high') continue;
+    if (seen.has(f.category)) continue;
+    seen.add(f.category);
+    ordered.push(f.category);
+  }
+  return ordered.join('; ');
+}
+
+function triggerClientCsvDownload(filename: string, csvBody: string): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    const blob = new Blob([`\uFEFF${csvBody}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.setAttribute('aria-hidden', 'true');
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (e) {
+    console.error('triggerClientCsvDownload', e);
+    return false;
+  }
+}
+
+/**
+ * Client-side CSV export: one row per student with last Numeracy/Literacy scores and SEN categories.
+ * @param classLabel When set, only students whose `grade` matches or who have an assessment with this `classLabel`.
+ * @returns `true` if the file download was triggered successfully.
+ */
+export async function exportClassGradebookCsv(classLabel?: string): Promise<boolean> {
+  try {
+    const students = await getStudents();
+    const needle = classLabel?.trim();
+    const lines: string[] = [SUMMARY_HEADERS.join(',')];
+
+    for (const s of students) {
+      if (!s.id?.trim()) continue;
+      const history = await getStudentHistory(s.id);
+
+      if (needle) {
+        const gradeMatch = (s.grade ?? '').trim() === needle;
+        const assessmentClassMatch = history.some((a) => (a.classLabel ?? '').trim() === needle);
+        if (!gradeMatch && !assessmentClassMatch) continue;
+      }
+
+      const row = [
+        escapeCsvCell(s.name ?? ''),
+        escapeCsvCell(s.id),
+        escapeCsvCell(displayClassForStudent(s, history)),
+        escapeCsvCell(lastScoreForSubject(history, 'Numeracy')),
+        escapeCsvCell(lastScoreForSubject(history, 'Literacy')),
+        escapeCsvCell(activeSenCategoriesFromHistory(history)),
+      ];
+      lines.push(row.join(','));
+    }
+
+    const csvBody = lines.join('\r\n');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Gradebook_${dateStr}.csv`;
+    return triggerClientCsvDownload(filename, csvBody);
+  } catch (error) {
+    console.error('exportClassGradebookCsv failed', error);
+    return false;
+  }
 }

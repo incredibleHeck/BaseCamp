@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "gen:english-g2": "node scripts/merge-english-g2-ndjson.mjs",
+    "gen:english-g3": "node scripts/merge-english-g3-ndjson.mjs"
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",

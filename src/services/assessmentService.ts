@@ -1,5 +1,19 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import type { SenWarningFlag } from './aiPrompts/types';
+
+const SEN_WARNING_SEVERITIES = new Set(['low', 'medium', 'high']);
+
+function parseSenWarningFlagFromDoc(raw: unknown): SenWarningFlag | undefined {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const sev = o.severity;
+  const category = o.category;
+  const reason = o.reason;
+  if (typeof sev !== 'string' || !SEN_WARNING_SEVERITIES.has(sev)) return undefined;
+  if (typeof category !== 'string' || typeof reason !== 'string') return undefined;
+  return { severity: sev as SenWarningFlag['severity'], category, reason };
+}
 
 /** Firestore rejects `undefined` anywhere in a document. */
 function omitUndefinedFields<T extends Record<string, unknown>>(data: T): Record<string, unknown> {
@@ -41,6 +55,8 @@ export interface Assessment {
   playbookTitle?: string;
   timestamp: Date | Timestamp | number;
   status: 'Pending' | 'In Progress' | 'Completed';
+  /** Model / screening hint persisted for gradebook & longitudinal views (non-clinical). */
+  senWarningFlag?: SenWarningFlag | null;
 }
 
 /**
@@ -138,6 +154,7 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
         playbookTitle: typeof data.playbookTitle === 'string' ? data.playbookTitle : undefined,
         timestamp: data.timestamp,
         status: data.status,
+        senWarningFlag: parseSenWarningFlagFromDoc(data.senWarningFlag),
       });
     });
     

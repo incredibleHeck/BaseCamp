@@ -392,8 +392,8 @@ export function AssessmentSetup({
             <option value="" disabled>
               Select assessment type...
             </option>
-            <option value="numeracy">Numeracy (Fractions & Decimals)</option>
-            <option value="literacy">Literacy (Reading Comprehension)</option>
+            <option value="numeracy">Numeracy (Math)</option>
+            <option value="literacy">Literacy (English)</option>
           </select>
         </div>
 

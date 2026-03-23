@@ -95,6 +95,7 @@ function buildAssessmentFromReport(
     gesObjectiveTitle: report.gesAlignment?.objectiveTitle,
     gesCurriculumExcerpt: report.gesAlignment?.excerpt,
     gesVerified: report.gesAlignment?.verified,
+    senWarningFlag: report.senWarningFlag ?? undefined,
     timestamp: Date.now(),
     status: 'Completed',
   };

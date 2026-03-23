@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, FileText, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp, Loader2, Download } from 'lucide-react';
+import {
+  Search,
+  UserPlus,
+  FileText,
+  FileSpreadsheet,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  TrendingUp,
+  Loader2,
+} from 'lucide-react';
 import { getStudents, Student } from '../services/studentService';
 import { getAssessmentSummaryByStudent } from '../services/assessmentService';
-import { buildGradebookRows, gradebookRowsToCsv, downloadGradebookCsv } from '../services/gradebookExport';
+import { exportClassGradebookCsv } from '../services/gradebookExport';
 import { AddStudentForm } from './AddStudentForm';
 
 function formatLastAssessment(lastDateMs: number): string {
@@ -48,20 +58,20 @@ export function ClassRoster({
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-  const [isExportingGradebook, setIsExportingGradebook] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleExportGradebook = async () => {
-    setIsExportingGradebook(true);
+    setIsExporting(true);
     try {
-      const rows = await buildGradebookRows(className);
-      const csv = gradebookRowsToCsv(rows);
-      const safeName = className.replace(/[^\w\-]+/g, '_').slice(0, 40);
-      downloadGradebookCsv(`basecamp-gradebook-${safeName}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      const ok = await exportClassGradebookCsv(className);
+      if (!ok) {
+        alert('Could not export gradebook. Check your connection and try again.');
+      }
     } catch (e) {
       console.error(e);
       alert('Could not export gradebook. Check your connection and try again.');
     } finally {
-      setIsExportingGradebook(false);
+      setIsExporting(false);
     }
   };
 
@@ -159,16 +169,17 @@ export function ClassRoster({
             </button>
             <button
               type="button"
-              onClick={handleExportGradebook}
-              disabled={isExportingGradebook}
-              className="flex items-center justify-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-2.5 sm:py-2 min-h-[44px] rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shrink-0 w-full sm:w-auto disabled:opacity-50"
+              onClick={() => void handleExportGradebook()}
+              disabled={isExporting}
+              aria-busy={isExporting}
+              className="flex items-center justify-center gap-2 bg-white text-gray-800 border border-gray-300 px-4 py-2.5 sm:py-2 min-h-[44px] rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shrink-0 w-full sm:w-auto disabled:opacity-50 disabled:pointer-events-none"
             >
-              {isExportingGradebook ? (
-                <Loader2 size={16} className="animate-spin" />
+              {isExporting ? (
+                <Loader2 size={16} className="animate-spin shrink-0" aria-hidden />
               ) : (
-                <Download size={16} />
+                <FileSpreadsheet size={16} className="shrink-0" aria-hidden />
               )}
-              Export gradebook (CSV)
+              Export Gradebook (.csv)
             </button>
           </div>
         </div>

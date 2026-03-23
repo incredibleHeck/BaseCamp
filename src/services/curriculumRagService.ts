@@ -1,5 +1,6 @@
 import { GES_CURRICULUM_PILOT, type GesCurriculumChunk } from '../data/gesCurriculumPilot';
-import { cambridgeMathTaxonomy, type CurriculumObjective } from '../data/cambridgeTaxonomy';
+import type { CurriculumObjective } from '../data/curriculumTypes';
+import { cambridgeMathTaxonomy } from '../data/cambridgeMathTaxonomy';
 import { cambridgeEnglishTaxonomy } from '../data/cambridgeEnglishTaxonomy';
 
 export type CurriculumFramework = 'GES' | 'Cambridge';

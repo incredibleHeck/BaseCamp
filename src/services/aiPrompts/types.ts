@@ -73,6 +73,22 @@ export interface LessonPlanResult {
   instructions: string[];
 }
 
+/**
+ * Cambridge Primary Mathematics remedial micro-lesson (5-minute CPA + TWM).
+ * Returned by `generateMathLessonPlan` (strict JSON from Gemini).
+ */
+export interface MathLessonPlanResult {
+  title: string;
+  /** Human-readable duration, e.g. "5 minutes". */
+  estimatedDuration: string;
+  /** Low-resource, locally available items (paper, pencil, found objects; empty array if none). */
+  materialsNeeded: string[];
+  /** Ordered steps; must include explicit Concrete → Pictorial → Abstract phases. */
+  instructions: string[];
+  /** Phrase-level cues for local language ↔ academic English (empty if no dialect). */
+  translanguagingCues: string[];
+}
+
 export interface WorksheetResult {
   title: string;
   questions: string[];

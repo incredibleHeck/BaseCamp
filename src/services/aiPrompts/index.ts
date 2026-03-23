@@ -6,6 +6,7 @@ export type {
   DiagnosticReport,
   GesAlignment,
   LessonPlanResult,
+  MathLessonPlanResult,
   SenWarningFlag,
   PortalPracticeItem,
   PortalPracticeRound,
@@ -24,6 +25,7 @@ export {
   type WorksheetRagOptions,
 } from './worksheetAnalysis';
 export { generateRemedialLessonPlan, type GenerateLessonPlanOptions } from './lessonPlan';
+export { generateMathLessonPlan } from './mathLessonPlan';
 export {
   generateExtensionActivity,
   shouldUseExtensionActivity,
