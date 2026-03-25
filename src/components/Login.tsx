@@ -1,20 +1,58 @@
 import React, { useState } from 'react';
-import { User, Building2, School, Loader2, Lock } from 'lucide-react';
+import { User, Building2, School, Loader2, Lock, KeyRound, BookOpen, GraduationCap, Building, HeartHandshake, ArrowLeft, MapPin } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { addStudent } from '../services/studentService';
-import { saveAssessment } from '../services/assessmentService';
-import { playbookKeyFromLessonTitle } from '../utils/playbookKey';
-import { DEMO_SCHOOLS } from '../config/organizationDefaults';
-import { evaluateAndPersistSenAlerts } from '../services/senAlertService';
+import { signInWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { seedDemoEnvironment } from '../utils/demoSeeder';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import { AnimatePresence, motion } from 'motion/react';
 
 type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
 
 export function Login() {
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<Role | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
-  const [seedDone, setSeedDone] = useState(false);
+  
+  // Access Code Login State
+  const [accessCode, setAccessCode] = useState('');
+  const [isCodeLoggingIn, setIsCodeLoggingIn] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  const handleAccessCodeLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = accessCode.trim().toLowerCase();
+    if (!code) return;
+
+    setIsCodeLoggingIn(true);
+    setCodeError(null);
+
+    try {
+      const q = query(collection(db, 'users'), where('username', '==', code));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setCodeError('Invalid Access Code. Please check with your Headteacher.');
+        setIsCodeLoggingIn(false);
+        return;
+      }
+
+      // We found the user document
+      const userDoc = querySnapshot.docs[0];
+      
+      // Store the resolved user ID in local storage for App.tsx to pick up
+      localStorage.setItem('accessCodeUserId', userDoc.id);
+      
+      // Sign in anonymously to establish a Firebase Auth session
+      await signInAnonymously(auth);
+      
+    } catch (error) {
+      console.error('Access code login failed:', error);
+      setCodeError('An error occurred during login. Please try again.');
+      setIsCodeLoggingIn(false);
+    }
+  };
 
   const handleDemoLogin = async (role: Role) => {
     setIsLoggingIn(role);
@@ -22,10 +60,8 @@ export function Login() {
     const password = 'HeckTeck@2026!';
     
     try {
-      // Mock role assignment by storing it in localStorage before signing in
       localStorage.setItem('mockUserRole', role);
       await signInWithEmailAndPassword(auth, email, password);
-      // App.tsx's onAuthStateChanged listener handles the rest
     } catch (error) {
       console.error(`Authentication failed for ${role}:`, error);
       setIsLoggingIn(null);
@@ -33,184 +69,15 @@ export function Login() {
     }
   };
 
-  const handleSeedDemoData = async () => {
-    if (seedDone || isSeeding) return;
+  const handleTriggerSeeder = async () => {
+    if (isSeeding) return;
     setIsSeeding(true);
     try {
-      // 1) Wipe existing students and assessments so the demo starts from a clean slate.
-      const assessmentsSnap = await getDocs(collection(db, 'assessments'));
-      await Promise.all(
-        assessmentsSnap.docs.map((d) => deleteDoc(doc(db, 'assessments', d.id)))
-      );
-
-      const senSnap = await getDocs(collection(db, 'senAlerts'));
-      await Promise.all(senSnap.docs.map((d) => deleteDoc(doc(db, 'senAlerts', d.id))));
-
-      const studentsSnap = await getDocs(collection(db, 'students'));
-      await Promise.all(
-        studentsSnap.docs.map((d) => deleteDoc(doc(db, 'students', d.id)))
-      );
-
-      // 2) Seed fresh demo students and assessments.
-      const demoStudents = [
-        { name: 'Kofi Boateng', grade: 'Primary 6A' },
-        { name: 'Esi Mensah', grade: 'Primary 6B' },
-        { name: 'Yaw Asante', grade: 'Primary 6C' },
-        { name: 'Ama Owusu', grade: 'Primary 6A' },
-        { name: 'Kwame Adjei', grade: 'Primary 6B' },
-      ];
-
-      const numeracyTemplates = [
-        {
-          diagnosis: 'Struggles with fraction equivalence when denominators differ.',
-          masteredConcepts: 'Understands basic addition and subtraction of whole numbers.',
-          gapTags: ['Fraction Equivalence', 'Word Problems'],
-          masteryTags: ['Addition', 'Subtraction'],
-          remedialPlan:
-            'Use bottle caps to group fractions with different denominators and show they represent the same quantity.',
-          lessonPlan: {
-            title: 'Bottle Cap Fractions',
-            instructions: [
-              'Give the learner 8 bottle caps and draw two fraction bars on paper.',
-              'Label one bar 1/2 and the other 2/4.',
-              'Ask the learner to group caps to show each fraction and discuss why they are the same amount.',
-            ],
-          },
-        },
-        {
-          diagnosis: 'Has difficulty performing multi-step word problems involving division with remainders.',
-          masteredConcepts: 'Comfortable with single-step multiplication facts up to 5×5.',
-          gapTags: ['Division Word Problems', 'Remainders'],
-          masteryTags: ['Multiplication Facts'],
-          remedialPlan:
-            'Use stones in small groups to act out sharing scenarios, asking the learner to explain what the remainder represents.',
-          lessonPlan: {
-            title: 'Sharing Stones Fairly',
-            instructions: [
-              'Give the learner 15 stones and draw 4 circles on the ground.',
-              'Ask them to share the stones equally among the circles.',
-              'Discuss how many are in each group and what to do with the leftover stones.',
-            ],
-          },
-        },
-      ];
-
-      const literacyTemplates = [
-        {
-          diagnosis: 'Struggles to infer meaning from short paragraphs even when decoding is accurate.',
-          masteredConcepts: 'Can read simple sentences with familiar vocabulary.',
-          gapTags: ['Reading Comprehension', 'Inference'],
-          masteryTags: ['Decoding'],
-          remedialPlan:
-            'Use a short local story and pause after each sentence to ask the learner to retell it in their own words.',
-          lessonPlan: {
-            title: 'Retell the Story',
-            instructions: [
-              'Choose a 4–5 sentence story in simple English.',
-              'Read each sentence aloud and ask the learner to explain it in their own words.',
-              'At the end, ask them to retell the full story without looking at the page.',
-            ],
-          },
-        },
-        {
-          diagnosis: 'Has difficulty sounding out multi-syllable words and often guesses based on the first letter.',
-          masteredConcepts: 'Recognises most single-syllable high-frequency words.',
-          gapTags: ['Phonics', 'Multi-syllable Words'],
-          masteryTags: ['High-frequency Words'],
-          remedialPlan:
-            'Break longer words into claps or beats and let the learner tap each syllable while reading it slowly.',
-          lessonPlan: {
-            title: 'Clap the Syllables',
-            instructions: [
-              'Write 5 common two- and three-syllable words on paper (e.g. “teacher”, “banana”).',
-              'Say each word together and clap for each syllable.',
-              'Ask the learner to read the word slowly while tapping each syllable with their finger.',
-            ],
-          },
-        },
-      ];
-
-      const studentIds: string[] = [];
-      for (let i = 0; i < demoStudents.length; i++) {
-        const s = demoStudents[i];
-        const school = DEMO_SCHOOLS[i % DEMO_SCHOOLS.length];
-        const id = await addStudent({
-          ...s,
-          schoolId: school.id,
-          schoolName: school.name,
-          circuitId: school.circuitId,
-        });
-        if (id) studentIds.push(id);
-      }
-
-      const now = Date.now();
-      const oneDayMs = 24 * 60 * 60 * 1000;
-
-      for (let index = 0; index < studentIds.length; index++) {
-        const studentId = studentIds[index];
-        const count = 2 + Math.floor(Math.random() * 3); // 2–4 assessments
-        for (let i = 0; i < count; i++) {
-          const daysAgo = 1 + i * 3;
-          const isNumeracy = i % 2 === 0;
-          const template = isNumeracy
-            ? numeracyTemplates[(index + i) % numeracyTemplates.length]
-            : literacyTemplates[(index + i) % literacyTemplates.length];
-          const title = template.lessonPlan.title;
-          const baseScore = 35 + ((index + i) % 5) * 8;
-          const scoreDelta = i * 5;
-          const score = Math.min(95, baseScore + scoreDelta);
-
-          await saveAssessment({
-            studentId,
-            type: isNumeracy ? 'Numeracy' : 'Literacy',
-            diagnosis: template.diagnosis,
-            masteredConcepts: template.masteredConcepts,
-            gapTags: template.gapTags,
-            masteryTags: template.masteryTags,
-            remedialPlan: template.remedialPlan,
-            lessonPlan: template.lessonPlan,
-            playbookKey: playbookKeyFromLessonTitle(title),
-            playbookTitle: title,
-            score,
-            timestamp: now - daysAgo * oneDayMs,
-            status: 'Completed',
-          });
-        }
-      }
-
-      // One learner: three most recent numeracy rows with screening pattern (demo SEN inbox)
-      const senStudent = studentIds[studentIds.length - 1];
-      if (senStudent) {
-        for (let j = 0; j < 3; j++) {
-          const title = 'Number Line Estimation';
-          await saveAssessment({
-            studentId: senStudent,
-            type: 'Numeracy',
-            diagnosis: 'Shows persistent difficulty comparing magnitudes on a number line; possible number sense risk.',
-            masteredConcepts: 'Can count aloud to 20.',
-            gapTags: ['Number sense', 'Estimation'],
-            masteryTags: ['Counting'],
-            remedialPlan: 'Use a physical rope with marks and walk the number line together.',
-            lessonPlan: {
-              title,
-              instructions: ['Mark 0 and 10 on the ground.', 'Ask the learner to place a stone at “about 6”.', 'Discuss bigger/smaller.'],
-            },
-            playbookKey: playbookKeyFromLessonTitle(title),
-            playbookTitle: title,
-            score: 38 + j,
-            // More recent than seeded history so the rule engine picks these three
-            timestamp: now - (3 - j) * 120_000,
-            status: 'Completed',
-          });
-        }
-        await evaluateAndPersistSenAlerts(senStudent);
-      }
-
-      setSeedDone(true);
-      alert('Demo students and assessments seeded successfully.');
+      await seedDemoEnvironment();
+      alert('Demo environment successfully seeded.');
     } catch (error) {
-      console.error('Seeding demo data failed', error);
-      alert('Seeding demo data failed. Check the console for details.');
+      console.error('Seeding failed:', error);
+      alert('Seeding failed. See console.');
     } finally {
       setIsSeeding(false);
     }
@@ -218,7 +85,6 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
-      {/* Decorative background elements for a polished look */}
       <div className="absolute top-0 left-0 w-full h-96 bg-amber-500 transform -skew-y-6 -translate-y-32 z-0"></div>
 
       <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden z-10">
@@ -231,67 +97,156 @@ export function Login() {
             <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">by HeckTeck</p>
           </div>
           
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <h2 className="text-lg font-semibold text-gray-800 mb-6 text-center">Select your access level</h2>
-            <div className="space-y-3">
-              <RoleCard 
-                role="teacher" 
-                icon={<User />} 
-                title="Teacher Portal" 
-                desc="Manage classroom & assessments" 
-                onClick={() => handleDemoLogin('teacher')}
-                isLoading={isLoggingIn === 'teacher'}
-                disabled={isLoggingIn !== null}
-              />
-              <RoleCard 
-                role="headteacher" 
-                icon={<School />} 
-                title="Headteacher Portal" 
-                desc="Monitor school performance" 
-                onClick={() => handleDemoLogin('headteacher')}
-                isLoading={isLoggingIn === 'headteacher'}
-                disabled={isLoggingIn !== null}
-              />
-              <RoleCard 
-                role="district" 
-                icon={<Building2 />} 
-                title="District Director Portal" 
-                desc="View regional analytics" 
-                onClick={() => handleDemoLogin('district')}
-                isLoading={isLoggingIn === 'district'}
-                disabled={isLoggingIn !== null}
-              />
-              <RoleCard
-                role="sen_coordinator"
-                icon={<User />}
-                title="SEN Coordinator"
-                desc="Screening inbox + district context"
-                onClick={() => handleDemoLogin('sen_coordinator')}
-                isLoading={isLoggingIn === 'sen_coordinator'}
-                disabled={isLoggingIn !== null}
-              />
-              <RoleCard
-                role="circuit_supervisor"
-                icon={<School />}
-                title="Circuit Supervisor"
-                desc="Circuit risk map + scoped analytics"
-                onClick={() => handleDemoLogin('circuit_supervisor')}
-                isLoading={isLoggingIn === 'circuit_supervisor'}
-                disabled={isLoggingIn !== null}
-              />
-              <RoleCard
-                role="super_admin"
-                icon={<Building2 />}
-                title="MoE / Super Admin"
-                desc="Full enterprise tabs (demo)"
-                onClick={() => handleDemoLogin('super_admin')}
-                isLoading={isLoggingIn === 'super_admin'}
-                disabled={isLoggingIn !== null}
-              />
-            </div>
+          <AnimatePresence mode="wait">
+            {!selectedRole ? (
+              <motion.div
+                key="role-selection"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <h2 className="text-lg font-semibold text-zinc-800 mb-6 text-center">Select your portal</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <PortalSelectCard
+                    icon={<BookOpen />}
+                    title="Teacher"
+                    onClick={() => setSelectedRole('teacher')}
+                  />
+                  <PortalSelectCard
+                    icon={<GraduationCap />}
+                    title="Headteacher"
+                    onClick={() => setSelectedRole('headteacher')}
+                  />
+                  <PortalSelectCard
+                    icon={<Building />}
+                    title="District Director"
+                    onClick={() => setSelectedRole('district')}
+                  />
+                  <PortalSelectCard
+                    icon={<HeartHandshake />}
+                    title="SEN Coordinator"
+                    onClick={() => setSelectedRole('sen_coordinator')}
+                  />
+                </div>
+                
+                {/* Keep Super Admin and Circuit Supervisor accessible via a subtle link or smaller buttons if needed, but for now we'll add them below the grid as secondary options */}
+                <div className="mt-6 pt-6 border-t border-zinc-100 flex justify-center gap-4">
+                  <button 
+                    onClick={() => setSelectedRole('circuit_supervisor')}
+                    className="text-xs text-zinc-500 hover:text-zinc-800 transition-colors"
+                  >
+                    Circuit Supervisor
+                  </button>
+                  <span className="text-zinc-300">•</span>
+                  <button 
+                    onClick={() => setSelectedRole('super_admin')}
+                    className="text-xs text-zinc-500 hover:text-zinc-800 transition-colors"
+                  >
+                    Super Admin
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="login-form"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center mb-6">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => {
+                      setSelectedRole(null);
+                      setCodeError(null);
+                      setAccessCode('');
+                    }}
+                    className="text-zinc-500 hover:text-zinc-900 -ml-2"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    Back to roles
+                  </Button>
+                </div>
 
-            {/* Seed demo button hidden for demo/pitch day — do not show to judges */}
-          </div>
+                {selectedRole === 'teacher' ? (
+                  <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-soft">
+                    <h2 className="text-base font-semibold text-zinc-800 mb-4 flex items-center gap-2">
+                      <KeyRound className="w-5 h-5 text-indigo-600" />
+                      Teacher Access
+                    </h2>
+                    <p className="text-sm text-zinc-500 mb-6">
+                      Enter the access code provided by your Headteacher.
+                    </p>
+                    <form onSubmit={handleAccessCodeLogin} className="space-y-4">
+                      <div>
+                        <Input
+                          type="text"
+                          placeholder="e.g. adjoa.mensah.sch123"
+                          value={accessCode}
+                          onChange={(e) => setAccessCode(e.target.value)}
+                          disabled={isCodeLoggingIn}
+                          className="bg-white"
+                          autoComplete="username"
+                          autoFocus
+                        />
+                      </div>
+                      {codeError && (
+                        <p className="text-sm text-red-600 font-medium">{codeError}</p>
+                      )}
+                      <Button 
+                        type="submit" 
+                        className="w-full" 
+                        disabled={!accessCode.trim() || isCodeLoggingIn}
+                      >
+                        {isCodeLoggingIn ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Logging in...
+                          </>
+                        ) : (
+                          'Log In'
+                        )}
+                      </Button>
+                    </form>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-soft text-center">
+                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-zinc-100 text-indigo-600">
+                      {selectedRole === 'headteacher' && <GraduationCap className="w-6 h-6" />}
+                      {selectedRole === 'district' && <Building className="w-6 h-6" />}
+                      {selectedRole === 'sen_coordinator' && <HeartHandshake className="w-6 h-6" />}
+                      {selectedRole === 'circuit_supervisor' && <MapPin className="w-6 h-6" />}
+                      {selectedRole === 'super_admin' && <Lock className="w-6 h-6" />}
+                    </div>
+                    <h2 className="text-lg font-semibold text-zinc-900 mb-2 capitalize">
+                      {selectedRole.replace('_', ' ')} Login
+                    </h2>
+                    <p className="text-sm text-zinc-500 mb-6">
+                      Secure access for administrative personnel.
+                    </p>
+                    <Button 
+                      onClick={() => handleDemoLogin(selectedRole)}
+                      disabled={isLoggingIn !== null}
+                      className="w-full"
+                    >
+                      {isLoggingIn === selectedRole ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Authenticating...
+                        </>
+                      ) : (
+                        'Continue to Dashboard'
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         
         <div className="bg-gray-50 px-8 py-4 border-t border-gray-100 text-center">
@@ -301,61 +256,41 @@ export function Login() {
           <p className="text-[10px] text-gray-400">
             Protected by end-to-end encryption • Ghana Data Protection Compliant
           </p>
+          <div className="mt-4">
+            <button
+              onClick={handleTriggerSeeder}
+              disabled={isSeeding}
+              className="text-[10px] text-gray-300 hover:text-gray-500 uppercase tracking-widest transition-colors disabled:opacity-50"
+            >
+              {isSeeding ? 'Seeding...' : 'Seed Demo Data'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Sub-component for clean mapping
-function RoleCard({ 
-  role, 
+function PortalSelectCard({ 
   icon, 
   title, 
-  desc, 
-  onClick, 
-  isLoading,
-  disabled
+  onClick 
 }: { 
-  role: string, 
   icon: React.ReactNode, 
   title: string, 
-  desc: string, 
-  onClick: () => void,
-  isLoading: boolean,
-  disabled: boolean
+  onClick: () => void 
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
-      className={`w-full group relative flex items-center p-4 border rounded-xl transition-all duration-200 text-left bg-white ${
-        disabled 
-          ? 'opacity-60 cursor-not-allowed border-gray-200' 
-          : 'border-gray-200 hover:border-blue-500 hover:shadow-md'
-      }`}
+      className="group flex flex-col items-center justify-center p-6 bg-white border border-zinc-200/80 rounded-2xl shadow-sm hover:shadow-soft hover:border-indigo-500/50 transition-all duration-300 text-center"
     >
-      <div className={`p-3 rounded-lg transition-colors ${
-        isLoading 
-          ? 'bg-blue-100 text-blue-600' 
-          : disabled 
-            ? 'bg-gray-100 text-gray-400' 
-            : 'bg-gray-50 text-gray-600 group-hover:bg-blue-50 group-hover:text-blue-600'
-      }`}>
-        {isLoading ? (
-          <Loader2 className="w-6 h-6 animate-spin" />
-        ) : (
-          React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-6 h-6" })
-        )}
+      <div className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors mb-3">
+        {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-6 h-6" })}
       </div>
-      <div className="ml-4 flex-grow">
-        <p className={`text-base font-bold ${disabled && !isLoading ? 'text-gray-500' : 'text-gray-900'}`}>
-          {title}
-        </p>
-        <p className={`text-xs ${disabled && !isLoading ? 'text-gray-400' : 'text-gray-500'}`}>
-          {isLoading ? 'Authenticating...' : desc}
-        </p>
-      </div>
+      <span className="text-sm font-semibold text-zinc-900 group-hover:text-indigo-900 transition-colors">
+        {title}
+      </span>
     </button>
   );
 }
