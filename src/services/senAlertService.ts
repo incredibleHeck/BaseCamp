@@ -12,7 +12,7 @@ import type { Assessment } from './assessmentService';
 import { getStudentHistory } from './assessmentService';
 import { getStudent } from './studentService';
 import { DEFAULT_DISTRICT_ID } from '../config/organizationDefaults';
-import type { SenWarningFlag } from './aiPrompts/types';
+import type { SenWarningFlag } from './ai/aiPrompts/types';
 
 export const SEN_RULE_NUMERACY_PATTERN_V1 = 'numeracy-sen-pattern-consecutive-3';
 /** Created when the longitudinal diagnostic model returns medium/high {@link SenWarningFlag}. */

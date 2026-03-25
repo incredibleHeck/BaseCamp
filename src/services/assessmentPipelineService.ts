@@ -9,10 +9,10 @@ import {
   MASTERY_EXTENSION_LESSON_PLACEHOLDER,
   type DiagnosticReport as AIDiagnosticReport,
   shouldUseExtensionActivity,
-} from './aiPrompts';
+} from './ai/aiPrompts';
 import { getStudentHistory, type Assessment } from './assessmentService';
 import { getStudent } from './studentService';
-import { getCurriculumContext, type CurriculumFramework } from './curriculumRagService';
+import { getCurriculumContext, type CurriculumFramework } from './ai/curriculumRagService';
 import {
   buildRecentHistorySummaryForLongitudinalPrompt,
   parseGradeLevelFromStudentRecord,

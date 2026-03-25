@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { transcribeAndAnalyzeVoiceObservation } from '../services/aiPrompts';
+import { transcribeAndAnalyzeVoiceObservation } from '../services/ai/aiPrompts';
 import {
   getVoiceObservationQueue,
   patchVoiceObservationQueueItem,
@@ -80,3 +80,4 @@ export function useVoiceObservationSync(isOnline: boolean) {
 
   return { voiceQueueLength, refreshVoiceQueue, processVoiceQueue };
 }
+

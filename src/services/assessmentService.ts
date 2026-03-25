@@ -1,6 +1,6 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { SenWarningFlag } from './aiPrompts/types';
+import type { SenWarningFlag } from './ai/aiPrompts/types';
 import type { Assessment } from '../types/domain';
 
 export type { Assessment };

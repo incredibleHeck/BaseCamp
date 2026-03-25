@@ -8,9 +8,9 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import { addToQueue, StorageQuotaExceededError } from '../services/offlineQueueService';
+import { addToQueue, StorageQuotaExceededError } from '../services/core/offlineQueueService';
 import { logWorkflow } from '../utils/workflowLog';
-import type { AssessmentData, AssessmentSetupSnapshot } from '../components/AssessmentSetup';
+import type { AssessmentData, AssessmentSetupSnapshot } from '../features/assessments/AssessmentSetup';
 import type {
   AnalysisStatus,
   AnalyzeHybridAssessmentFn,
@@ -300,3 +300,4 @@ export function useAssessment(): AssessmentContextValue {
 }
 
 export type { AnalysisStatus };
+

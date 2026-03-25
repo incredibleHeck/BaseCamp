@@ -4,7 +4,7 @@
  */
 
 import type { Timestamp } from 'firebase/firestore';
-import type { SenWarningFlag } from '../services/aiPrompts/types';
+import type { SenWarningFlag } from '../services/ai/aiPrompts/types';
 
 /** First-class class/cohort for grouping students within a school (NoSQL-friendly). */
 export interface Cohort {

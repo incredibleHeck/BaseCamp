@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle, ChevronUp } from 'lucide-react';
-import type { UserData } from './Header';
+import type { UserData } from './layout/Header';
 import {
   listSenAlertsForDistrict,
   updateSenAlertStatus,

@@ -1,7 +1,7 @@
 import {StrictMode, useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import {StudentPortalApp} from './components/StudentPortalApp.tsx';
+import {StudentPortalApp} from './features/students/StudentPortalApp.tsx';
 import './index.css';
 
 function Root() {

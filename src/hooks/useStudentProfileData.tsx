@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getStudentHistory, type Assessment } from '../services/assessmentService';
 import { getStudent, getStudents, type Student as StudentModel } from '../services/studentService';
-import type { WorksheetResult } from '../services/aiPrompts';
+import type { WorksheetResult } from '../services/ai/aiPrompts';
 import {
   calculateTrajectory,
   getReadinessDetails,
@@ -145,3 +145,4 @@ export function useStudentProfileData(initialStudentId?: string) {
     predictiveReadinessSummary,
   };
 }
+

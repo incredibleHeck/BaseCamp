@@ -1,5 +1,5 @@
 import type { Assessment } from './assessmentService';
-import { generateWeeklyParentDigestEnglish, translateParentDigest } from './aiPrompts';
+import { generateWeeklyParentDigestEnglish, translateParentDigest } from './ai/aiPrompts';
 
 export interface ParentDigestResult {
   english: string;

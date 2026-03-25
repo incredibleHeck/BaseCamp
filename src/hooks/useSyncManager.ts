@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mimeFromDataUrl, type DiagnosticReport } from '../services/aiPrompts';
+import { mimeFromDataUrl, type DiagnosticReport } from '../services/ai/aiPrompts';
 import {
   getQueue,
   removeFromQueue,
   updateInQueue,
   type QueuedAssessment,
-} from '../services/offlineQueueService';
+} from '../services/core/offlineQueueService';
 import { saveAssessment, type Assessment } from '../services/assessmentService';
 import { getStudent, getStudents } from '../services/studentService';
 import {
@@ -383,3 +383,5 @@ export function useSyncManager(connectivityOnline: boolean): SyncManagerState {
     processQueue,
   };
 }
+
+

@@ -7,7 +7,7 @@ import {
   generatePortalAccessCode,
 } from '../services/studentService';
 import { buildWeeklyParentDigest } from '../services/parentDigestService';
-import { queueWeeklyDigestWhatsApp } from '../services/whatsappConnectService';
+import { queueWeeklyDigestWhatsApp } from '../services/core/whatsappConnectService';
 import { GUARDIAN_MESSAGE_LANGUAGE_OPTIONS } from '../constants/studentLanguages';
 
 interface Phase4FamilyConnectCardProps {
@@ -336,3 +336,4 @@ export function Phase4FamilyConnectCard({
     </div>
   );
 }
+

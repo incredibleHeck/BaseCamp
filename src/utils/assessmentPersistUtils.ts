@@ -1,4 +1,4 @@
-import type { DiagnosticReport } from '../services/aiPrompts';
+import type { DiagnosticReport } from '../services/ai/aiPrompts';
 import type { Assessment } from '../types/domain';
 
 /** Prefer rawScore for rubric bands when the model supplies it; else canonical score (matches extension routing). */
@@ -50,3 +50,4 @@ export function curriculumFieldsFromDiagnosticReport(
     ...(rawScore !== undefined ? { rawScore } : {}),
   };
 }
+

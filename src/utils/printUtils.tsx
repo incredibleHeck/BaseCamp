@@ -5,7 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import katexCss from 'katex/dist/katex.min.css?inline';
 import type { Assessment } from '../services/assessmentService';
-import type { WorksheetResult } from '../services/aiPrompts';
+import type { WorksheetResult } from '../services/ai/aiPrompts';
 import { escapeHtml } from './studentProfileHelpers';
 
 export function renderMarkdownMathToHtml(markdown: string): string {
@@ -116,3 +116,4 @@ export function printWorksheetToWindow(worksheet: { gap: string; data: Worksheet
     alert('Please allow pop-ups to print the worksheet.');
   }
 }
+

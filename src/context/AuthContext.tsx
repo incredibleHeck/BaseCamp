@@ -1,6 +1,6 @@
 import React, { createContext, useContext } from 'react';
 
-import type { UserData } from '../components/Header';
+import type { UserData } from '../components/layout/Header';
 
 type AuthContextValue = {
   user: UserData;
@@ -29,3 +29,4 @@ export function useAuth(): AuthContextValue {
   }
   return ctx;
 }
+

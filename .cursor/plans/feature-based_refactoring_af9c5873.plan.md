@@ -4,31 +4,31 @@ overview: Refactor the flat `src/components` and `src/services` directories into
 todos:
   - id: create-feature-dirs
     content: Create feature directories (dashboards, students, assessments, schools, ai-tools)
-    status: pending
+    status: completed
   - id: move-dashboards
     content: Move dashboard components and update imports
-    status: pending
+    status: completed
   - id: move-students
     content: Move student components and update imports
-    status: pending
+    status: completed
   - id: move-assessments
     content: Move assessment components and update imports
-    status: pending
+    status: completed
   - id: move-schools
     content: Move school components and update imports
-    status: pending
+    status: completed
   - id: move-ai-tools
     content: Move AI tool components and update imports
-    status: pending
+    status: completed
   - id: organize-layout
     content: Organize shared layout components and update imports
-    status: pending
+    status: completed
   - id: organize-services
     content: Organize services into analytics, ai, and core subdirectories and update imports
-    status: pending
+    status: completed
   - id: verify-build
     content: Run build/typecheck to verify all imports are correct
-    status: pending
+    status: completed
 isProject: false
 ---
 

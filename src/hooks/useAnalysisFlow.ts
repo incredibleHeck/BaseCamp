@@ -7,8 +7,8 @@ import {
   shouldUseExtensionActivity,
   type DiagnosticReport as AIDiagnosticReport,
   type GenerateLessonPlanOptions,
-} from '../services/aiPrompts';
-import { addToQueue, StorageQuotaExceededError } from '../services/offlineQueueService';
+} from '../services/ai/aiPrompts';
+import { addToQueue, StorageQuotaExceededError } from '../services/core/offlineQueueService';
 import {
   getDefaultAcademicYear,
   getDefaultTerm,
@@ -20,7 +20,7 @@ import { getStudent } from '../services/studentService';
 import { evaluateAndPersistSenAlerts } from '../services/senAlertService';
 import { logWorkflow, logWorkflowDebug } from '../utils/workflowLog';
 import { useAssessment } from '../context/AssessmentContext';
-import { getCurriculumContext, type CurriculumFramework } from '../services/curriculumRagService';
+import { getCurriculumContext, type CurriculumFramework } from '../services/ai/curriculumRagService';
 import {
   executeFullAssessmentPipeline,
   loadLongitudinalPromptFields,
@@ -592,3 +592,5 @@ export function useAnalysisFlow() {
     analyzeHybridAssessment,
   };
 }
+
+

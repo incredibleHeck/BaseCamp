@@ -1,4 +1,4 @@
-import type { UserData } from '../components/Header';
+import type { UserData } from '../components/layout/Header';
 
 export type EnterpriseRole = UserData['role'];
 
@@ -73,3 +73,4 @@ export function defaultViewForRole(role: EnterpriseRole): string {
       return 'class-roster';
   }
 }
+

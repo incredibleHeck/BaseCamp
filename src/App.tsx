@@ -16,30 +16,30 @@ import {
   UsersRound,
   Building,
 } from 'lucide-react';
-import { Header, type UserData } from './components/Header';
-import { AssessmentSetup } from './components/AssessmentSetup';
-import { AnalysisResults } from './components/AnalysisResults';
-import { StudentProfile } from './components/StudentProfile';
-import { ClassRoster } from './components/ClassRoster';
-import { DistrictDashboard } from './components/DistrictDashboard';
-import { HeadmasterDashboard } from './components/HeadmasterDashboard';
-import { CohortManager } from './components/CohortManager';
-import { CircuitHeatmapPanel } from './components/CircuitHeatmapPanel';
+import { Header, type UserData } from './components/layout/Header';
+import { AssessmentSetup } from './features/assessments/AssessmentSetup';
+import { AnalysisResults } from './features/assessments/AnalysisResults';
+import { StudentProfile } from './features/students/StudentProfile';
+import { ClassRoster } from './features/students/ClassRoster';
+import { DistrictDashboard } from './features/dashboards/DistrictDashboard';
+import { HeadmasterDashboard } from './features/dashboards/HeadmasterDashboard';
+import { CohortManager } from './features/schools/CohortManager';
+import { CircuitHeatmapPanel } from './features/assessments/CircuitHeatmapPanel';
 import { SenAlertsInbox } from './components/SenAlertsInbox';
-import { PlaybookLiftLeaderboard } from './components/PlaybookLiftLeaderboard';
-import { FineTunePilotPanel } from './components/FineTunePilotPanel';
-import { TeacherDirectory } from './components/TeacherDirectory';
-import { StaffDirectory } from './components/StaffDirectory';
-import { SchoolDirectory } from './components/SchoolDirectory';
+import { PlaybookLiftLeaderboard } from './features/dashboards/PlaybookLiftLeaderboard';
+import { FineTunePilotPanel } from './features/ai-tools/FineTunePilotPanel';
+import { TeacherDirectory } from './features/schools/TeacherDirectory';
+import { StaffDirectory } from './features/schools/StaffDirectory';
+import { SchoolDirectory } from './features/schools/SchoolDirectory';
 import { enterpriseNavForRole, defaultViewForRole } from './auth/enterpriseAccess';
-import { PendingAnalyses } from './components/PendingAnalyses';
+import { PendingAnalyses } from './features/assessments/PendingAnalyses';
 import { Login } from './components/Login';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import ErrorBoundary from './components/ErrorBoundary';
+import ErrorBoundary from './components/layout/ErrorBoundary';
 import { OfflineQueuedModal } from './components/OfflineQueuedModal';
-import { removeFromQueue, type QueuedAssessment } from './services/offlineQueueService';
+import { removeFromQueue, type QueuedAssessment } from './services/core/offlineQueueService';
 import { useSyncManager } from './hooks/useSyncManager';
 import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
@@ -708,3 +708,4 @@ function SidebarNavLink({
     </button>
   );
 }
+
