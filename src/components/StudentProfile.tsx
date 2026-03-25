@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Download, User, LineChart, ClipboardList, Loader2, AlertTriangle } from 'lucide-react';
+import { Download, User, Users, LineChart, ClipboardList, Loader2, AlertTriangle } from 'lucide-react';
 import { updateAssessment, type Assessment } from '../services/assessmentService';
 import {
   analyzeLongitudinalSEN,
-  generateRemedialLessonPlan,
   generatePracticeWorksheet,
+  generateSubjectRoutedLessonPlan,
+  type DiagnosticReport,
   type SenRiskReport,
   type WorksheetResult,
 } from '../services/aiPrompts';
+import { getCurriculumContext, type CurriculumFramework } from '../services/curriculumRagService';
 import { getStudent } from '../services/studentService';
 import type { UserData } from './Header';
+import { resolveLessonTranslanguagingDialect } from '../constants/studentLanguages';
 import { Phase4FamilyConnectCard } from './Phase4FamilyConnectCard';
+import { StudentRecordCard } from './StudentRecordCard';
 import { useStudentProfileData } from '../hooks/useStudentProfileData';
 import { exportStudentProfilePdf } from '../utils/pdfExport';
 import { parseGradeLevelFromStudentRecord } from '../utils/longitudinalPromptHelpers';
@@ -22,6 +26,12 @@ import { WorksheetModal } from './WorksheetModal';
 interface StudentProfileProps {
   studentId?: string;
   userRole?: UserData['role'];
+}
+
+function inferCurriculumFrameworkFromAssessment(a: Assessment): CurriculumFramework {
+  const id = a.gesObjectiveId?.trim() ?? '';
+  if (id.startsWith('MATH-') || id.startsWith('ENG-')) return 'Cambridge';
+  return 'GES';
 }
 
 export function StudentProfile({ studentId: initialStudentId, userRole }: StudentProfileProps) {
@@ -53,7 +63,9 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     predictiveReadinessSummary,
   } = useStudentProfileData(initialStudentId);
 
-  const [viewMode, setViewMode] = useState<'analytical' | 'action-plan'>('analytical');
+  const [viewMode, setViewMode] = useState<'analytical' | 'action-plan' | 'family-record'>('analytical');
+
+  const canEditStudentProfile = userRole === 'teacher';
   const [isExporting, setIsExporting] = useState(false);
   const [regeneratingAssessmentId, setRegeneratingAssessmentId] = useState<string | null>(null);
   const [generatingSheetFor, setGeneratingSheetFor] = useState<string | null>(null);
@@ -100,7 +112,7 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     if (!assessment.id) return;
     setRegeneratingAssessmentId(assessment.id);
     try {
-      const subject = assessment.type === 'Literacy' ? 'Literacy' : 'Numeracy';
+      const atKey = assessment.type === 'Literacy' ? 'literacy' : 'numeracy';
       const gesAlign =
         assessment.gesObjectiveId != null && assessment.gesObjectiveId !== ''
           ? {
@@ -110,15 +122,33 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
               verified: assessment.gesVerified ?? false,
             }
           : null;
-      const result = await generateRemedialLessonPlan(
-        assessment.diagnosis,
-        assessment.remedialPlan || '',
-        subject,
-        gesAlign,
-        {
-          studentGradeLevel: parseGradeLevelFromStudentRecord(studentInfo ?? undefined),
-          dialectContext: studentInfo?.guardianLanguage?.trim() || undefined,
-        }
+      const grade =
+        parseGradeLevelFromStudentRecord(studentInfo ?? undefined) ??
+        4;
+      const fw = inferCurriculumFrameworkFromAssessment(assessment);
+      const rag = getCurriculumContext(atKey, (assessment.diagnosis || '').slice(0, 800), fw, grade);
+
+      const report: DiagnosticReport = {
+        diagnosis: assessment.diagnosis,
+        masteredConcepts: assessment.masteredConcepts ?? '',
+        gapTags: assessment.gapTags ?? [],
+        masteryTags: assessment.masteryTags ?? [],
+        recommendations: [],
+        remedialPlan: assessment.remedialPlan || '',
+        lessonPlan: assessment.lessonPlan ?? { title: '', instructions: [] },
+        smsDraft: '',
+        score: assessment.score ?? 0,
+        gesAlignment: gesAlign ?? undefined,
+      };
+
+      const dialect = resolveLessonTranslanguagingDialect(studentInfo ?? undefined);
+      const result = await generateSubjectRoutedLessonPlan(
+        report,
+        atKey,
+        atKey,
+        grade,
+        dialect,
+        rag.formattedContext
       );
       if (result) {
         await updateAssessment(assessment.id, { lessonPlan: result });
@@ -250,11 +280,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         </div>
 
         <div className="flex flex-col w-full gap-3 sm:flex-row sm:items-center sm:justify-end sm:w-auto">
-          <div className="bg-gray-100 p-1 rounded-lg flex items-center flex-1 sm:flex-initial min-w-0">
+          <div className="bg-gray-100 p-1 rounded-lg flex flex-wrap items-center flex-1 sm:flex-initial min-w-0 gap-0.5">
             <button
               type="button"
               onClick={() => setViewMode('analytical')}
-              className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-sm font-medium transition-all ${
+              className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-2 sm:px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-sm font-medium transition-all ${
                 viewMode === 'analytical' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -263,11 +293,20 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
             <button
               type="button"
               onClick={() => setViewMode('action-plan')}
-              className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-sm font-medium transition-all ${
+              className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-2 sm:px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-sm font-medium transition-all ${
                 viewMode === 'action-plan' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <ClipboardList size={16} /> Action Plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('family-record')}
+              className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-2 sm:px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-sm font-medium transition-all ${
+                viewMode === 'family-record' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users size={16} /> Family &amp; record
             </button>
           </div>
           <button
@@ -301,7 +340,7 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
           isAnalyzingSEN={isAnalyzingSEN}
           onRunDeepPatternAnalysis={runDeepPatternAnalysis}
         />
-      ) : (
+      ) : viewMode === 'action-plan' ? (
         <StudentProfileActionPlanView
           gapInterventions={gapInterventions}
           lastWorksheetByCard={lastWorksheetByCard}
@@ -313,15 +352,28 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
           onPrintWorksheet={handlePrintWorksheet}
           onOpenWorksheet={setActiveWorksheet}
         />
-      )}
-
-      {userRole === 'teacher' && selectedStudentId && studentInfo ? (
-        <div className="mt-10">
+      ) : selectedStudentId && studentInfo ? (
+        <div className="space-y-8">
+          {canEditStudentProfile ? (
+            <StudentRecordCard
+              studentId={selectedStudentId}
+              student={studentInfo}
+              canEdit
+              onUpdated={async () => {
+                const s = await getStudent(selectedStudentId);
+                setStudentInfo(s);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-gray-600">
+              You do not have permission to edit this learner&apos;s roster record. Contact the assigned teacher.
+            </p>
+          )}
           <Phase4FamilyConnectCard
             studentId={selectedStudentId}
             student={studentInfo}
             history={history}
-            canEdit
+            canEdit={canEditStudentProfile}
             onUpdated={async () => {
               const s = await getStudent(selectedStudentId);
               setStudentInfo(s);

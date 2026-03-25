@@ -3,11 +3,11 @@ import { Download, MapPin } from 'lucide-react';
 import type { UserData } from './Header';
 import {
   buildCircuitSkillRollups,
-  fetchEnterpriseDashboard,
+  fetchScopedDistrictRollupInputs,
   heatmapRowsToCsv,
-  type AnalyticsScope,
   type CircuitSkillRollup,
-} from '../services/enterpriseAnalyticsService';
+  type DistrictFeatureScope,
+} from '../services/districtAnalyticsService';
 import { DEMO_CIRCUIT_REGIONS, CIRCUIT_MAP_VIEWBOX, bandFillClass } from '../data/demoCircuitMap';
 import { DEFAULT_DISTRICT_ID } from '../config/organizationDefaults';
 
@@ -28,9 +28,8 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const scope: AnalyticsScope = useMemo(
+  const scope: DistrictFeatureScope = useMemo(
     () => ({
-      role: user.role,
       districtId: user.districtId ?? DEFAULT_DISTRICT_ID,
       circuitId: user.role === 'circuit_supervisor' ? user.circuitId : undefined,
       schoolId: undefined,
@@ -44,7 +43,7 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
       setLoading(true);
       setError(null);
       try {
-        const dash = await fetchEnterpriseDashboard(scope);
+        const dash = await fetchScopedDistrictRollupInputs(scope);
         if (cancelled) return;
         const roll = buildCircuitSkillRollups(dash.students, dash.assessments, skill);
         setRows(roll);

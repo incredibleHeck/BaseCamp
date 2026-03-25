@@ -1,44 +1,30 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { saveAssessment, updateAssessment, type Assessment } from '../services/assessmentService';
 import {
-  saveAssessment,
-  updateAssessment,
-  getStudentHistory,
-  type Assessment,
-} from '../services/assessmentService';
-import {
-  analyzeHybridTeacherDiagnostic,
-  analyzeWorksheet,
-  analyzeWorksheetMultiple,
-  analyzeManualEntry,
-  buildStudentContextForHybridPrompt,
   generateExtensionActivity,
-  generateRemedialLessonPlan,
+  generateSubjectRoutedLessonPlan,
   MASTERY_EXTENSION_LESSON_PLACEHOLDER,
   shouldUseExtensionActivity,
   type DiagnosticReport as AIDiagnosticReport,
   type GenerateLessonPlanOptions,
 } from '../services/aiPrompts';
-import { getStudent } from '../services/studentService';
-import { addToQueue } from '../services/offlineQueueService';
+import { addToQueue, StorageQuotaExceededError } from '../services/offlineQueueService';
 import {
   getDefaultAcademicYear,
   getDefaultTerm,
   DEFAULT_CLASS_LABEL,
 } from '../config/academicContext';
 import { playbookKeyFromLessonTitle } from '../utils/playbookKey';
+import { curriculumFieldsFromDiagnosticReport } from '../utils/assessmentPersistUtils';
+import { getStudent } from '../services/studentService';
 import { evaluateAndPersistSenAlerts } from '../services/senAlertService';
 import { logWorkflow, logWorkflowDebug } from '../utils/workflowLog';
+import { useAssessment } from '../context/AssessmentContext';
 import { getCurriculumContext, type CurriculumFramework } from '../services/curriculumRagService';
 import {
-  buildRecentHistorySummaryForLongitudinalPrompt,
-  parseGradeLevelFromStudentRecord,
-} from '../utils/longitudinalPromptHelpers';
-
-/** When student + history are already loaded (e.g. hybrid flow), avoids duplicate fetches. */
-type LongitudinalPrefetchedStudentContext = {
-  student: Awaited<ReturnType<typeof getStudent>>;
-  history: Assessment[];
-};
+  executeFullAssessmentPipeline,
+  loadLongitudinalPromptFields,
+} from '../services/assessmentPipelineService';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
@@ -57,6 +43,9 @@ export type HybridAssessmentFlowContext = {
   dialectContext?: string | null;
   curriculumFramework?: CurriculumFramework;
   gradeLevel?: number;
+  cohortId?: string;
+  /** Cohort display name; persisted as assessment `classLabel` for rollups. */
+  classLabel?: string;
 };
 
 export type AnalyzeHybridAssessmentFn = (
@@ -78,24 +67,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export interface UseAnalysisFlowParams {
-  status: AnalysisStatus;
-  isOffline?: boolean;
-  studentId?: string;
-  assessmentType?: string;
-  /** When `voice`, worksheet/manual effect is skipped — hybrid pipeline sets report separately. */
-  inputMode?: 'upload' | 'manual' | 'voice' | null;
-  imageBase64?: string | null;
-  imageBase64s?: string[] | null;
-  dialectContext?: string | null;
-  manualRubric?: string[] | null;
-  observations?: string | null;
-  curriculumFramework?: CurriculumFramework;
-  gradeLevel?: number;
-  onAnalysisComplete?: () => void;
-  onAnalysisError?: () => void;
-}
-
 const EMPTY_REPORT: DiagnosticReport = {
   diagnosis: 'No data available.',
   criticalGap: 'No data available.',
@@ -110,75 +81,31 @@ const EMPTY_REPORT: DiagnosticReport = {
   alignedStandardCode: null,
 };
 
-function buildFullReport(result: AIDiagnosticReport): DiagnosticReport {
-  return {
-    ...result,
-    criticalGap: result.diagnosis,
-    lessonPlan: result.lessonPlan ?? {
-      title: 'No lesson plan',
-      instructions: [],
-    },
-  };
-}
+export function useAnalysisFlow() {
+  const {
+    analysisStatus: status,
+    lastAssessmentData,
+    setupSnapshot,
+    reportData,
+    setReportData,
+    setAnalysisResults,
+    abortAnalysisFlow,
+    isOffline,
+  } = useAssessment();
 
-async function loadLongitudinalPromptFields(
-  studentId: string | undefined,
-  assessmentType: string,
-  fallbackGradeLevel: number | undefined,
-  prefetched?: LongitudinalPrefetchedStudentContext
-): Promise<{ studentGradeLevel?: number; recentHistorySummary?: string }> {
-  const out: { studentGradeLevel?: number; recentHistorySummary?: string } = {};
+  const studentId = lastAssessmentData?.studentId;
+  const assessmentType = lastAssessmentData?.assessmentType;
+  const inputMode = lastAssessmentData?.inputMode ?? setupSnapshot?.inputMode;
+  const imageBase64 = lastAssessmentData?.imageBase64;
+  const imageBase64s = lastAssessmentData?.imageBase64s;
+  const dialectContext = lastAssessmentData?.dialect;
+  const manualRubric = lastAssessmentData?.manualRubric;
+  const observations = lastAssessmentData?.observations;
+  const curriculumFramework = lastAssessmentData?.curriculumFramework ?? 'GES';
+  const gradeLevel = lastAssessmentData?.gradeLevel;
+  const cohortIdFromSetup = lastAssessmentData?.cohortId?.trim();
+  const classLabelFromSetup = lastAssessmentData?.classLabel?.trim();
 
-  if (!studentId?.trim()) {
-    if (typeof fallbackGradeLevel === 'number' && Number.isFinite(fallbackGradeLevel)) {
-      out.studentGradeLevel = fallbackGradeLevel;
-    }
-    return out;
-  }
-
-  try {
-    let student: Awaited<ReturnType<typeof getStudent>>;
-    let history: Assessment[];
-    if (prefetched) {
-      student = prefetched.student;
-      history = prefetched.history;
-    } else {
-      [student, history] = await Promise.all([getStudent(studentId), getStudentHistory(studentId)]);
-    }
-    const fromRecord = parseGradeLevelFromStudentRecord(student);
-    out.studentGradeLevel =
-      fromRecord ??
-      (typeof fallbackGradeLevel === 'number' && Number.isFinite(fallbackGradeLevel)
-        ? fallbackGradeLevel
-        : undefined);
-
-    const summary = buildRecentHistorySummaryForLongitudinalPrompt(history ?? [], assessmentType);
-    if (summary) out.recentHistorySummary = summary;
-  } catch {
-    if (typeof fallbackGradeLevel === 'number' && Number.isFinite(fallbackGradeLevel)) {
-      out.studentGradeLevel = fallbackGradeLevel;
-    }
-  }
-
-  return out;
-}
-
-export function useAnalysisFlow({
-  status,
-  isOffline = false,
-  studentId,
-  assessmentType,
-  inputMode,
-  imageBase64,
-  imageBase64s,
-  dialectContext,
-  manualRubric,
-  observations,
-  curriculumFramework = 'GES',
-  gradeLevel,
-  onAnalysisComplete,
-  onAnalysisError,
-}: UseAnalysisFlowParams) {
   const [showSmsDraft, setShowSmsDraft] = useState(false);
   const [showLessonPlan, setShowLessonPlan] = useState(false);
   const [isGeneratingLesson, setIsGeneratingLesson] = useState(false);
@@ -186,7 +113,6 @@ export function useAnalysisFlow({
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savedAssessmentId, setSavedAssessmentId] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<DiagnosticReport | null>(null);
   const [regeneratedLessonPlan, setRegeneratedLessonPlan] = useState<{
     title: string;
     instructions: string[];
@@ -205,15 +131,17 @@ export function useAnalysisFlow({
       if (!effectiveType) return { ok: false, error: 'missing_assessment_type' };
 
       const subjectKey =
-        effectiveType === 'literacy' ||
-        effectiveType.toLowerCase().includes('lit') ||
-        effectiveType === 'Literacy'
+        effectiveType === 'literacy' || effectiveType.toLowerCase().includes('lit')
           ? 'literacy'
           : 'numeracy';
 
       const effectiveDialect = flowContext?.dialectContext ?? dialectContext ?? '';
       const effectiveFramework = flowContext?.curriculumFramework ?? curriculumFramework ?? 'GES';
       const effectiveGrade = flowContext?.gradeLevel ?? gradeLevel;
+      const effectiveCohortId =
+        flowContext?.cohortId?.trim() || cohortIdFromSetup || undefined;
+      const effectiveClassLabel =
+        flowContext?.classLabel?.trim() || classLabelFromSetup || DEFAULT_CLASS_LABEL;
 
       try {
         const audioDataUrl = await blobToDataUrl(audioBlob);
@@ -228,6 +156,8 @@ export function useAnalysisFlow({
             dialectContext: effectiveDialect,
             curriculumFramework: effectiveFramework,
             gradeLevel: effectiveGrade,
+            cohortId: effectiveCohortId,
+            classLabel: effectiveClassLabel,
             audioBase64: audioDataUrl,
             audioMimeType: audioBlob.type || 'audio/webm',
             imageBase64s: worksheetDataUrl ? [worksheetDataUrl] : undefined,
@@ -236,31 +166,11 @@ export function useAnalysisFlow({
           return { ok: true, queued: true };
         }
 
-        const [student, history] = await Promise.all([getStudent(studentId), getStudentHistory(studentId)]);
-        const studentContext = buildStudentContextForHybridPrompt(student, history);
-        const displayName = student?.name ?? 'the learner';
-        const hybridRagHint = [studentContext, displayName].join(' ').slice(0, 800);
-        const hybridRag = getCurriculumContext(
-          subjectKey,
-          hybridRagHint,
-          effectiveFramework,
-          effectiveGrade
-        );
-
-        const longitudinal = await loadLongitudinalPromptFields(
+        const pipeline = await executeFullAssessmentPipeline({
+          variant: 'hybrid',
           studentId,
-          effectiveType,
-          effectiveGrade,
-          { student, history }
-        );
-        const hybridStudentGrade = longitudinal.studentGradeLevel;
-        const hybridHistorySummary = longitudinal.recentHistorySummary;
-
-        const report = await analyzeHybridTeacherDiagnostic({
           audioBase64: audioDataUrl,
           audioMimeType: audioBlob.type || 'audio/webm',
-          studentDisplayName: displayName,
-          studentContext,
           worksheetImage:
             worksheetDataUrl && worksheetDataUrl.length > 0
               ? {
@@ -268,89 +178,38 @@ export function useAnalysisFlow({
                   mimeType: optionalImageBlob?.type?.trim() || 'image/jpeg',
                 }
               : undefined,
-          subject: subjectKey,
+          assessmentType: effectiveType,
           dialectContext: effectiveDialect,
           curriculumFramework: effectiveFramework,
           gradeLevel: effectiveGrade,
-          curriculumContext: hybridRag.formattedContext,
-          allowedObjectiveIds: hybridRag.allowedObjectiveIds,
-          studentGradeLevel: hybridStudentGrade,
-          recentHistorySummary: hybridHistorySummary,
         });
 
-        if (!report) {
-          logWorkflow('analysis:hybrid_failed', { reason: 'null_report' });
-          onAnalysisError?.();
+        if (pipeline.ok === false) {
+          logWorkflow('analysis:hybrid_failed', { reason: pipeline.reason });
+          abortAnalysisFlow();
           return { ok: false, error: 'analysis_failed' };
         }
 
-        const lessonPlanOpts: GenerateLessonPlanOptions = {
-          studentGradeLevel: longitudinal.studentGradeLevel,
-          dialectContext: effectiveDialect.trim() ? effectiveDialect : undefined,
-        };
-
-        let mergedReport: AIDiagnosticReport;
-        if (shouldUseExtensionActivity(report)) {
-          const ext = await generateExtensionActivity({
-            report,
-            studentGradeLevel: lessonPlanOpts.studentGradeLevel,
-            dialectContext: lessonPlanOpts.dialectContext,
-            curriculumContext: hybridRag.formattedContext,
-          });
-          if (ext) {
-            mergedReport = {
-              ...report,
-              extensionActivity: ext,
-              lessonPlan: MASTERY_EXTENSION_LESSON_PLACEHOLDER,
-            };
-          } else {
-            const enrichedLesson = await generateRemedialLessonPlan(
-              report.diagnosis,
-              report.remedialPlan,
-              subjectKey,
-              report.gesAlignment ?? undefined,
-              lessonPlanOpts
-            );
-            mergedReport = {
-              ...report,
-              lessonPlan: enrichedLesson ?? report.lessonPlan,
-            };
-          }
-        } else {
-          const enrichedLesson = await generateRemedialLessonPlan(
-            report.diagnosis,
-            report.remedialPlan,
-            subjectKey,
-            report.gesAlignment ?? undefined,
-            lessonPlanOpts
-          );
-          mergedReport = {
-            ...report,
-            lessonPlan: enrichedLesson ?? report.lessonPlan,
-          };
-        }
-
-        const full = buildFullReport(mergedReport);
-        setReportData(full);
-        if (
-          mergedReport.lessonPlan &&
-          mergedReport.lessonPlan !== report.lessonPlan &&
-          mergedReport.lessonPlan.title !== MASTERY_EXTENSION_LESSON_PLACEHOLDER.title
-        ) {
-          setRegeneratedLessonPlan(mergedReport.lessonPlan);
-        } else if (mergedReport.extensionActivity) {
+        const full = pipeline.report as DiagnosticReport;
+        setAnalysisResults(full);
+        if (full.extensionActivity?.trim()) {
           setRegeneratedLessonPlan(MASTERY_EXTENSION_LESSON_PLACEHOLDER);
+        } else {
+          setRegeneratedLessonPlan(null);
         }
-        onAnalysisComplete?.();
         logWorkflow('analysis:hybrid_complete', { studentId });
 
         const displayPlan = full.lessonPlan ?? { title: '', instructions: [] };
         const playbookTitle = displayPlan?.title?.trim() || undefined;
         const type: Assessment['type'] = subjectKey === 'literacy' ? 'Literacy' : 'Numeracy';
+        const studentRow = await getStudent(studentId);
+        const curriculum = curriculumFieldsFromDiagnosticReport(full);
 
         const assessment: Assessment = {
           studentId,
+          schoolId: studentRow?.schoolId?.trim() || undefined,
           type,
+          ...curriculum,
           diagnosis: full.diagnosis,
           masteredConcepts: full.masteredConcepts,
           gapTags: full.gapTags ?? [],
@@ -360,10 +219,10 @@ export function useAnalysisFlow({
           extensionActivity: full.extensionActivity,
           playbookKey: playbookTitle ? playbookKeyFromLessonTitle(playbookTitle) : undefined,
           playbookTitle,
-          score: typeof full.score === 'number' ? full.score : undefined,
           term: getDefaultTerm(),
           academicYear: getDefaultAcademicYear(),
-          classLabel: DEFAULT_CLASS_LABEL,
+          classLabel: effectiveClassLabel,
+          cohortId: effectiveCohortId,
           gesObjectiveId: full.gesAlignment?.objectiveId,
           gesObjectiveTitle: full.gesAlignment?.objectiveTitle,
           gesCurriculumExcerpt: full.gesAlignment?.excerpt,
@@ -375,24 +234,37 @@ export function useAnalysisFlow({
 
         const resultId = await saveAssessment(assessment);
         if (!resultId) {
-          onAnalysisError?.();
+          abortAnalysisFlow();
           return { ok: false, error: 'save_failed' };
         }
         setSavedAssessmentId(resultId);
         setIsSaved(true);
-        void evaluateAndPersistSenAlerts(studentId, {
+        evaluateAndPersistSenAlerts(studentId, {
           senWarningFlag: full.senWarningFlag,
           latestAssessmentId: resultId,
-        });
+        }).catch((err) => console.error('SEN Alert evaluation failed:', err));
         return { ok: true, savedAssessmentId: resultId };
       } catch (error) {
         console.error('analyzeHybridAssessment failed', error);
+        if (error instanceof StorageQuotaExceededError && typeof alert !== 'undefined') {
+          alert(error.message);
+        }
         logWorkflow('analysis:hybrid_failed', { reason: 'exception' });
-        onAnalysisError?.();
+        abortAnalysisFlow();
         return { ok: false, error: 'exception' };
       }
     },
-    [assessmentType, curriculumFramework, dialectContext, gradeLevel, isOffline, onAnalysisComplete, onAnalysisError]
+    [
+      assessmentType,
+      curriculumFramework,
+      dialectContext,
+      gradeLevel,
+      cohortIdFromSetup,
+      classLabelFromSetup,
+      isOffline,
+      setAnalysisResults,
+      abortAnalysisFlow,
+    ]
   );
 
   useEffect(() => {
@@ -404,10 +276,21 @@ export function useAnalysisFlow({
   useEffect(() => {
     if (status !== 'analyzing') return;
 
+    // Voice/hybrid pipeline sets report asynchronously; skip worksheet/manual effect while it runs.
+    if (inputMode === 'voice') return;
+
+    const nonEmptyImages = (imageBase64s ?? []).filter((s) => s && String(s).trim().length > 0);
+    const worksheetImages =
+      nonEmptyImages.length > 0
+        ? nonEmptyImages
+        : imageBase64 && String(imageBase64).trim().length > 0
+          ? [imageBase64]
+          : [];
+
     logWorkflow('analysis:effect_start', {
       assessmentType: assessmentType || '(empty)',
-      imageCount: imageBase64s?.filter(Boolean).length ?? 0,
-      hasSingleImage: Boolean(imageBase64 && String(imageBase64).length > 0),
+      imageCount: worksheetImages.length,
+      hasSingleImage: worksheetImages.length === 1,
       manualRubricCount: manualRubric?.length ?? 0,
       observationsLen: (observations?.trim() ?? '').length,
     });
@@ -416,65 +299,30 @@ export function useAnalysisFlow({
       dialectSet: Boolean(dialectContext),
     });
 
-    const nonEmptyImages = (imageBase64s ?? []).filter((s) => s && String(s).trim().length > 0);
-
-    if (nonEmptyImages.length > 0 && assessmentType) {
+    if (worksheetImages.length > 0 && assessmentType) {
       const getAnalysis = async () => {
         try {
-          logWorkflow('analysis:branch', { branch: 'analyzeWorksheetMultiple', pages: nonEmptyImages.length });
-          const longitudinal = await loadLongitudinalPromptFields(studentId, assessmentType, gradeLevel);
-          const rag = getCurriculumContext(assessmentType, '', curriculumFramework, gradeLevel);
-          const result = await analyzeWorksheetMultiple(
-            nonEmptyImages,
+          logWorkflow('analysis:branch', { branch: 'worksheet_pipeline', pages: worksheetImages.length });
+          const result = await executeFullAssessmentPipeline({
+            variant: 'worksheet',
+            studentId,
             assessmentType,
-            dialectContext || '',
-            {
-              curriculumFramework,
-              gradeLevel,
-              curriculumContext: rag.formattedContext,
-              allowedObjectiveIds: rag.allowedObjectiveIds,
-              ...longitudinal,
-            }
-          );
-          if (result) {
-            setReportData(buildFullReport(result));
-            onAnalysisComplete?.();
-            logWorkflow('analysis:complete', { branch: 'analyzeWorksheetMultiple' });
-          } else {
-            logWorkflow('analysis:failed', { branch: 'analyzeWorksheetMultiple', reason: 'null_result' });
-            onAnalysisError?.();
-          }
-        } catch (error) {
-          console.error('AnalysisResults: analyzeWorksheetMultiple failed', error);
-          logWorkflow('analysis:failed', { branch: 'analyzeWorksheetMultiple', reason: 'exception' });
-          onAnalysisError?.();
-        }
-      };
-      void getAnalysis();
-      return;
-    }
-
-    if (imageBase64 && assessmentType) {
-      const getAnalysis = async () => {
-        try {
-          const longitudinal = await loadLongitudinalPromptFields(studentId, assessmentType, gradeLevel);
-          const rag = getCurriculumContext(assessmentType, '', curriculumFramework, gradeLevel);
-          const result = await analyzeWorksheet(imageBase64, assessmentType, dialectContext || '', {
+            dialectContext: dialectContext || '',
             curriculumFramework,
             gradeLevel,
-            curriculumContext: rag.formattedContext,
-            allowedObjectiveIds: rag.allowedObjectiveIds,
-            ...longitudinal,
+            images: worksheetImages,
           });
-          if (result) {
-            setReportData(buildFullReport(result));
-            onAnalysisComplete?.();
+          if (result.ok === true) {
+            setAnalysisResults(result.report as DiagnosticReport);
+            logWorkflow('analysis:complete', { branch: 'worksheet_pipeline' });
           } else {
-            onAnalysisError?.();
+            logWorkflow('analysis:failed', { branch: 'worksheet_pipeline', reason: result.reason });
+            abortAnalysisFlow();
           }
         } catch (error) {
-          console.error('AnalysisResults: analyzeWorksheet failed', error);
-          onAnalysisError?.();
+          console.error('AnalysisResults: worksheet pipeline failed', error);
+          logWorkflow('analysis:failed', { branch: 'worksheet_pipeline', reason: 'exception' });
+          abortAnalysisFlow();
         }
       };
       void getAnalysis();
@@ -484,34 +332,27 @@ export function useAnalysisFlow({
     if (assessmentType && (manualRubric?.length || (observations?.trim() ?? '').length > 0)) {
       const getAnalysis = async () => {
         try {
-          const manualHint = [observations?.trim() ?? '', ...(manualRubric ?? [])].join(' ');
-          const longitudinal = await loadLongitudinalPromptFields(studentId, assessmentType, gradeLevel);
-          const rag = getCurriculumContext(assessmentType, manualHint, curriculumFramework, gradeLevel);
-          const result = await analyzeManualEntry(
+          const result = await executeFullAssessmentPipeline({
+            variant: 'manual',
+            studentId,
             assessmentType,
-            dialectContext || '',
-            manualRubric ?? [],
-            observations?.trim() ?? '',
-            {
-              curriculumFramework,
-              gradeLevel,
-              curriculumContext: rag.formattedContext,
-              allowedObjectiveIds: rag.allowedObjectiveIds,
-              ...longitudinal,
-            }
-          );
-          if (result) {
-            setReportData(buildFullReport(result));
-            onAnalysisComplete?.();
+            dialectContext: dialectContext || '',
+            curriculumFramework,
+            gradeLevel,
+            manualRubric: manualRubric ?? [],
+            observations: observations?.trim() ?? '',
+          });
+          if (result.ok === true) {
+            setAnalysisResults(result.report as DiagnosticReport);
             logWorkflow('analysis:complete', { branch: 'analyzeManualEntry' });
           } else {
-            logWorkflow('analysis:failed', { branch: 'analyzeManualEntry', reason: 'null_result' });
-            onAnalysisError?.();
+            logWorkflow('analysis:failed', { branch: 'analyzeManualEntry', reason: result.reason });
+            abortAnalysisFlow();
           }
         } catch (error) {
-          console.error('AnalysisResults: analyzeManualEntry failed', error);
+          console.error('AnalysisResults: manual pipeline failed', error);
           logWorkflow('analysis:failed', { branch: 'analyzeManualEntry', reason: 'exception' });
-          onAnalysisError?.();
+          abortAnalysisFlow();
         }
       };
       void getAnalysis();
@@ -522,9 +363,9 @@ export function useAnalysisFlow({
       hint: 'No images and no manual data, or missing assessmentType. Resetting analysis state.',
       assessmentType: assessmentType || '(empty)',
       imageBase64sLength: imageBase64s?.length ?? 0,
-      nonEmptyImages: nonEmptyImages.length,
+      worksheetImages: worksheetImages.length,
     });
-    onAnalysisError?.();
+    abortAnalysisFlow();
   }, [
     status,
     inputMode,
@@ -537,8 +378,8 @@ export function useAnalysisFlow({
     observations,
     curriculumFramework,
     gradeLevel,
-    onAnalysisComplete,
-    onAnalysisError,
+    setAnalysisResults,
+    abortAnalysisFlow,
   ]);
 
   const data = useMemo<DiagnosticReport>(() => reportData ?? EMPTY_REPORT, [reportData]);
@@ -559,14 +400,18 @@ export function useAnalysisFlow({
       dialectContext: dialectContext?.trim() || undefined,
     };
 
+    const gradeForLesson =
+      typeof lessonPlanOpts.studentGradeLevel === 'number' &&
+      Number.isFinite(lessonPlanOpts.studentGradeLevel)
+        ? lessonPlanOpts.studentGradeLevel
+        : 4;
+
+    const at = assessmentType || subject;
+    const ragHint = (data.diagnosis || '').slice(0, 800);
+
     try {
       if (shouldUseExtensionActivity(data)) {
-        const rag = getCurriculumContext(
-          assessmentType || subject,
-          (data.diagnosis || '').slice(0, 800),
-          curriculumFramework,
-          gradeLevel
-        );
+        const rag = getCurriculumContext(at, ragHint, curriculumFramework, gradeLevel);
         const ext = await generateExtensionActivity({
           report: data as AIDiagnosticReport,
           studentGradeLevel: lessonPlanOpts.studentGradeLevel,
@@ -582,12 +427,13 @@ export function useAnalysisFlow({
           setRegeneratedLessonPlan(MASTERY_EXTENSION_LESSON_PLACEHOLDER);
           setShowLessonPlan(true);
         } else {
-          const result = await generateRemedialLessonPlan(
-            data.diagnosis,
-            data.remedialPlan,
+          const result = await generateSubjectRoutedLessonPlan(
+            data as AIDiagnosticReport,
+            at,
             subject,
-            reportData?.gesAlignment,
-            lessonPlanOpts
+            gradeForLesson,
+            lessonPlanOpts.dialectContext,
+            rag.formattedContext
           );
           if (result) {
             setRegeneratedLessonPlan(result);
@@ -595,12 +441,14 @@ export function useAnalysisFlow({
           }
         }
       } else {
-        const result = await generateRemedialLessonPlan(
-          data.diagnosis,
-          data.remedialPlan,
+        const rag = getCurriculumContext(at, ragHint, curriculumFramework, gradeLevel);
+        const result = await generateSubjectRoutedLessonPlan(
+          data as AIDiagnosticReport,
+          at,
           subject,
-          reportData?.gesAlignment,
-          lessonPlanOpts
+          gradeForLesson,
+          lessonPlanOpts.dialectContext,
+          rag.formattedContext
         );
         if (result) {
           setRegeneratedLessonPlan(result);
@@ -667,9 +515,13 @@ export function useAnalysisFlow({
 
     const displayPlan = regeneratedLessonPlan ?? data.lessonPlan ?? { title: '', instructions: [] };
     const playbookTitle = displayPlan?.title?.trim() || undefined;
+    const studentRow = await getStudent(studentId);
+    const curriculum = curriculumFieldsFromDiagnosticReport(data);
     const assessment: Assessment = {
       studentId,
+      schoolId: studentRow?.schoolId?.trim() || undefined,
       type: assessmentType.toLowerCase().includes('lit') ? 'Literacy' : 'Numeracy',
+      ...curriculum,
       diagnosis: data.diagnosis,
       masteredConcepts: data.masteredConcepts,
       gapTags: data.gapTags ?? [],
@@ -679,10 +531,10 @@ export function useAnalysisFlow({
       extensionActivity: data.extensionActivity,
       playbookKey: playbookTitle ? playbookKeyFromLessonTitle(playbookTitle) : undefined,
       playbookTitle,
-      score: typeof data.score === 'number' ? data.score : undefined,
       term: getDefaultTerm(),
       academicYear: getDefaultAcademicYear(),
-      classLabel: DEFAULT_CLASS_LABEL,
+      classLabel: classLabelFromSetup || DEFAULT_CLASS_LABEL,
+      cohortId: cohortIdFromSetup || undefined,
       gesObjectiveId: data.gesAlignment?.objectiveId,
       gesObjectiveTitle: data.gesAlignment?.objectiveTitle,
       gesCurriculumExcerpt: data.gesAlignment?.excerpt,
@@ -710,10 +562,10 @@ export function useAnalysisFlow({
         if (resultId) {
           setSavedAssessmentId(resultId);
           setIsSaved(true);
-          void evaluateAndPersistSenAlerts(studentId, {
+          evaluateAndPersistSenAlerts(studentId, {
             senWarningFlag: data.senWarningFlag,
             latestAssessmentId: resultId,
-          });
+          }).catch((err) => console.error('SEN Alert evaluation failed:', err));
         }
       }
     } finally {

@@ -58,7 +58,7 @@ export function enterpriseNavForRole(role: EnterpriseRole): EnterpriseNavFlags {
 export function defaultViewForRole(role: EnterpriseRole): string {
   switch (role) {
     case 'teacher':
-      return 'roster';
+      return 'class-roster';
     case 'headteacher':
       return 'school-overview';
     case 'district':
@@ -70,6 +70,6 @@ export function defaultViewForRole(role: EnterpriseRole): string {
     case 'super_admin':
       return 'district-overview';
     default:
-      return 'roster';
+      return 'class-roster';
   }
 }

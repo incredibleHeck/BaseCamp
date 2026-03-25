@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Loader2, FlaskConical } from 'lucide-react';
 import { getStudents } from '../services/studentService';
-import { fetchAllAssessments } from '../services/enterpriseAnalyticsService';
+import { fetchAllAssessments } from '../services/assessmentService';
 import { buildPilotExportLines, pilotCorpusToJsonl } from '../services/fineTunePilotService';
 import { suggestGapTagsFromObservations } from '../services/aiPrompts';
 import { getGapTagPilotMode } from '../config/featureFlags';
@@ -70,7 +70,7 @@ export function FineTunePilotPanel() {
           <h2 className="text-xl font-bold text-gray-900">Fine-tuning pilot (Phase 4)</h2>
           <p className="text-gray-600 mt-1 text-sm max-w-3xl">
             Export <strong>de-identified</strong> assessment snippets for learners with{' '}
-            <strong>trainingDataOptIn</strong> on their student record (set on the family card in learner profile).
+            <strong>trainingDataOptIn</strong> on their student record (Family &amp; record tab → Phase 4 · Family &amp; lab).
             Gap-tag A/B: set <code className="text-xs bg-gray-100 px-1 rounded">VITE_FT_PILOT_GAP_TAGS=1</code> in{' '}
             <code className="text-xs bg-gray-100 px-1">.env.local</code> to use the &quot;mock local head&quot; system
             prompt (still Gemini — simulates routing to a smaller tuned model).

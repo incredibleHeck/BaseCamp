@@ -44,6 +44,10 @@ export interface QueuedAssessment {
   curriculumFramework?: 'GES' | 'Cambridge';
   /** Parsed from roster grade when available (Cambridge filtering). */
   gradeLevel?: number;
+  /** Formal class/cohort (Firestore `cohorts` id). */
+  cohortId?: string;
+  /** Display label for gradebook / rollups (usually cohort name). */
+  classLabel?: string;
   timestamp: number;
   /** Groups multiple queued rows from one class batch enqueue. */
   batchId?: string;
@@ -51,9 +55,26 @@ export interface QueuedAssessment {
   autoDetectStudent?: boolean;
   /** Original batch context (immutable snapshot per row). */
   batchAssessmentContext?: Record<string, unknown>;
+  /**
+   * Sync attempts that failed (analysis null/error, save failure). Removed from queue after max retries.
+   */
+  retryCount?: number;
+}
+
+/** Shown in alerts when enqueue fails due to device / IndexedDB storage limits. */
+export const STORAGE_QUOTA_EXCEEDED_USER_MESSAGE =
+  'BaseCamp could not save to the offline queue — your device storage is full. Free some space and try again.';
+
+export class StorageQuotaExceededError extends Error {
+  override readonly name = 'StorageQuotaExceededError';
+  constructor(message: string = STORAGE_QUOTA_EXCEEDED_USER_MESSAGE) {
+    super(message);
+    Object.setPrototypeOf(this, StorageQuotaExceededError.prototype);
+  }
 }
 
 function isQuotaExceededError(e: unknown): boolean {
+  if (e instanceof StorageQuotaExceededError) return true;
   if (!e || typeof e !== 'object') return false;
   const err = e as { name?: string; message?: string };
   if (err.name === 'QuotaExceededError') return true;
@@ -89,6 +110,10 @@ export async function addToQueue(item: Omit<QueuedAssessment, 'id' | 'timestamp'
       return [...queue, queuedItem];
     });
   } catch (error) {
+    if (isQuotaExceededError(error)) {
+      console.error('offlineQueueService.addToQueue: storage quota exceeded', error);
+      throw new StorageQuotaExceededError();
+    }
     console.error('offlineQueueService.addToQueue failed:', error);
     throw error;
   }
@@ -152,10 +177,13 @@ export async function enqueueWorksheetBatch(
       });
       queuedCount++;
     } catch (e) {
-      if (isQuotaExceededError(e)) {
+      if (e instanceof StorageQuotaExceededError || isQuotaExceededError(e)) {
         if (typeof alert !== 'undefined') {
+          const base = e instanceof StorageQuotaExceededError ? e.message : STORAGE_QUOTA_EXCEEDED_USER_MESSAGE;
           alert(
-            `Device storage filled up after ${queuedCount} of ${total} worksheet(s) were saved to the queue. Free some space, then try again to add the remaining photos.`
+            queuedCount > 0
+              ? `${base} (${queuedCount} of ${total} worksheet(s) were saved before storage filled up.)`
+              : base
           );
         }
         console.error('enqueueWorksheetBatch: quota exceeded', { batchId, queuedCount, index: i }, e);
@@ -179,6 +207,24 @@ export async function getQueue(): Promise<QueuedAssessment[]> {
   } catch (error) {
     console.error('offlineQueueService.getQueue failed:', error);
     return [];
+  }
+}
+
+/**
+ * Merges fields into an existing queued item (matched by `id`). Does nothing if id is missing.
+ */
+export async function updateInQueue(
+  id: string,
+  updates: Partial<Omit<QueuedAssessment, 'id' | 'timestamp'>>
+): Promise<void> {
+  try {
+    await update(QUEUE_KEY, (existing: QueuedAssessment[] | undefined) => {
+      const queue = existing ?? [];
+      return queue.map((q) => (q.id === id ? { ...q, ...updates } : q));
+    });
+  } catch (error) {
+    console.error('offlineQueueService.updateInQueue failed:', error);
+    throw error;
   }
 }
 

@@ -38,11 +38,13 @@ export function parseGradeLevelFromClassLabelString(label: string | undefined | 
   return undefined;
 }
 
-/** Uses optional `classLabel` (if present on record) then `student.grade`. */
+/** Uses `numericGradeLevel` when set, else optional `classLabel`, then `student.grade`. */
 export function parseGradeLevelFromStudentRecord(
-  student: (Pick<Student, 'grade'> & { classLabel?: string }) | null | undefined
+  student: (Pick<Student, 'grade' | 'numericGradeLevel'> & { classLabel?: string }) | null | undefined
 ): number | undefined {
   if (!student) return undefined;
+  const n = student.numericGradeLevel;
+  if (typeof n === 'number' && Number.isFinite(n) && n > 0) return n;
   const classLbl = (student as { classLabel?: string }).classLabel;
   return (
     parseGradeLevelFromClassLabelString(classLbl) ?? parseGradeLevelFromClassLabelString(student.grade)

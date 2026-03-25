@@ -7,7 +7,7 @@
 - **Header**: Network and role/location hidden on small screens.
 - **Class Roster**: “Add Student” hidden on mobile; row actions icon-only; some columns hidden.
 - **Student Profile**: Export hidden on mobile.
-- **Teacher Directory**: Table may need horizontal scroll.
+- **Staff Directory**: Table may need horizontal scroll.
 - **Touch targets**: Many buttons too small for touch.
 - **Offline banner**: Long copy may overflow on narrow screens.
 
@@ -32,9 +32,9 @@
 
 - Show Export on mobile; compact label or icon + `aria-label`.
 
-## 4. Teacher Directory
+## 4. Staff Directory
 
-**File:** `src/components/TeacherDirectory.tsx`
+**File:** `src/components/StaffDirectory.tsx`
 
 - Wrap table in `overflow-x-auto` so narrow screens scroll horizontally.
 
@@ -66,7 +66,7 @@
 | 1 | Header: network + role on mobile | Header.tsx |
 | 2 | Roster: Add Student + actions | ClassRoster.tsx |
 | 3 | Student Profile: Export + touch | StudentProfile.tsx |
-| 4 | Teacher Directory: horizontal scroll | TeacherDirectory.tsx |
+| 4 | Staff Directory: horizontal scroll | StaffDirectory.tsx |
 | 5 | Analysis Results: touch targets | AnalysisResults.tsx |
 | 6 | App nav tweaks | App.tsx |
 | 7 | Offline banner | Header.tsx |

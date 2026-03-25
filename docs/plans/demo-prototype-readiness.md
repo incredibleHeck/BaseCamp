@@ -2,11 +2,11 @@
 
 **Goal:** Stabilize and polish the app for a demo: Teacher Directory, manual entry, roster data, docs, naming, defensive UI, Firestore index.
 
-## 1. Teacher Directory
+## 1. Staff Directory
 
 Avoid “under construction” on the headteacher tab.
 
-- **A (recommended):** Add `TeacherDirectory.tsx` with mock/demo teacher data; wire `App.tsx` `case 'teacher-directory'`.
+- **A (recommended):** Add `StaffDirectory.tsx` with mock/demo teacher data; wire `App.tsx` `case 'staff-directory'`.
 - **B:** Remove the tab for the demo.
 
 ## 2. Manual entry assessment
@@ -47,7 +47,7 @@ Ensure fallback `data` includes `lessonPlan` shape so UI never reads undefined.
 | ---- | ---- |
 | 1 | README + env + package name + index note |
 | 2 | AnalysisResults `lessonPlan` fallback |
-| 3 | Teacher Directory component or remove tab |
+| 3 | Staff Directory component or remove tab |
 | 4 | Assessment summary + ClassRoster |
 | 5 | Manual entry AI path or hide manual |
 

@@ -11,6 +11,23 @@ const CAMBRIDGE_NO_MATCH_LITERACY =
 const CAMBRIDGE_NO_MATCH_NUMERACY =
   'No specific Cambridge Primary Mathematics standard found for this input. Please analyze using general pedagogical principles.';
 
+/** Input bag for {@link CurriculumRetrievalStrategy.retrieve}; keyword strategy fills `allowedObjectiveIds`. */
+export type CurriculumRetrievalContext = {
+  subject: string;
+  curriculumFramework: CurriculumFramework;
+  gradeLevel?: number;
+  /** Populated by {@link KeywordRetrievalStrategy} before resolving */
+  allowedObjectiveIds?: string[];
+};
+
+/**
+ * Pluggable curriculum context retrieval (keyword MVP today; swap for vector / hybrid later).
+ * Sync call sites use {@link KeywordRetrievalStrategy} helpers until an async pipeline adopts this API.
+ */
+export interface CurriculumRetrievalStrategy {
+  retrieve(query: string, context?: any): Promise<string>;
+}
+
 /** Best-effort parse from roster grade labels (e.g. "Grade 2", "P3"). */
 export function parseGradeLevelFromLabel(grade: string | undefined): number | undefined {
   if (!grade?.trim()) return undefined;
@@ -24,172 +41,243 @@ function normalizeSubject(subject: string): 'numeracy' | 'literacy' {
   return s.includes('liter') ? 'literacy' : 'numeracy';
 }
 
-function scoreGesChunk(chunk: GesCurriculumChunk, subject: 'numeracy' | 'literacy', haystack: string): number {
-  let score = 0;
-  if (chunk.subject === subject || chunk.subject === 'both') score += 3;
-  const h = haystack.toLowerCase();
-  for (const kw of chunk.keywords) {
-    if (h.includes(kw.toLowerCase())) score += 2;
-  }
-  return score;
-}
-
 /**
- * Keyword-based GES retrieval MVP (no embeddings).
+ * Keyword-scoring GES + Cambridge retrieval (current production behavior), behind {@link CurriculumRetrievalStrategy}.
  */
-export function retrieveGesForAnalysis(subject: string, hintText: string): {
-  chunks: GesCurriculumChunk[];
-  formattedContext: string;
-  allowedObjectiveIds: string[];
-} {
-  const subj = normalizeSubject(subject);
-  const haystack = `${hintText} ${subject}`.trim();
-  const ranked = [...GES_CURRICULUM_PILOT]
-    .map((c) => ({ c, s: scoreGesChunk(c, subj, haystack) }))
-    .sort((a, b) => b.s - a.s);
-
-  const top = ranked.filter((r) => r.s > 0).slice(0, 4).map((r) => r.c);
-  const chunks = top.length > 0 ? top : ranked.slice(0, 3).map((r) => r.c);
-
-  const lines = chunks.map((ch) => {
-    return [
-      `OBJECTIVE_ID: ${ch.objectiveId}`,
-      `TITLE: ${ch.objectiveTitle}`,
-      `STRAND: ${ch.strand} | GRADE: ${ch.gradeBand}`,
-      `EXCERPT: ${ch.excerpt}`,
-    ].join('\n');
-  });
-
-  const formattedContext = [
-    'The following Ghana Education Service (GES) curriculum excerpts were retrieved for alignment. You MUST only cite objective IDs that appear exactly below (copy the OBJECTIVE_ID string verbatim).',
-    '',
-    ...lines,
-  ].join('\n\n');
-
-  return {
-    chunks,
-    formattedContext,
-    allowedObjectiveIds: chunks.map((c) => c.objectiveId),
-  };
-}
-
-function tokenizeHint(haystack: string): string[] {
-  return haystack
-    .toLowerCase()
-    .split(/[^a-z0-9+]+/g)
-    .filter((t) => t.length > 1);
-}
-
-function scoreCambridgeObjective(
-  obj: CurriculumObjective,
-  haystack: string,
-  subj: 'numeracy' | 'literacy'
-): number {
-  const h = haystack.toLowerCase();
-  const blob = `${obj.ixlStyleSkill} ${obj.domain} ${obj.cambridgeStandard} ${obj.diagnosticTrigger}`.toLowerCase();
-  let score = 0;
-  for (const tok of tokenizeHint(haystack)) {
-    if (tok.length > 2 && blob.includes(tok)) score += 2;
-  }
-  if (subj === 'numeracy') {
-    if (h.includes('numer') || h.includes('fraction') || h.includes('add') || h.includes('subtract')) {
-      if (blob.includes('add') || blob.includes('subtract') || blob.includes('digit') || blob.includes('number'))
-        score += 1;
+export class KeywordRetrievalStrategy implements CurriculumRetrievalStrategy {
+  private scoreGesChunk(chunk: GesCurriculumChunk, subject: 'numeracy' | 'literacy', haystack: string): number {
+    let score = 0;
+    if (chunk.subject === subject || chunk.subject === 'both') score += 3;
+    const h = haystack.toLowerCase();
+    for (const kw of chunk.keywords) {
+      if (h.includes(kw.toLowerCase())) score += 2;
     }
-  } else {
-    if (
-      h.includes('read') ||
-      h.includes('spell') ||
-      h.includes('writ') ||
-      h.includes('story') ||
-      h.includes('senten') ||
-      h.includes('phon') ||
-      h.includes('word')
-    ) {
-      if (
-        blob.includes('read') ||
-        blob.includes('spell') ||
-        blob.includes('senten') ||
-        blob.includes('story') ||
-        blob.includes('phonic') ||
-        blob.includes('word')
-      )
-        score += 1;
-    }
-  }
-  return score;
-}
-
-function formatCambridgeObjectivesBlock(
-  objectives: CurriculumObjective[],
-  stream: 'numeracy' | 'literacy'
-): string {
-  const lines = objectives.map((o) => {
-    return [
-      `OBJECTIVE_ID: ${o.id}`,
-      `GRADE_LEVEL: ${o.gradeLevel}`,
-      `DOMAIN: ${o.domain}`,
-      `SKILL: ${o.ixlStyleSkill}`,
-      `CAMBRIDGE_STANDARD: ${o.cambridgeStandard}`,
-      `DIAGNOSTIC_TRIGGER: ${o.diagnosticTrigger}`,
-    ].join('\n');
-  });
-
-  const header =
-    stream === 'literacy'
-      ? 'The following Cambridge Primary English / Literacy objectives were retrieved (top matches). You MUST only cite objective IDs that appear exactly below (copy OBJECTIVE_ID verbatim, e.g. ENG-G1-PHO-01).'
-      : 'The following Cambridge Primary Mathematics objectives were retrieved (top matches). You MUST only cite objective IDs that appear exactly below (copy OBJECTIVE_ID verbatim, e.g. MATH-G1-NUM-01).';
-
-  return [header, '', ...lines].join('\n\n');
-}
-
-/**
- * Cambridge pilot RAG: chooses **math** vs **English** taxonomy from `assessmentType` / subject (`numeracy` | `literacy`).
- * If keyword scores are all zero (e.g. math worksheet mis-tagged as literacy), returns a safe fallback and an empty allowlist.
- */
-export function retrieveCambridgeForAnalysis(
-  subject: string,
-  hintText: string,
-  gradeLevel?: number
-): {
-  objectives: CurriculumObjective[];
-  formattedContext: string;
-  allowedObjectiveIds: string[];
-  stream: 'numeracy' | 'literacy';
-} {
-  const subj = normalizeSubject(subject);
-  const haystack = `${hintText} ${subject}`.trim();
-  const taxonomy = subj === 'literacy' ? cambridgeEnglishTaxonomy : cambridgeMathTaxonomy;
-
-  let pool = [...taxonomy];
-  if (typeof gradeLevel === 'number' && gradeLevel >= 1 && gradeLevel <= 12) {
-    const filtered = pool.filter((o) => o.gradeLevel === gradeLevel);
-    if (filtered.length > 0) pool = filtered;
+    return score;
   }
 
-  const ranked = pool
-    .map((o) => ({ o, s: scoreCambridgeObjective(o, haystack, subj) }))
-    .sort((a, b) => b.s - a.s);
+  /**
+   * Keyword-based GES retrieval MVP (no embeddings).
+   */
+  retrieveGesForAnalysis(subject: string, hintText: string): {
+    chunks: GesCurriculumChunk[];
+    formattedContext: string;
+    allowedObjectiveIds: string[];
+  } {
+    const subj = normalizeSubject(subject);
+    const haystack = `${hintText} ${subject}`.trim();
+    const ranked = [...GES_CURRICULUM_PILOT]
+      .map((c) => ({ c, s: this.scoreGesChunk(c, subj, haystack) }))
+      .sort((a, b) => b.s - a.s);
 
-  const positive = ranked.filter((r) => r.s > 0);
-  if (positive.length === 0) {
-    const formattedContext = subj === 'literacy' ? CAMBRIDGE_NO_MATCH_LITERACY : CAMBRIDGE_NO_MATCH_NUMERACY;
+    const top = ranked.filter((r) => r.s > 0).slice(0, 4).map((r) => r.c);
+    const chunks = top.length > 0 ? top : ranked.slice(0, 3).map((r) => r.c);
+
+    const lines = chunks.map((ch) => {
+      return [
+        `OBJECTIVE_ID: ${ch.objectiveId}`,
+        `TITLE: ${ch.objectiveTitle}`,
+        `STRAND: ${ch.strand} | GRADE: ${ch.gradeBand}`,
+        `EXCERPT: ${ch.excerpt}`,
+      ].join('\n');
+    });
+
+    const formattedContext = [
+      'The following Ghana Education Service (GES) curriculum excerpts were retrieved for alignment. You MUST only cite objective IDs that appear exactly below (copy the OBJECTIVE_ID string verbatim).',
+      '',
+      ...lines,
+    ].join('\n\n');
+
     return {
-      objectives: [],
+      chunks,
       formattedContext,
-      allowedObjectiveIds: [],
+      allowedObjectiveIds: chunks.map((c) => c.objectiveId),
+    };
+  }
+
+  private tokenizeHint(haystack: string): string[] {
+    return haystack
+      .toLowerCase()
+      .split(/[^a-z0-9+]+/g)
+      .filter((t) => t.length > 1);
+  }
+
+  private scoreCambridgeObjective(
+    obj: CurriculumObjective,
+    haystack: string,
+    subj: 'numeracy' | 'literacy'
+  ): number {
+    const h = haystack.toLowerCase();
+    const blob = `${obj.ixlStyleSkill} ${obj.domain} ${obj.cambridgeStandard} ${obj.diagnosticTrigger}`.toLowerCase();
+    let score = 0;
+    for (const tok of this.tokenizeHint(haystack)) {
+      if (tok.length > 2 && blob.includes(tok)) score += 2;
+    }
+    if (subj === 'numeracy') {
+      if (h.includes('numer') || h.includes('fraction') || h.includes('add') || h.includes('subtract')) {
+        if (blob.includes('add') || blob.includes('subtract') || blob.includes('digit') || blob.includes('number'))
+          score += 1;
+      }
+    } else {
+      if (
+        h.includes('read') ||
+        h.includes('spell') ||
+        h.includes('writ') ||
+        h.includes('story') ||
+        h.includes('senten') ||
+        h.includes('phon') ||
+        h.includes('word')
+      ) {
+        if (
+          blob.includes('read') ||
+          blob.includes('spell') ||
+          blob.includes('senten') ||
+          blob.includes('story') ||
+          blob.includes('phonic') ||
+          blob.includes('word')
+        )
+          score += 1;
+      }
+    }
+    return score;
+  }
+
+  private formatCambridgeObjectivesBlock(
+    objectives: CurriculumObjective[],
+    stream: 'numeracy' | 'literacy'
+  ): string {
+    const lines = objectives.map((o) => {
+      return [
+        `OBJECTIVE_ID: ${o.id}`,
+        `GRADE_LEVEL: ${o.gradeLevel}`,
+        `DOMAIN: ${o.domain}`,
+        `SKILL: ${o.ixlStyleSkill}`,
+        `CAMBRIDGE_STANDARD: ${o.cambridgeStandard}`,
+        `DIAGNOSTIC_TRIGGER: ${o.diagnosticTrigger}`,
+      ].join('\n');
+    });
+
+    const header =
+      stream === 'literacy'
+        ? 'The following Cambridge Primary English / Literacy objectives were retrieved (top matches). You MUST only cite objective IDs that appear exactly below (copy OBJECTIVE_ID verbatim, e.g. ENG-G1-PHO-01).'
+        : 'The following Cambridge Primary Mathematics objectives were retrieved (top matches). You MUST only cite objective IDs that appear exactly below (copy OBJECTIVE_ID verbatim, e.g. MATH-G1-NUM-01).';
+
+    return [header, '', ...lines].join('\n\n');
+  }
+
+  /**
+   * Cambridge pilot RAG: chooses **math** vs **English** taxonomy from `assessmentType` / subject (`numeracy` | `literacy`).
+   * If keyword scores are all zero (e.g. math worksheet mis-tagged as literacy), returns a safe fallback and an empty allowlist.
+   */
+  retrieveCambridgeForAnalysis(
+    subject: string,
+    hintText: string,
+    gradeLevel?: number
+  ): {
+    objectives: CurriculumObjective[];
+    formattedContext: string;
+    allowedObjectiveIds: string[];
+    stream: 'numeracy' | 'literacy';
+  } {
+    const subj = normalizeSubject(subject);
+    const haystack = `${hintText} ${subject}`.trim();
+    const taxonomy = subj === 'literacy' ? cambridgeEnglishTaxonomy : cambridgeMathTaxonomy;
+
+    let pool = [...taxonomy];
+    if (typeof gradeLevel === 'number' && gradeLevel >= 1 && gradeLevel <= 12) {
+      const filtered = pool.filter((o) => o.gradeLevel === gradeLevel);
+      if (filtered.length > 0) pool = filtered;
+    }
+
+    const ranked = pool
+      .map((o) => ({ o, s: this.scoreCambridgeObjective(o, haystack, subj) }))
+      .sort((a, b) => b.s - a.s);
+
+    const positive = ranked.filter((r) => r.s > 0);
+    if (positive.length === 0) {
+      const formattedContext = subj === 'literacy' ? CAMBRIDGE_NO_MATCH_LITERACY : CAMBRIDGE_NO_MATCH_NUMERACY;
+      return {
+        objectives: [],
+        formattedContext,
+        allowedObjectiveIds: [],
+        stream: subj,
+      };
+    }
+
+    const objectives = positive.slice(0, 3).map((r) => r.o);
+    const formattedContext = this.formatCambridgeObjectivesBlock(objectives, subj);
+
+    return {
+      objectives,
+      formattedContext,
+      allowedObjectiveIds: objectives.map((o) => o.id),
       stream: subj,
     };
   }
 
-  const objectives = positive.slice(0, 3).map((r) => r.o);
-  const formattedContext = formatCambridgeObjectivesBlock(objectives, subj);
+  /**
+   * Implements {@link CurriculumRetrievalStrategy}: returns LLM-facing block; mutates `context.allowedObjectiveIds` when `context` is a {@link CurriculumRetrievalContext}.
+   */
+  async retrieve(query: string, context?: any): Promise<string> {
+    const ctx = context as CurriculumRetrievalContext | undefined;
+    if (!ctx?.subject || !ctx.curriculumFramework) {
+      const ges = this.retrieveGesForAnalysis(ctx?.subject ?? 'numeracy', query);
+      if (ctx) ctx.allowedObjectiveIds = ges.allowedObjectiveIds;
+      return ges.formattedContext;
+    }
 
+    if (ctx.curriculumFramework === 'Cambridge') {
+      const r = this.retrieveCambridgeForAnalysis(ctx.subject, query, ctx.gradeLevel);
+      ctx.allowedObjectiveIds = r.allowedObjectiveIds;
+      return r.formattedContext;
+    }
+
+    const ges = this.retrieveGesForAnalysis(ctx.subject, query);
+    ctx.allowedObjectiveIds = ges.allowedObjectiveIds;
+    return ges.formattedContext;
+  }
+}
+
+const keywordRetrievalStrategy = new KeywordRetrievalStrategy();
+
+/** Default keyword backend; inject a different {@link CurriculumRetrievalStrategy} for embedding-backed flows via {@link setCurriculumRetrievalStrategy}. */
+export const defaultCurriculumRetrievalStrategy: CurriculumRetrievalStrategy = keywordRetrievalStrategy;
+
+let activeRetrievalStrategy: CurriculumRetrievalStrategy = keywordRetrievalStrategy;
+
+export function getCurriculumRetrievalStrategy(): CurriculumRetrievalStrategy {
+  return activeRetrievalStrategy;
+}
+
+/** Swap retrieval backend (e.g. future `VectorRetrievalStrategy`). Sync helpers below still use {@link KeywordRetrievalStrategy} until callers migrate to {@link getCurriculumContextAsync}. */
+export function setCurriculumRetrievalStrategy(strategy: CurriculumRetrievalStrategy): void {
+  activeRetrievalStrategy = strategy;
+}
+
+/**
+ * Async curriculum bundle; awaits {@link getCurriculumRetrievalStrategy} and reads `allowedObjectiveIds` from context (keyword strategy fills them).
+ */
+export async function getCurriculumContextAsync(
+  subject: string,
+  hintText: string,
+  curriculumFramework: CurriculumFramework,
+  gradeLevel?: number
+): Promise<{
+  formattedContext: string;
+  allowedObjectiveIds: string[];
+  framework: CurriculumFramework;
+}> {
+  const ctx: CurriculumRetrievalContext = {
+    subject,
+    curriculumFramework,
+    gradeLevel,
+    allowedObjectiveIds: [],
+  };
+  const strategy = getCurriculumRetrievalStrategy();
+  const formattedContext = await strategy.retrieve(hintText, ctx);
   return {
-    objectives,
     formattedContext,
-    allowedObjectiveIds: objectives.map((o) => o.id),
-    stream: subj,
+    allowedObjectiveIds: ctx.allowedObjectiveIds ?? [],
+    framework: curriculumFramework,
   };
 }
 
@@ -228,10 +316,17 @@ export function getCurriculumContext(
   framework: CurriculumFramework;
 } {
   if (curriculumFramework === 'Cambridge') {
-    const { formattedContext, allowedObjectiveIds } = retrieveCambridgeForAnalysis(subject, hintText, gradeLevel);
+    const { formattedContext, allowedObjectiveIds } = keywordRetrievalStrategy.retrieveCambridgeForAnalysis(
+      subject,
+      hintText,
+      gradeLevel
+    );
     return { formattedContext, allowedObjectiveIds, framework: 'Cambridge' };
   }
-  const { formattedContext, allowedObjectiveIds } = retrieveGesForAnalysis(subject, hintText);
+  const { formattedContext, allowedObjectiveIds } = keywordRetrievalStrategy.retrieveGesForAnalysis(
+    subject,
+    hintText
+  );
   return { formattedContext, allowedObjectiveIds, framework: 'GES' };
 }
 
@@ -275,4 +370,27 @@ export function validateCurriculumObjectiveId(
     excerpt: chunk.excerpt,
     verified,
   };
+}
+
+// --- Public API: thin delegates to default keyword strategy (same signatures as before refactor) ---
+
+export function retrieveGesForAnalysis(subject: string, hintText: string): {
+  chunks: GesCurriculumChunk[];
+  formattedContext: string;
+  allowedObjectiveIds: string[];
+} {
+  return keywordRetrievalStrategy.retrieveGesForAnalysis(subject, hintText);
+}
+
+export function retrieveCambridgeForAnalysis(
+  subject: string,
+  hintText: string,
+  gradeLevel?: number
+): {
+  objectives: CurriculumObjective[];
+  formattedContext: string;
+  allowedObjectiveIds: string[];
+  stream: 'numeracy' | 'literacy';
+} {
+  return keywordRetrievalStrategy.retrieveCambridgeForAnalysis(subject, hintText, gradeLevel);
 }

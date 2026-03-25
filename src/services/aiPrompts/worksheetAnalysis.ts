@@ -36,6 +36,7 @@ export type AnalyzeWorksheetOptions = {
   studentGradeLevel?: number;
   /** Compact text summary of recent performance for longitudinal context. */
   recentHistorySummary?: string;
+  officialSenStatus?: string;
 };
 
 export type WorksheetRagOptions = {
@@ -46,6 +47,7 @@ export type WorksheetRagOptions = {
   /** Developmental band for time-aware diagnosis (may match `gradeLevel` or be sourced separately). */
   studentGradeLevel?: number;
   recentHistorySummary?: string;
+  officialSenStatus?: string;
 };
 
 function resolveCurriculumPayload(
@@ -115,7 +117,8 @@ export const analyzeWorksheet = async (
     const senWarningJson = getSenWarningFlagJsonInstruction();
     const temporalBlock = buildLearnerTemporalContextBlock(
       options?.studentGradeLevel,
-      options?.recentHistorySummary
+      options?.recentHistorySummary,
+      options?.officialSenStatus
     );
 
     const autoDetect =
@@ -266,7 +269,8 @@ export const analyzeWorksheetMultiple = async (
     const senWarningJson = getSenWarningFlagJsonInstruction();
     const temporalBlock = buildLearnerTemporalContextBlock(
       ragOptions?.studentGradeLevel,
-      ragOptions?.recentHistorySummary
+      ragOptions?.recentHistorySummary,
+      ragOptions?.officialSenStatus
     );
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map learner evidence to the standard in curriculumContext, then localize remediation per dialectContext.
@@ -367,7 +371,8 @@ export const analyzeManualEntry = async (
     const senWarningJson = getSenWarningFlagJsonInstruction();
     const temporalBlock = buildLearnerTemporalContextBlock(
       ragOptions?.studentGradeLevel,
-      ragOptions?.recentHistorySummary
+      ragOptions?.recentHistorySummary,
+      ragOptions?.officialSenStatus
     );
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map teacher rubric evidence to curriculumContext, then localize remediation per dialectContext.

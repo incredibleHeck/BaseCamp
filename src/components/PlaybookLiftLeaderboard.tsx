@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
 import type { UserData } from './Header';
-import { fetchEnterpriseDashboard, type AnalyticsScope } from '../services/enterpriseAnalyticsService';
+import {
+  fetchScopedDistrictRollupInputs,
+  type DistrictFeatureScope,
+} from '../services/districtAnalyticsService';
 import { computePlaybookLiftLeaderboard, type PlaybookLiftRow } from '../services/playbookAnalyticsService';
 import { DEFAULT_DISTRICT_ID } from '../config/organizationDefaults';
 
@@ -13,9 +16,8 @@ export function PlaybookLiftLeaderboard({ user }: PlaybookLiftLeaderboardProps) 
   const [rows, setRows] = useState<PlaybookLiftRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const scope: AnalyticsScope = useMemo(
+  const scope: DistrictFeatureScope = useMemo(
     () => ({
-      role: user.role,
       districtId: user.districtId ?? DEFAULT_DISTRICT_ID,
       schoolId: user.role === 'headteacher' ? user.schoolId : undefined,
       circuitId: undefined,
@@ -28,7 +30,7 @@ export function PlaybookLiftLeaderboard({ user }: PlaybookLiftLeaderboardProps) 
     (async () => {
       setLoading(true);
       try {
-        const dash = await fetchEnterpriseDashboard(scope);
+        const dash = await fetchScopedDistrictRollupInputs(scope);
         if (cancelled) return;
         setRows(computePlaybookLiftLeaderboard(dash.assessments));
       } finally {

@@ -77,8 +77,14 @@ export function buildStudentContextForHybridPrompt(
 ): string {
   const lines: string[] = [];
   if (student) {
-    lines.push(`Learner name: ${student.name}`);
+    lines.push(`Name: ${student.name}`);
     lines.push(`Grade / class context: ${student.grade || 'Not specified'}`);
+    const lang = student.primaryLanguage?.trim();
+    if (lang) lines.push(`Primary Language: ${lang}`);
+    const sen = student.officialSenStatus?.trim();
+    if (sen && sen.toLowerCase() !== 'none') {
+      lines.push(`Special Educational Needs (SEN) Status: ${sen}`);
+    }
   } else {
     lines.push('Learner profile: not loaded from roster.');
   }

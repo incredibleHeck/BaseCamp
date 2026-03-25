@@ -70,7 +70,14 @@ export interface SenRiskReport {
 
 export interface LessonPlanResult {
   title: string;
+  objective?: string;
   instructions: string[];
+}
+
+/** Age band and dialect for specialized math/English remedial lesson generators. */
+export interface GenerateLessonPlanOptions {
+  studentGradeLevel?: number;
+  dialectContext?: string;
 }
 
 /**
@@ -79,6 +86,7 @@ export interface LessonPlanResult {
  */
 export interface MathLessonPlanResult {
   title: string;
+  objective?: string;
   /** Human-readable duration, e.g. "5 minutes". */
   estimatedDuration: string;
   /** Low-resource, locally available items (paper, pencil, found objects; empty array if none). */

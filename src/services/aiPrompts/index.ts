@@ -5,6 +5,7 @@
 export type {
   DiagnosticReport,
   EnglishLessonPlanResult,
+  GenerateLessonPlanOptions,
   GesAlignment,
   LessonPlanResult,
   MathLessonPlanResult,
@@ -25,9 +26,9 @@ export {
   type ClassRosterEntry,
   type WorksheetRagOptions,
 } from './worksheetAnalysis';
-export { generateRemedialLessonPlan, type GenerateLessonPlanOptions } from './lessonPlan';
 export { generateMathLessonPlan } from './mathLessonPlan';
 export { generateEnglishLessonPlan } from './englishLessonPlan';
+export { generateSubjectRoutedLessonPlan, mapSpecializedLessonPlanToLessonPlanResult } from './subjectRoutedLessonPlan';
 export {
   generateExtensionActivity,
   shouldUseExtensionActivity,

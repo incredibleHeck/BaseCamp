@@ -50,6 +50,7 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
   - **Manual entry** — rubric + observations → AI analysis  
   - **Voice** — [`VoiceObservationRecorder.tsx`](src/components/VoiceObservationRecorder.tsx) queues audio; sync via [`useVoiceObservationSync`](src/hooks/useVoiceObservationSync.ts); post–voice flow continues to photo upload for worksheet AI when applicable  
 - **[`AnalysisResults.tsx`](src/components/AnalysisResults.tsx)** + **[`useAnalysisFlow.ts`](src/hooks/useAnalysisFlow.ts):** Runs `analyzeWorksheet` / `analyzeWorksheetMultiple` / `analyzeManualEntry`, lesson regeneration, save to Firestore, SEN alert evaluation  
+- **[`assessmentPipelineService.ts`](src/services/assessmentPipelineService.ts):** Core pipeline for processing and persisting assessments  
 - **[`DiagnosticReportCard.tsx`](src/components/DiagnosticReportCard.tsx):** Report UI, lesson plan, SMS draft, save to profile  
 - **[`FileUploadZone.tsx`](src/components/FileUploadZone.tsx):** File pick / camera path with [`imageCompression.ts`](src/utils/imageCompression.ts) where used  
 
@@ -66,14 +67,15 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 
 ### Class roster and students
 
-- **[`ClassRoster.tsx`](src/components/ClassRoster.tsx)**, **[`AddStudentForm.tsx`](src/components/AddStudentForm.tsx)**  
-- **[`studentService.ts`](src/services/studentService.ts)**  
+- **[`ClassRoster.tsx`](src/components/ClassRoster.tsx)**, **[`AddStudentForm.tsx`](src/components/AddStudentForm.tsx)**, **[`CohortManager.tsx`](src/components/CohortManager.tsx)**  
+- **[`studentService.ts`](src/services/studentService.ts)**, **[`cohortService.ts`](src/services/cohortService.ts)**  
 
 ### Student profile
 
 - **[`StudentProfile.tsx`](src/components/StudentProfile.tsx):** Data vs **Action plan** toggle; analytical view + action plan (lesson / worksheet regeneration); PDF export; Phase 4 family card for teachers  
 - **[`StudentProfileAnalyticalView.tsx`](src/components/StudentProfileAnalyticalView.tsx):** Longitudinal history, JHS readiness, neurodevelopment / SEN screening, mastery / gaps  
 - **[`StudentProfileActionPlanView.tsx`](src/components/StudentProfileActionPlanView.tsx):** Gap-based interventions, worksheets  
+- **[`StudentRecordCard.tsx`](src/components/StudentRecordCard.tsx):** Editable student record (cohort, language, SEN, consent)  
 - **[`WorksheetModal.tsx`](src/components/WorksheetModal.tsx):** Practice worksheet preview / print with markdown + math  
 - **[`useStudentProfileData.ts`](src/hooks/useStudentProfileData.ts):** Aggregates history, gaps, worksheet cache keys, etc.  
 - **[`Phase4FamilyConnectCard.tsx`](src/components/Phase4FamilyConnectCard.tsx):** Family / WhatsApp–style engagement (Phase 4)  
@@ -81,11 +83,11 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 
 ### Enterprise / analytics
 
-- **[`DistrictOverview.tsx`](src/components/DistrictOverview.tsx)**, **[`SchoolOverview.tsx`](src/components/SchoolOverview.tsx)**  
+- **[`DistrictDashboard.tsx`](src/components/DistrictDashboard.tsx)**, **[`HeadmasterDashboard.tsx`](src/components/HeadmasterDashboard.tsx)**  
 - **[`CircuitHeatmapPanel.tsx`](src/components/CircuitHeatmapPanel.tsx):** Geographic / circuit risk visualization  
 - **[`PlaybookLiftLeaderboard.tsx`](src/components/PlaybookLiftLeaderboard.tsx)**, **[`SenAlertsInbox.tsx`](src/components/SenAlertsInbox.tsx)**  
-- **[`enterpriseAnalyticsService.ts`](src/services/enterpriseAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
-- **[`TeacherDirectory.tsx`](src/components/TeacherDirectory.tsx)** (headteacher)  
+- **[`districtAnalyticsService.ts`](src/services/districtAnalyticsService.ts)**, **[`schoolAnalyticsService.ts`](src/services/schoolAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
+- **[`StaffDirectory.tsx`](src/components/StaffDirectory.tsx)** (headteacher)  
 - **[`FineTunePilotPanel.tsx`](src/components/FineTunePilotPanel.tsx)** + **[`fineTunePilotService.ts`](src/services/fineTunePilotService.ts)** (super_admin)  
 
 ### Student portal / parent ecosystem (supporting services)
@@ -123,26 +125,28 @@ src/
 │   ├── AddStudentForm.tsx
 │   ├── AnalysisResults.tsx
 │   ├── AssessmentSetup.tsx
-│   ├── ClassRoster.tsx
 │   ├── CircuitHeatmapPanel.tsx
+│   ├── ClassRoster.tsx
+│   ├── CohortManager.tsx
 │   ├── DiagnosticReportCard.tsx
-│   ├── DistrictOverview.tsx
+│   ├── DistrictDashboard.tsx
 │   ├── ErrorBoundary.tsx
 │   ├── FileUploadZone.tsx
 │   ├── FineTunePilotPanel.tsx
 │   ├── Header.tsx
+│   ├── HeadmasterDashboard.tsx
 │   ├── Login.tsx
 │   ├── OfflineQueuedModal.tsx
 │   ├── PendingAnalyses.tsx
 │   ├── Phase4FamilyConnectCard.tsx
 │   ├── PlaybookLiftLeaderboard.tsx
-│   ├── SchoolOverview.tsx
 │   ├── SenAlertsInbox.tsx
+│   ├── StaffDirectory.tsx
 │   ├── StudentPortalApp.tsx
 │   ├── StudentProfile.tsx
 │   ├── StudentProfileActionPlanView.tsx
 │   ├── StudentProfileAnalyticalView.tsx
-│   ├── TeacherDirectory.tsx
+│   ├── StudentRecordCard.tsx
 │   ├── VoiceObservationRecorder.tsx
 │   ├── WorksheetModal.tsx
 │   └── …
@@ -166,6 +170,7 @@ src/
 │   └── firebase.ts          # Firebase app + exports
 │
 ├── services/                # API, Firestore, AI, queues
+│   ├── assessmentPipelineService.ts
 │   ├── assessmentService.ts
 │   ├── aiPrompts/           # Gemini prompts & analysis (modular)
 │   │   ├── index.ts
@@ -174,21 +179,25 @@ src/
 │   │   ├── utils.ts
 │   │   ├── worksheetAnalysis.ts
 │   │   ├── worksheetGeneration.ts
-│   │   ├── lessonPlan.ts
+│   │   ├── subjectRoutedLessonPlan.ts
 │   │   ├── voiceObservation.ts
 │   │   ├── senAnalysis.ts
 │   │   └── phase4Ecosystem.ts
-│   ├── enterpriseAnalyticsService.ts
-│   ├── fineTunePilotService.ts
+│   ├── cohortService.ts
 │   ├── curriculumRagService.ts
+│   ├── districtAnalyticsService.ts
+│   ├── fineTunePilotService.ts
 │   ├── gradebookExport.ts
 │   ├── observationService.ts
 │   ├── offlineQueueService.ts
 │   ├── parentDigestService.ts
 │   ├── playbookAnalyticsService.ts
 │   ├── portalSessionService.ts
+│   ├── schoolAnalyticsService.ts
+│   ├── schoolService.ts
 │   ├── senAlertService.ts
 │   ├── studentService.ts
+│   ├── userService.ts
 │   ├── voiceObservationQueueService.ts
 │   └── whatsappConnectService.ts
 │

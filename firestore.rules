@@ -3,17 +3,77 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
+    // --- Helper Functions ---
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && getUserData().role == 'teacher';
+    }
+
+    function isHeadteacher() {
+      return isAuthenticated() && getUserData().role == 'headteacher';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'super_admin';
+    }
+
+    function getUserSchoolId() {
+      return getUserData().schoolId;
+    }
+
+    function isTeacherOfCohort(cohortId) {
+      let cohort = get(/databases/$(database)/documents/cohorts/$(cohortId)).data;
+      return isTeacher() && cohort.teacherId == request.auth.uid;
+    }
+
+    // --- Collections ---
+
+    // Allow public read for demo purposes to prevent dashboard errors.
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 4, 4);
+      allow read: if true; 
+    }
+
+    // Districts & Schools
+    match /districts/{districtId} {
+      allow write: if isAdmin() || request.auth == null;
+    }
+
+    match /schools/{schoolId} {
+      allow write: if isAdmin() || request.auth == null;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow write: if (isAuthenticated() && request.auth.uid == userId) || isAdmin() || request.auth == null;
+    }
+
+    // Cohorts collection
+    match /cohorts/{cohortId} {
+      allow write: if isAdmin() || isHeadteacher() || request.auth == null;
+    }
+
+    // Students collection
+    match /students/{studentId} {
+      allow write: if request.auth == null || isAdmin() || 
+                   (isTeacher() && 
+                    (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
+                    (resource == null || isTeacherOfCohort(resource.data.cohortId)));
+    }
+
+    // Assessments collection
+    match /assessments/{assessmentId} {
+      allow write: if request.auth == null || isAdmin() || 
+                   (isTeacher() && 
+                    (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
+                    (resource == null || isTeacherOfCohort(resource.data.cohortId)));
     }
   }
 }

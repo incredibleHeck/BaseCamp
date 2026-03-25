@@ -8,8 +8,7 @@ import {
 } from '../services/studentService';
 import { buildWeeklyParentDigest } from '../services/parentDigestService';
 import { queueWeeklyDigestWhatsApp } from '../services/whatsappConnectService';
-
-const LANGUAGES = ['English', 'Twi', 'Ga', 'Ewe'] as const;
+import { GUARDIAN_MESSAGE_LANGUAGE_OPTIONS } from '../constants/studentLanguages';
 
 interface Phase4FamilyConnectCardProps {
   studentId: string;
@@ -193,7 +192,7 @@ export function Phase4FamilyConnectCard({
             disabled={!canEdit}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 disabled:bg-gray-100"
           >
-            {LANGUAGES.map((l) => (
+            {GUARDIAN_MESSAGE_LANGUAGE_OPTIONS.map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>

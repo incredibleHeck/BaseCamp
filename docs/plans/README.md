@@ -10,7 +10,7 @@ Human-readable copies of product and implementation plans. The Cursor-generated 
 | [Pending analyses](pending-analyses.md) | Fix queue count staleness; `Pending Analyses` tab; remove / run now. |
 | [Offline queue service](offline-queue-service.md) | IndexedDB queue via `idb-keyval` (initial design; schema later extended). |
 | [Mobile frontend optimization](mobile-frontend-optimization.md) | Touch targets, responsive visibility, tables on small screens. |
-| [Demo prototype readiness](demo-prototype-readiness.md) | Pre-demo audit: Teacher Directory, manual entry, roster stability, env docs. |
+| [Demo prototype readiness](demo-prototype-readiness.md) | Pre-demo audit: Staff Directory, manual entry, roster stability, env docs. |
 | [Phase 2 – Pro Teacher Tools (V2.0)](phase-2-pro-teacher-tools-v2.md) | Voice observations, GES curriculum RAG, automated gradebook export. |
 | [Phase 3 – Premium Enterprise / NGO (V3.0)](phase-3-premium-enterprise-dashboard-v3.md) | Geo heatmaps, longitudinal SEN alerts, A/B remedial playbooks at scale. |
 | [Phase 4 – Master Ecosystem (V4.0)](phase-4-master-ecosystem-v4.md) | WhatsApp parent bot, student PWA, local model fine-tuning. |

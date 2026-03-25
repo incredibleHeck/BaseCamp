@@ -1,8 +1,19 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { SenWarningFlag } from './aiPrompts/types';
+import type { Assessment } from '../types/domain';
+
+export type { Assessment };
 
 const SEN_WARNING_SEVERITIES = new Set(['low', 'medium', 'high']);
+const SEN_WARNING_CATEGORIES = new Set<string>([
+  'Dyscalculia',
+  'Dyslexia',
+  'Dysgraphia',
+  'Visual-Spatial',
+  'Auditory-Processing',
+  'Other',
+]);
 
 function parseSenWarningFlagFromDoc(raw: unknown): SenWarningFlag | undefined {
   if (raw == null || typeof raw !== 'object') return undefined;
@@ -11,8 +22,13 @@ function parseSenWarningFlagFromDoc(raw: unknown): SenWarningFlag | undefined {
   const category = o.category;
   const reason = o.reason;
   if (typeof sev !== 'string' || !SEN_WARNING_SEVERITIES.has(sev)) return undefined;
-  if (typeof category !== 'string' || typeof reason !== 'string') return undefined;
-  return { severity: sev as SenWarningFlag['severity'], category, reason };
+  if (typeof category !== 'string' || !SEN_WARNING_CATEGORIES.has(category)) return undefined;
+  if (typeof reason !== 'string') return undefined;
+  return {
+    severity: sev as SenWarningFlag['severity'],
+    category: category as SenWarningFlag['category'],
+    reason,
+  };
 }
 
 /** Firestore rejects `undefined` anywhere in a document. */
@@ -24,39 +40,39 @@ function omitUndefinedFields<T extends Record<string, unknown>>(data: T): Record
   return out;
 }
 
-export interface Assessment {
-  id?: string;
-  studentId: string;
-  type: 'Literacy' | 'Numeracy';
-  diagnosis: string;
-  masteredConcepts?: string;
-  gapTags?: string[];
-  masteryTags?: string[];
-  remedialPlan?: string;
-  lessonPlan?: { title: string; instructions: string[] };
-  /** A* / gifted extension (markdown); optional. */
-  extensionActivity?: string;
-  /** Generated practice worksheet; overwritten when regenerated. */
-  worksheet?: { title: string; questions: string[] };
-  /** 0–100 mastery score from AI diagnostic (Phase 2 gradebook). */
-  score?: number;
-  term?: string;
-  academicYear?: string;
-  /** Class / stream label for exports (e.g. Primary 6A). */
-  classLabel?: string;
-  /** GES curriculum alignment from RAG-assisted diagnosis. */
-  gesObjectiveId?: string;
-  gesObjectiveTitle?: string;
-  gesCurriculumExcerpt?: string;
-  /** True when objectiveId was in the retrieved allowlist for this request. */
-  gesVerified?: boolean;
-  /** Phase 3: remedial playbook identity for A/B style analytics */
-  playbookKey?: string;
-  playbookTitle?: string;
-  timestamp: Date | Timestamp | number;
-  status: 'Pending' | 'In Progress' | 'Completed';
-  /** Model / screening hint persisted for gradebook & longitudinal views (non-clinical). */
-  senWarningFlag?: SenWarningFlag | null;
+function lessonPlanFromFirestore(raw: unknown): NonNullable<Assessment['lessonPlan']> {
+  if (raw == null || typeof raw !== 'object') return { title: '', instructions: [] };
+  const o = raw as Record<string, unknown>;
+  const title = typeof o.title === 'string' ? o.title : '';
+  const instructions = Array.isArray(o.instructions)
+    ? o.instructions.filter((x): x is string => typeof x === 'string')
+    : [];
+  return { title, instructions };
+}
+
+function worksheetFromFirestore(raw: unknown): Assessment['worksheet'] {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.title !== 'string' || !Array.isArray(o.questions)) return undefined;
+  const questions = o.questions.filter((x): x is string => typeof x === 'string');
+  return { title: o.title, questions };
+}
+
+/** Optional epoch ms from number or Firestore Timestamp-style values. */
+function optionalEpochMs(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (raw != null && typeof raw === 'object' && typeof (raw as Timestamp).toMillis === 'function') {
+    return (raw as Timestamp).toMillis();
+  }
+  if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    'seconds' in raw &&
+    typeof (raw as { seconds: unknown }).seconds === 'number'
+  ) {
+    return (raw as { seconds: number }).seconds * 1000;
+  }
+  return undefined;
 }
 
 /**
@@ -66,9 +82,13 @@ export interface Assessment {
  */
 export const saveAssessment = async (data: Assessment): Promise<string | null> => {
   try {
+    const record = {
+      ...(data as unknown as Record<string, unknown>),
+      updatedAt: Date.now(),
+    };
     const docRef = await addDoc(
       collection(db, 'assessments'),
-      omitUndefinedFields(data as unknown as Record<string, unknown>) as Assessment
+      omitUndefinedFields(record) as unknown as Assessment
     );
     return docRef.id;
   } catch (error) {
@@ -104,6 +124,7 @@ export const updateAssessment = async (
     const ref = doc(db, 'assessments', assessmentId);
     const patch = omitUndefinedFields(updates as unknown as Record<string, unknown>);
     if (Object.keys(patch).length === 0) return;
+    patch.updatedAt = Date.now();
     await updateDoc(ref, patch);
   } catch (error) {
     console.error('Error updating assessment document: ', error);
@@ -111,10 +132,52 @@ export const updateAssessment = async (
   }
 };
 
+function assessmentFromFirestoreDoc(docId: string, data: Record<string, unknown>): Assessment {
+  return {
+    id: docId,
+    studentId: data.studentId as string,
+    type: data.type as Assessment['type'],
+    diagnosis: data.diagnosis as string,
+    masteredConcepts: data.masteredConcepts as string | undefined,
+    gapTags: (data.gapTags as string[]) ?? [],
+    masteryTags: (data.masteryTags as string[]) ?? [],
+    remedialPlan: (data.remedialPlan as string) || '',
+    lessonPlan: lessonPlanFromFirestore(data.lessonPlan),
+    extensionActivity: typeof data.extensionActivity === 'string' ? data.extensionActivity : undefined,
+    worksheet: worksheetFromFirestore(data.worksheet),
+    score: typeof data.score === 'number' ? data.score : undefined,
+    rawScore: typeof data.rawScore === 'number' ? data.rawScore : undefined,
+    term: typeof data.term === 'string' ? data.term : undefined,
+    academicYear: typeof data.academicYear === 'string' ? data.academicYear : undefined,
+    classLabel: typeof data.classLabel === 'string' ? data.classLabel : undefined,
+    cohortId: typeof data.cohortId === 'string' ? data.cohortId : undefined,
+    schoolId: typeof data.schoolId === 'string' && data.schoolId.trim() ? data.schoolId.trim() : undefined,
+    createdByUserId:
+      typeof data.createdByUserId === 'string' && data.createdByUserId.trim()
+        ? data.createdByUserId.trim()
+        : undefined,
+    updatedAt: optionalEpochMs(data.updatedAt),
+    gesObjectiveId: typeof data.gesObjectiveId === 'string' ? data.gesObjectiveId : undefined,
+    gesObjectiveTitle: typeof data.gesObjectiveTitle === 'string' ? data.gesObjectiveTitle : undefined,
+    gesCurriculumExcerpt: typeof data.gesCurriculumExcerpt === 'string' ? data.gesCurriculumExcerpt : undefined,
+    gesVerified: typeof data.gesVerified === 'boolean' ? data.gesVerified : undefined,
+    alignedStandardCode:
+      typeof data.alignedStandardCode === 'string' && data.alignedStandardCode.trim()
+        ? data.alignedStandardCode.trim()
+        : undefined,
+    masteryLevel: typeof data.masteryLevel === 'string' ? data.masteryLevel : undefined,
+    playbookKey: typeof data.playbookKey === 'string' ? data.playbookKey : undefined,
+    playbookTitle: typeof data.playbookTitle === 'string' ? data.playbookTitle : undefined,
+    timestamp: data.timestamp as Assessment['timestamp'],
+    status: data.status as Assessment['status'],
+    senWarningFlag: parseSenWarningFlagFromDoc(data.senWarningFlag),
+  };
+}
+
 /**
  * Retrieves the assessment history for a specific student, ordered by timestamp descending.
  * @param studentId The ID of the student.
- * @returns An array of Assessment objects.
+ * @returns Assessment rows (may include denormalized `cohortId` when stored on documents).
  */
 export const getStudentHistory = async (studentId: string): Promise<Assessment[]> => {
   try {
@@ -123,47 +186,33 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
       where('studentId', '==', studentId),
       orderBy('timestamp', 'desc')
     );
-    
+
     const querySnapshot = await getDocs(q);
     const history: Assessment[] = [];
-    
-    querySnapshot.forEach((doc) => {
-      // Extract data and include the document ID
-      const data = doc.data();
-      history.push({ 
-        id: doc.id,
-        studentId: data.studentId,
-        type: data.type,
-        diagnosis: data.diagnosis,
-        masteredConcepts: data.masteredConcepts,
-        gapTags: data.gapTags ?? [],
-        masteryTags: data.masteryTags ?? [],
-        remedialPlan: data.remedialPlan || '',
-        lessonPlan: data.lessonPlan || { title: '', instructions: [] },
-        extensionActivity: typeof data.extensionActivity === 'string' ? data.extensionActivity : undefined,
-        worksheet: data.worksheet ?? undefined,
-        score: typeof data.score === 'number' ? data.score : undefined,
-        term: typeof data.term === 'string' ? data.term : undefined,
-        academicYear: typeof data.academicYear === 'string' ? data.academicYear : undefined,
-        classLabel: typeof data.classLabel === 'string' ? data.classLabel : undefined,
-        gesObjectiveId: typeof data.gesObjectiveId === 'string' ? data.gesObjectiveId : undefined,
-        gesObjectiveTitle: typeof data.gesObjectiveTitle === 'string' ? data.gesObjectiveTitle : undefined,
-        gesCurriculumExcerpt: typeof data.gesCurriculumExcerpt === 'string' ? data.gesCurriculumExcerpt : undefined,
-        gesVerified: typeof data.gesVerified === 'boolean' ? data.gesVerified : undefined,
-        playbookKey: typeof data.playbookKey === 'string' ? data.playbookKey : undefined,
-        playbookTitle: typeof data.playbookTitle === 'string' ? data.playbookTitle : undefined,
-        timestamp: data.timestamp,
-        status: data.status,
-        senWarningFlag: parseSenWarningFlagFromDoc(data.senWarningFlag),
-      });
+
+    querySnapshot.forEach((docSnap) => {
+      history.push(assessmentFromFirestoreDoc(docSnap.id, docSnap.data() as Record<string, unknown>));
     });
-    
+
     return history;
   } catch (error) {
     console.error('Error fetching student assessment history: ', error);
     return [];
   }
 };
+
+/** Full collection read for exports and cross-student analytics (use sparingly). */
+export async function fetchAllAssessments(): Promise<Assessment[]> {
+  try {
+    const snap = await getDocs(collection(db, 'assessments'));
+    const list: Assessment[] = [];
+    snap.forEach((d) => list.push(assessmentFromFirestoreDoc(d.id, d.data() as Record<string, unknown>)));
+    return list;
+  } catch (e) {
+    console.error('fetchAllAssessments', e);
+    return [];
+  }
+}
 
 export interface AssessmentSummaryEntry {
   lastDate: number;

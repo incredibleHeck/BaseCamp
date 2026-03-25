@@ -1,81 +1,35 @@
 import React, { useEffect } from 'react';
 import { FileSearch, Loader2, Mic } from 'lucide-react';
-import {
-  useAnalysisFlow,
-  type AnalysisStatus,
-  type DiagnosticReport,
-  type AnalyzeHybridAssessmentFn,
-} from '../hooks/useAnalysisFlow';
+import { useAssessment } from '../context/AssessmentContext';
+import { useAnalysisFlow, type AnalysisStatus, type DiagnosticReport } from '../hooks/useAnalysisFlow';
 import { DiagnosticReportCard } from './DiagnosticReportCard';
 import type { AssessmentData } from './AssessmentSetup';
-import type { CurriculumFramework } from '../services/curriculumRagService';
 
 export type { AnalysisStatus, DiagnosticReport };
 
-interface AnalysisResultsProps {
-  status: AnalysisStatus;
-  onSaveProfile: () => void;
-  isOffline?: boolean;
-  studentId?: string;
-  assessmentType?: string;
-  imageBase64?: string | null;
-  imageBase64s?: string[] | null;
-  dialectContext?: string | null;
-  manualRubric?: string[] | null;
-  observations?: string | null;
-  curriculumFramework?: CurriculumFramework;
-  gradeLevel?: number;
-  /** Reflects New Assessment form mode for empty-state messaging. */
-  inputMode?: AssessmentData['inputMode'];
-  onAnalysisComplete?: () => void;
-  onAnalysisError?: () => void;
-  /** Lets sibling panels call the hybrid voice+image pipeline (registered after mount). */
-  onHybridFlowReady?: (runner: AnalyzeHybridAssessmentFn | null) => void;
-}
+/**
+ * Right panel for the new-assessment flow. Reads/writes assessment state via `AssessmentProvider` + `useAnalysisFlow`.
+ */
+export function AnalysisResults() {
+  const { analysisStatus, reportData, registerHybridRunner, lastAssessmentData, setupSnapshot } =
+    useAssessment();
 
-export function AnalysisResults({
-  status,
-  onSaveProfile: _onSaveProfile,
-  isOffline = false,
-  studentId,
-  assessmentType,
-  imageBase64,
-  imageBase64s,
-  dialectContext,
-  manualRubric,
-  observations,
-  curriculumFramework,
-  gradeLevel,
-  inputMode,
-  onAnalysisComplete,
-  onAnalysisError,
-  onHybridFlowReady,
-}: AnalysisResultsProps) {
-  const flow = useAnalysisFlow({
-    status,
-    isOffline,
-    studentId,
-    assessmentType,
-    inputMode,
-    imageBase64,
-    imageBase64s,
-    dialectContext,
-    manualRubric,
-    observations,
-    curriculumFramework,
-    gradeLevel,
-    onAnalysisComplete,
-    onAnalysisError,
-  });
+  const flow = useAnalysisFlow();
 
   useEffect(() => {
-    onHybridFlowReady?.(flow.analyzeHybridAssessment);
-    return () => onHybridFlowReady?.(null);
-  }, [flow.analyzeHybridAssessment, onHybridFlowReady]);
+    registerHybridRunner(flow.analyzeHybridAssessment);
+    return () => registerHybridRunner(null);
+  }, [flow.analyzeHybridAssessment, registerHybridRunner]);
+
+  const inputMode: AssessmentData['inputMode'] | undefined =
+    lastAssessmentData?.inputMode ?? setupSnapshot?.inputMode;
+
+  const showAnalyzingLoader =
+    analysisStatus === 'analyzing' || (analysisStatus === 'results' && !reportData);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full min-h-[400px] flex flex-col relative">
-      {status === 'empty' && (
+      {analysisStatus === 'empty' && (
         <div className="flex-grow flex flex-col items-center justify-center text-center p-8">
           <div className="bg-gray-50 p-5 rounded-full mb-4">
             {inputMode === 'voice' ? (
@@ -95,7 +49,7 @@ export function AnalysisResults({
         </div>
       )}
 
-      {(status === 'analyzing' || (status === 'results' && !flow.reportData)) && (
+      {showAnalyzingLoader && (
         <div className="flex-grow flex flex-col items-center justify-center text-center p-8">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-6" />
           <h3 className="text-lg font-medium text-gray-900 mb-2 animate-pulse">
@@ -107,7 +61,7 @@ export function AnalysisResults({
         </div>
       )}
 
-      {status === 'results' && flow.reportData && (
+      {analysisStatus === 'results' && reportData && (
         <DiagnosticReportCard
           data={flow.data}
           showSmsDraft={flow.showSmsDraft}

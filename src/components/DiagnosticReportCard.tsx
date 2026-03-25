@@ -19,7 +19,7 @@ export interface DiagnosticReportCardProps {
   setShowSmsDraft: (v: boolean | ((prev: boolean) => boolean)) => void;
   isGeneratingLesson: boolean;
   showLessonPlan: boolean;
-  displayLessonPlan: { title: string; instructions: string[] } | null | undefined;
+  displayLessonPlan: { title: string; objective?: string; instructions: string[] } | null | undefined;
   displayInstructions: string[];
   handleGenerateLesson: () => void | Promise<void>;
   handlePrintActivity: () => void;
@@ -82,7 +82,9 @@ export function DiagnosticReportCard({
           {data.gesAlignment && data.gesAlignment.objectiveId ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <h4 className="text-sm font-semibold text-amber-900">GES curriculum alignment</h4>
+                <h4 className="text-sm font-semibold text-amber-900">
+                  {data.alignedStandardCode ? 'Cambridge curriculum alignment' : 'GES curriculum alignment'}
+                </h4>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full border ${
                     data.gesAlignment.verified
@@ -182,6 +184,14 @@ export function DiagnosticReportCard({
                     </h5>
                     <Sparkles size={16} className="text-yellow-600" />
                   </div>
+
+                  {displayLessonPlan?.objective && (
+                    <div className="mb-4 bg-white border border-yellow-200 rounded-md p-3 shadow-sm">
+                      <h6 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Lesson Objective</h6>
+                      <p className="text-sm text-gray-800">{displayLessonPlan.objective}</p>
+                    </div>
+                  )}
+
                   <div className="space-y-3 mb-4">
                     <p className="text-sm text-gray-800 font-medium">Instructions:</p>
                     <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">

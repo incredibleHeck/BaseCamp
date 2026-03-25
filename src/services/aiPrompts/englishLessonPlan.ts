@@ -1,6 +1,6 @@
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
 import type { DiagnosticReport, EnglishLessonPlanResult } from './types';
-import { cleanJsonResponse, normalizeStringArray } from './utils';
+import { cleanJsonResponse, escapeForPrompt, normalizeStringArray } from './utils';
 
 const DEFAULT_GRADE_LEVEL = 4;
 /** Full K–9 product scope; grades 10–12 still accepted from rosters and map to the 7–9 concrete band. */
@@ -20,10 +20,6 @@ function resolveDialect(raw?: string | null): { label: string; active: boolean }
   const t = raw?.trim() ?? '';
   if (!t || t.toLowerCase() === 'none') return { label: '', active: false };
   return { label: t, active: true };
-}
-
-function escapeForPrompt(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 /**
@@ -106,8 +102,10 @@ Exemplar C (Grade 6, reading comprehension / inference, English only):
 }
 
 function buildReportPayload(report: DiagnosticReport): string {
-  const rec = report.recommendations?.length ? report.recommendations.join(' | ') : '(none)';
-  const gaps = report.gapTags?.length ? report.gapTags.join(', ') : '(none)';
+  const rec = escapeForPrompt(
+    report.recommendations?.length ? report.recommendations.join(' | ') : '(none)'
+  );
+  const gaps = escapeForPrompt(report.gapTags?.length ? report.gapTags.join(', ') : '(none)');
   const ges =
     report.gesAlignment?.objectiveId != null
       ? `GES: ${report.gesAlignment.objectiveId} — ${report.gesAlignment.objectiveTitle}\nExcerpt: ${report.gesAlignment.excerpt}`
@@ -119,11 +117,11 @@ function buildReportPayload(report: DiagnosticReport): string {
 
   return `
 DIAGNOSTIC REPORT (bind remediation to this evidence):
-- Diagnosis / learning gap: ${report.diagnosis}
-- Mastered concepts (do not re-teach as new): ${report.masteredConcepts}
+- Diagnosis / learning gap: ${escapeForPrompt(report.diagnosis ?? '')}
+- Mastered concepts (do not re-teach as new): ${escapeForPrompt(report.masteredConcepts ?? '')}
 - Gap tags: ${gaps}
 - Recommendations: ${rec}
-- Remedial plan (distil; do not paste verbatim): ${report.remedialPlan}
+- Remedial plan (distil; do not paste verbatim): ${escapeForPrompt(report.remedialPlan ?? '')}
 - ${cam}
 - ${ges}
 `.trim();
@@ -133,6 +131,7 @@ function parseEnglishLessonPlan(raw: unknown): EnglishLessonPlanResult | null {
   if (raw == null || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const title = typeof o.title === 'string' ? o.title.trim() : '';
+  const objective = typeof o.objective === 'string' ? o.objective.trim() : undefined;
   const estimatedDuration =
     typeof o.estimatedDuration === 'string' ? o.estimatedDuration.trim() : '5 minutes';
   const materialsNeeded = normalizeStringArray(o.materialsNeeded);
@@ -142,6 +141,7 @@ function parseEnglishLessonPlan(raw: unknown): EnglishLessonPlanResult | null {
   if (!title || instructions.length < 3) return null;
   return {
     title,
+    objective,
     estimatedDuration: estimatedDuration || '5 minutes',
     materialsNeeded,
     instructions,
@@ -173,11 +173,16 @@ export async function generateEnglishLessonPlan(
   const cc = typeof curriculumContext === 'string' ? curriculumContext.trim() : '';
   const curriculumBlock =
     cc.length > 0
-      ? cc
+      ? escapeForPrompt(cc)
       : '(No extra curriculum context supplied — use Cambridge Primary English progression appropriate to the gap.)';
 
   const masterPrompt = buildCambridgeEnglishMasterEducatorPrompt(grade, dialectLabel, translanguaging);
   const reportBlock = buildReportPayload(report);
+
+  const isCambridge = report.alignedStandardCode != null && report.alignedStandardCode !== '';
+  const objectiveInstruction = isCambridge 
+    ? `\n- You MUST explicitly output the specific Cambridge taxonomy/objective at the very beginning of your response in the "objective" field.`
+    : '';
 
   const userTask = `
 ${masterPrompt}
@@ -189,11 +194,12 @@ ${curriculumBlock}
 ${reportBlock}
 
 === TASK ===
-Produce ONE new 5-minute remedial lesson plan for the LITERACY / English gap above. Ground remediation in Cambridge Primary English–aligned progression at studentGradeLevel ${grade}. Follow the three phases explicitly (Phase 1 — Oracy, Phase 2 — Decoding / Text analysis, Phase 3 — Application), respect the age-scaled literacy focus for this grade band, use only zero-cost materials, and comply with translanguaging rules if a dialect was specified.
+Produce ONE new 5-minute remedial lesson plan for the LITERACY / English gap above. Ground remediation in Cambridge Primary English–aligned progression at studentGradeLevel ${grade}. Follow the three phases explicitly (Phase 1 — Oracy, Phase 2 — Decoding / Text analysis, Phase 3 — Application), respect the age-scaled literacy focus for this grade band, use only zero-cost materials, and comply with translanguaging rules if a dialect was specified.${objectiveInstruction}
 
 Respond with STRICT JSON ONLY (no markdown fences, no commentary):
 {
   "title": "Short engaging title",
+  "objective": "The specific taxonomy/objective for this lesson",
   "estimatedDuration": "5 minutes",
   "materialsNeeded": ["Low-resource item 1", "Low-resource item 2"],
   "instructions": [

@@ -11,8 +11,48 @@ const SEN_WARNING_CATEGORIES = new Set<string>([
   'Other',
 ]);
 
+/**
+ * Escape backslashes and double quotes so untrusted text is safer inside structured prompts.
+ */
+export function escapeForPrompt(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Strip markdown code fences, then extract the outermost JSON object or array by bracket span.
+ * Falls back to fence-stripped trimmed text if no `{`/`[` opener is found (legacy / non-JSON).
+ */
 export function cleanJsonResponse(jsonString: string): string {
-  return jsonString.replace(/```json\n?|```/g, '').trim();
+  let s = jsonString.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+
+  const iBrace = s.indexOf('{');
+  const iBracket = s.indexOf('[');
+
+  let start = -1;
+  let open: '{' | '[' | null = null;
+
+  if (iBrace >= 0 && iBracket >= 0) {
+    start = Math.min(iBrace, iBracket);
+    open = start === iBrace ? '{' : '[';
+  } else if (iBrace >= 0) {
+    start = iBrace;
+    open = '{';
+  } else if (iBracket >= 0) {
+    start = iBracket;
+    open = '[';
+  }
+
+  if (start < 0 || !open) {
+    return s;
+  }
+
+  const close = open === '{' ? '}' : ']';
+  const end = s.lastIndexOf(close);
+  if (end < start) {
+    return s;
+  }
+
+  return s.slice(start, end + 1);
 }
 
 /** Ensure we always have string[] for tag fields (model may return array or comma-separated string). */
@@ -142,7 +182,8 @@ export function getSenWarningFlagJsonInstruction(): string {
 /** Injected into worksheet / hybrid prompts when grade and/or history are provided. */
 export function buildLearnerTemporalContextBlock(
   studentGradeLevel?: number,
-  recentHistorySummary?: string
+  recentHistorySummary?: string,
+  officialSenStatus?: string
 ): string {
   const parts: string[] = [];
   if (typeof studentGradeLevel === 'number' && Number.isFinite(studentGradeLevel)) {
@@ -152,6 +193,9 @@ export function buildLearnerTemporalContextBlock(
   }
   if (recentHistorySummary?.trim()) {
     parts.push(`RECENT_HISTORY_SUMMARY:\n${recentHistorySummary.trim()}`);
+  }
+  if (officialSenStatus?.trim()) {
+    parts.push(`OFFICIAL_SEN_STATUS:\n${officialSenStatus.trim()}`);
   }
   if (!parts.length) return '';
   return `

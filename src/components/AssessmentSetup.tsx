@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FileUploadZone } from './FileUploadZone';
 import {
   Camera,
@@ -16,15 +16,34 @@ import {
 import { getStudents, Student } from '../services/studentService';
 import { VoiceObservationRecorder } from './VoiceObservationRecorder';
 import { logWorkflow } from '../utils/workflowLog';
-import type { AnalyzeHybridAssessmentFn } from '../hooks/useAnalysisFlow';
+import { useAssessment } from '../context/AssessmentContext';
 import type { CurriculumFramework } from '../services/curriculumRagService';
-import { parseGradeLevelFromLabel } from '../services/curriculumRagService';
+import { parseGradeLevelFromStudentRecord } from '../utils/longitudinalPromptHelpers';
+import { getCohortsBySchool } from '../services/cohortService';
+import { useAuth } from '../context/AuthContext';
+import type { Cohort } from '../types/domain';
+import { ASSESSMENT_TRANSLANGUAGING_LANGUAGES } from '../constants/studentLanguages';
+import { cn, selectTriggerClass } from '../utils/ui-helpers';
+import { Button } from './ui/button';
+
+const textareaFieldClass = cn(
+  'min-h-[5.5rem] w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm',
+  'placeholder:text-slate-500',
+  'transition-colors',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+  'dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-400',
+  'ring-offset-white dark:ring-offset-slate-950 dark:focus-visible:ring-indigo-400'
+);
 
 export interface StagedVoiceClip {
   blob: Blob;
   mimeType: string;
   durationMs: number;
 }
+
+/** Dialect picker + auto-map from {@link Student.primaryLanguage} (see `studentLanguages.ts`). */
+const ASSESSMENT_DIALECT_OPTIONS = ASSESSMENT_TRANSLANGUAGING_LANGUAGES;
 
 // 1. Define the shape of the data we will submit
 export interface AssessmentData {
@@ -40,6 +59,10 @@ export interface AssessmentData {
   observations?: string;
   imageBase64?: string | null;
   imageBase64s?: string[];
+  /** Formal class (Firestore `cohorts` document id). */
+  cohortId?: string;
+  /** Cohort display name; stored as assessment `classLabel` for Headmaster rollups. */
+  classLabel?: string;
 }
 
 export type AssessmentSetupSnapshot = Pick<
@@ -55,28 +78,29 @@ function formatDurationMs(ms: number): string {
 }
 
 interface AssessmentSetupProps {
-  onDiagnose: (data: AssessmentData) => void;
-  isProcessing?: boolean;
   initialStudentId?: string;
-  /** Current form context for the right panel (e.g. voice-mode empty state). */
-  onSetupStateChange?: (snapshot: AssessmentSetupSnapshot) => void;
-  isOffline?: boolean;
-  /** Multimodal voice (+ optional worksheet) diagnosis; registered from AnalysisResults. */
-  analyzeHybridAssessment?: AnalyzeHybridAssessmentFn;
-  /** After hybrid item is queued offline (modal / refresh handled by parent). */
-  onHybridQueued?: () => void;
 }
 
-export function AssessmentSetup({
-  onDiagnose,
-  isProcessing = false,
-  initialStudentId = '',
-  onSetupStateChange,
-  isOffline = false,
-  analyzeHybridAssessment,
-  onHybridQueued,
-}: AssessmentSetupProps) {
+export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps) {
+  const { user } = useAuth();
+  const schoolId = user.schoolId?.trim() || undefined;
+
+  const {
+    handleDiagnose,
+    analysisStatus,
+    isOffline,
+    runHybridFromSetup,
+    handleHybridQueued,
+    setSetupSnapshot,
+    isHybridRunning,
+    setIsHybridRunning,
+  } = useAssessment();
+
+  const isProcessing = analysisStatus === 'analyzing' || isHybridRunning;
   const [students, setStudents] = useState<Student[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [cohortsLoading, setCohortsLoading] = useState(false);
+  const [selectedCohortId, setSelectedCohortId] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(initialStudentId);
   const [assessmentType, setAssessmentType] = useState<'numeracy' | 'literacy' | ''>('');
   const [curriculumFramework, setCurriculumFramework] = useState<CurriculumFramework>('GES');
@@ -98,7 +122,6 @@ export function AssessmentSetup({
   const [stagedAudio, setStagedAudio] = useState<StagedVoiceClip | null>(null);
   const [stagedImage, setStagedImage] = useState<File | null>(null);
   const [hybridUploadKey, setHybridUploadKey] = useState(0);
-  const [isHybridRunning, setIsHybridRunning] = useState(false);
   const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -109,18 +132,79 @@ export function AssessmentSetup({
     fetchStudents();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!schoolId) {
+      setCohorts([]);
+      setCohortsLoading(false);
+      return;
+    }
+    setCohortsLoading(true);
+    void getCohortsBySchool(schoolId).then((list) => {
+      if (!cancelled) {
+        setCohorts(list);
+        setCohortsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (!selectedStudent) {
+      setSelectedCohortId('');
+      return;
+    }
+    const st = students.find((s) => s.id === selectedStudent);
+    const cid = st?.cohortId?.trim();
+    if (cid && cohorts.some((c) => c.id === cid)) {
+      setSelectedCohortId(cid);
+    } else {
+      setSelectedCohortId('');
+    }
+  }, [selectedStudent, students, cohorts]);
+
+  useEffect(() => {
+    if (!selectedStudent) {
+      setIsLocalDialect(false);
+      setSelectedDialect('');
+      return;
+    }
+    const st = students.find((s) => s.id === selectedStudent);
+    const raw = st?.primaryLanguage?.trim();
+    if (!raw) {
+      setIsLocalDialect(false);
+      setSelectedDialect('');
+      return;
+    }
+    const match = ASSESSMENT_DIALECT_OPTIONS.find((d) => d.toLowerCase() === raw.toLowerCase());
+    if (match) {
+      setIsLocalDialect(true);
+      setSelectedDialect(match);
+    } else {
+      setIsLocalDialect(false);
+      setSelectedDialect('');
+    }
+  }, [selectedStudent, students]);
+
+  const selectedCohort = useMemo(
+    () => cohorts.find((c) => c.id === selectedCohortId),
+    [cohorts, selectedCohortId]
+  );
+
   const dialectValue = isLocalDialect && selectedDialect ? selectedDialect : null;
 
   useEffect(() => {
     const batchUpload = inputMode === 'upload' && uploadScope === 'batch';
-    onSetupStateChange?.({
+    setSetupSnapshot({
       studentId: batchUpload ? '' : selectedStudent,
       assessmentType,
       inputMode,
       dialect: dialectValue,
       curriculumFramework,
     });
-  }, [selectedStudent, assessmentType, inputMode, uploadScope, dialectValue, curriculumFramework, onSetupStateChange]);
+  }, [selectedStudent, assessmentType, inputMode, uploadScope, dialectValue, curriculumFramework, setSetupSnapshot]);
 
   useEffect(() => {
     if (inputMode !== 'upload') {
@@ -212,9 +296,13 @@ export function AssessmentSetup({
       alert('Please select a student and assessment type.');
       return;
     }
+    if (!selectedCohortId || !selectedCohort) {
+      alert('Please select a class (cohort) for this assessment.');
+      return;
+    }
 
-    const selectedGrade = students.find((s) => s.id === selectedStudent)?.grade;
-    const gradeLevel = parseGradeLevelFromLabel(selectedGrade);
+    const studentRecord = students.find((s) => s.id === selectedStudent);
+    const gradeLevel = parseGradeLevelFromStudentRecord(studentRecord);
     const payload: AssessmentData = {
       studentId: selectedStudent,
       assessmentType,
@@ -222,6 +310,8 @@ export function AssessmentSetup({
       dialect: dialectValue,
       curriculumFramework,
       gradeLevel,
+      cohortId: selectedCohortId,
+      classLabel: selectedCohort.name,
       manualRubric: inputMode === 'manual' ? selectedRubrics : undefined,
       observations: inputMode === 'manual' ? observations : undefined,
       imageBase64: inputMode === 'upload' && imageBase64s.length === 1 ? imageBase64s[0] : undefined,
@@ -231,12 +321,16 @@ export function AssessmentSetup({
       inputMode: payload.inputMode,
       imagePages: payload.imageBase64s?.filter(Boolean).length ?? 0,
     });
-    onDiagnose(payload);
+    void handleDiagnose(payload);
   };
 
   const handleHybridDiagnosisClick = async () => {
-    if (!stagedAudio || !analyzeHybridAssessment || !assessmentType) return;
+    if (!stagedAudio || !assessmentType) return;
     if (!selectedStudent) return;
+    if (!selectedCohortId || !selectedCohort) {
+      alert('Please select a class (cohort) for this assessment.');
+      return;
+    }
 
     setIsHybridRunning(true);
     logWorkflow('assessmentSetup:hybrid_run_start', {
@@ -246,17 +340,19 @@ export function AssessmentSetup({
     });
 
     try {
-      const selectedGrade = students.find((s) => s.id === selectedStudent)?.grade;
-      const gradeLevel = parseGradeLevelFromLabel(selectedGrade);
-      const result = await analyzeHybridAssessment(selectedStudent, stagedAudio.blob, stagedImage, {
+      const studentRecord = students.find((s) => s.id === selectedStudent);
+      const gradeLevel = parseGradeLevelFromStudentRecord(studentRecord);
+      const result = await runHybridFromSetup(selectedStudent, stagedAudio.blob, stagedImage, {
         assessmentType,
         dialectContext: dialectValue,
         curriculumFramework,
         gradeLevel,
+        cohortId: selectedCohortId,
+        classLabel: selectedCohort.name,
       });
 
       if (result.ok && 'queued' in result && result.queued) {
-        onHybridQueued?.();
+        handleHybridQueued();
         clearVoiceStaging();
         logWorkflow('assessmentSetup:hybrid_queued', { studentId: selectedStudent });
         return;
@@ -268,10 +364,12 @@ export function AssessmentSetup({
         return;
       }
 
-      if (result.error === 'not_ready') {
-        alert('Diagnosis engine is still starting. Wait a moment and try again.');
-      } else if (!result.ok) {
-        alert('Diagnosis could not be completed. Check your connection and try again.');
+      if ('error' in result) {
+        if (result.error === 'not_ready') {
+          alert('Diagnosis engine is still starting. Wait a moment and try again.');
+        } else {
+          alert('Diagnosis could not be completed. Check your connection and try again.');
+        }
       }
     } catch (err) {
       console.error('Hybrid diagnosis failed', err);
@@ -281,10 +379,11 @@ export function AssessmentSetup({
     }
   };
 
-  const isFormValid = !!selectedStudent && !!assessmentType;
+  const cohortReady = Boolean(selectedCohortId && selectedCohort);
+  const isFormValid = !!selectedStudent && !!assessmentType && cohortReady;
   const canRecordVoice = isFormValid;
   const isUploadModeValid = isFormValid && imageBase64s.length > 0;
-  const isBatchQueueValid = !!assessmentType && batchFiles.length > 0;
+  const isBatchQueueValid = !!assessmentType && batchFiles.length > 0 && cohortReady;
   const isManualModeValid = isFormValid && (selectedRubrics.length > 0 || observations.length > 0);
 
   const handleQueueBatchClick = () => {
@@ -297,8 +396,8 @@ export function AssessmentSetup({
     { mode: 'voice', label: 'Voice', icon: <Mic size={16} /> },
   ];
 
+  const primaryDiagnosisLabel = isOffline ? 'Queue Diagnosis' : 'Run AI Diagnosis';
   const hybridPrimaryBusy = isProcessing || isHybridRunning;
-  const hybridPrimaryLabel = isOffline ? 'Queue Diagnosis' : 'Run AI Diagnosis';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -316,7 +415,7 @@ export function AssessmentSetup({
                 required
                 value={selectedStudent}
                 onChange={(e) => setSelectedStudent(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                className={selectTriggerClass}
               >
                 <option value="" disabled>
                   Select a student...
@@ -330,7 +429,41 @@ export function AssessmentSetup({
             </>
           )}
 
-          <div className={inputMode === 'upload' && uploadScope === 'batch' ? 'mt-0' : 'mt-3'}>
+          <div className="mt-3">
+            <label htmlFor="cohort" className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
+              Class (cohort)
+            </label>
+            <select
+              id="cohort"
+              required
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              disabled={!schoolId || cohortsLoading}
+              className={selectTriggerClass}
+            >
+              <option value="" disabled>
+                Select a Class...
+              </option>
+              {cohorts.map((cohort) => (
+                <option key={cohort.id} value={cohort.id}>
+                  {cohort.name}
+                </option>
+              ))}
+            </select>
+            {!schoolId && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300/90">
+                Your account is not linked to a school. Cohorts load from your school profile.
+              </p>
+            )}
+            {schoolId && !cohortsLoading && cohorts.length === 0 && (
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                No cohorts found for this school. Add documents to the Firestore <span className="font-mono">cohorts</span>{' '}
+                collection (with <span className="font-mono">schoolId</span>) to enable class selection.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-3">
             <label className="flex items-start gap-3 cursor-pointer group">
               <div className="relative flex items-center">
                 <input
@@ -356,15 +489,16 @@ export function AssessmentSetup({
                   value={selectedDialect}
                   onChange={(e) => setSelectedDialect(e.target.value)}
                   required={isLocalDialect}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-amber-500"
+                  className={selectTriggerClass}
                 >
                   <option value="" disabled>
                     Specify dialect...
                   </option>
-                  <option value="Twi">Twi</option>
-                  <option value="Ga">Ga</option>
-                  <option value="Ewe">Ewe</option>
-                  <option value="Dagbani">Dagbani</option>
+                  {ASSESSMENT_DIALECT_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -387,7 +521,7 @@ export function AssessmentSetup({
             required
             value={assessmentType}
             onChange={(e) => setAssessmentType(e.target.value as 'numeracy' | 'literacy' | '')}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+            className={selectTriggerClass}
           >
             <option value="" disabled>
               Select assessment type...
@@ -405,7 +539,7 @@ export function AssessmentSetup({
             id="curriculumFramework"
             value={curriculumFramework}
             onChange={(e) => setCurriculumFramework(e.target.value as CurriculumFramework)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+            className={selectTriggerClass}
           >
             <option value="GES">Ghana (GES)</option>
             <option value="Cambridge">Cambridge International</option>
@@ -419,19 +553,22 @@ export function AssessmentSetup({
 
         <div className="pt-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">Assessment Input Mode</label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1 bg-gray-100 rounded-lg">
+          <div className="grid grid-cols-1 gap-2 rounded-lg bg-gray-100 p-1 sm:grid-cols-3">
             {modeButtons.map(({ mode, label, icon }) => (
-              <button
+              <Button
                 key={mode}
                 type="button"
+                variant={inputMode === mode ? 'outline' : 'ghost'}
+                className={cn(
+                  'h-10 min-h-10 w-full justify-center gap-2 text-sm font-medium',
+                  inputMode === mode &&
+                    'border-slate-200 bg-white text-indigo-600 shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-indigo-400 dark:hover:bg-slate-900'
+                )}
                 onClick={() => setInputMode(mode)}
-                className={`flex items-center justify-center gap-2 py-2 px-2 text-sm font-medium rounded-md transition-all ${
-                  inputMode === mode ? 'bg-white text-amber-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
               >
                 {icon}
                 <span className="truncate">{label}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -440,31 +577,33 @@ export function AssessmentSetup({
           <div className="space-y-3 pt-1">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Worksheet source</p>
-              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
-                <button
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
+                <Button
                   type="button"
+                  variant={uploadScope === 'single' ? 'outline' : 'ghost'}
+                  className={cn(
+                    'h-10 min-h-10 w-full justify-center gap-2 text-sm font-medium',
+                    uploadScope === 'single' &&
+                      'border-slate-200 bg-white text-indigo-600 shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-indigo-400 dark:hover:bg-slate-900'
+                  )}
                   onClick={() => setUploadScope('single')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-2 text-sm font-medium rounded-md transition-all ${
-                    uploadScope === 'single'
-                      ? 'bg-white text-amber-600 shadow-sm border border-gray-200/80'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
                 >
-                  <User size={16} className="shrink-0" />
+                  <User size={16} className="shrink-0" aria-hidden />
                   <span className="truncate">Single Student</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant={uploadScope === 'batch' ? 'outline' : 'ghost'}
+                  className={cn(
+                    'h-10 min-h-10 w-full justify-center gap-2 text-sm font-medium',
+                    uploadScope === 'batch' &&
+                      'border-slate-200 bg-white text-indigo-600 shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-indigo-400 dark:hover:bg-slate-900'
+                  )}
                   onClick={() => setUploadScope('batch')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-2 text-sm font-medium rounded-md transition-all ${
-                    uploadScope === 'batch'
-                      ? 'bg-white text-amber-600 shadow-sm border border-gray-200/80'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
                 >
-                  <Users size={16} className="shrink-0" />
+                  <Users size={16} className="shrink-0" aria-hidden />
                   <span className="truncate">Class Batch</span>
-                </button>
+                </Button>
               </div>
             </div>
             <FileUploadZone
@@ -511,7 +650,7 @@ export function AssessmentSetup({
                 rows={3}
                 value={observations}
                 onChange={(e) => setObservations(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 focus:ring-2 focus:ring-amber-500 resize-none bg-white"
+                className={textareaFieldClass}
                 placeholder="Add any specific notes about the student's performance..."
               />
             </div>
@@ -598,42 +737,42 @@ export function AssessmentSetup({
                           {stagedImage.name}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2 shrink-0">
-                        <button
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="default"
+                          className="gap-1.5"
                           onClick={() => {
                             setStagedImage(null);
                             setHybridUploadKey((k) => k + 1);
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-white"
                         >
-                          <RotateCcw className="w-4 h-4" />
+                          <RotateCcw className="h-4 w-4" aria-hidden />
                           Replace
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="destructive"
+                          size="default"
+                          className="gap-1.5"
                           onClick={() => {
                             setStagedImage(null);
                             setHybridUploadKey((k) => k + 1);
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" aria-hidden />
                           Remove
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={clearVoiceStaging}
-                    className="text-sm font-medium text-gray-600 hover:text-gray-900 underline-offset-2 hover:underline"
-                  >
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm" onClick={clearVoiceStaging}>
                     Cancel & re-record
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -643,32 +782,28 @@ export function AssessmentSetup({
         <div className="pt-4">
           {inputMode === 'voice' ? (
             <div className="space-y-2">
-              <button
+              <Button
                 type="button"
-                disabled={
-                  !stagedAudio ||
-                  !analyzeHybridAssessment ||
-                  hybridPrimaryBusy ||
-                  !isFormValid ||
-                  !assessmentType
-                }
+                variant="default"
+                size="lg"
+                className="w-full gap-2 font-semibold shadow-md"
+                disabled={!stagedAudio || hybridPrimaryBusy || !isFormValid || !assessmentType}
                 onClick={() => void handleHybridDiagnosisClick()}
-                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-md flex justify-center items-center gap-2"
               >
                 {hybridPrimaryBusy ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
                     {isOffline ? 'Queuing…' : 'Analyzing…'}
                   </>
                 ) : (
                   <>
-                    {hybridPrimaryLabel} <Zap size={16} />
+                    {primaryDiagnosisLabel} <Zap size={16} className="shrink-0" aria-hidden />
                   </>
                 )}
-              </button>
+              </Button>
               {!stagedAudio && (
                 <p className="text-xs text-center text-gray-500">
-                  Capture a voice note above to enable <strong>{hybridPrimaryLabel}</strong>.
+                  Capture a voice note above to enable <strong>{primaryDiagnosisLabel}</strong>.
                 </p>
               )}
               {isOffline && stagedAudio && (
@@ -678,42 +813,47 @@ export function AssessmentSetup({
               )}
             </div>
           ) : inputMode === 'upload' && uploadScope === 'batch' ? (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="lg"
+              className="w-full gap-2 font-semibold shadow-md"
               disabled={isProcessing || !isBatchQueueValid}
               onClick={handleQueueBatchClick}
-              className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-md flex justify-center items-center gap-2"
             >
               {isProcessing ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
                   Working…
                 </>
               ) : (
                 <>
-                  Queue {batchFiles.length} Worksheet{batchFiles.length === 1 ? '' : 's'} <Zap size={16} />
+                  Queue {batchFiles.length} Worksheet{batchFiles.length === 1 ? '' : 's'}{' '}
+                  <Zap size={16} className="shrink-0" aria-hidden />
                 </>
               )}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="submit"
+              variant="default"
+              size="lg"
+              className="w-full gap-2 font-semibold shadow-md"
               disabled={
                 isProcessing || (inputMode === 'upload' && !isUploadModeValid) || (inputMode === 'manual' && !isManualModeValid)
               }
-              className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-md flex justify-center items-center gap-2"
             >
               {isProcessing ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Analyzing Learner Profile...
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                  {isOffline ? 'Queuing diagnosis…' : 'Analyzing Learner Profile...'}
                 </>
               ) : (
                 <>
-                  Run AI Diagnosis <Zap size={16} />
+                  {primaryDiagnosisLabel} <Zap size={16} className="shrink-0" aria-hidden />
                 </>
               )}
-            </button>
+            </Button>
           )}
         </div>
       </form>

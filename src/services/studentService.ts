@@ -7,38 +7,24 @@ import {
   DEFAULT_SCHOOL_NAME,
   schoolById,
 } from '../config/organizationDefaults';
+import type { Student } from '../types/domain';
 
-export interface Student {
-  id?: string;
-  name: string;
-  grade: string;
-  /** Phase 3: stable IDs for B2G rollups */
-  districtId?: string;
-  circuitId?: string;
-  schoolId?: string;
-  schoolName?: string;
-  /** Phase 4: guardian / WhatsApp */
-  guardianPhone?: string;
-  /** e.g. English, Twi, Ga, Ewe */
-  guardianLanguage?: string;
-  whatsappOptIn?: boolean;
-  /** ms since epoch when guardian consent recorded */
-  consentRecordedAt?: number;
-  /** Lab / portal login code (teacher-provisioned) */
-  portalAccessCode?: string;
-  /** Optional: include de-identified rows in fine-tuning pilot export */
-  trainingDataOptIn?: boolean;
-}
+export type { Student };
+
+/** Firestore create payload: same as {@link Student} but `id` is assigned by the server. */
+export type AddStudentInput = Omit<Student, 'id'>;
 
 /**
  * Saves a new student to the Firestore "students" collection.
- * @param studentData The student data to save.
+ * @param studentData The student data to save (onboarding fields `cohortId`, `numericGradeLevel`, `enrollmentStatus`, `primaryLanguage`, `officialSenStatus`, `dataProcessingConsent` are optional; `enrollmentStatus` defaults to `active`). When `numericGradeLevel` is a finite number > 0 it is denormalized onto the document for AI routing.
  * @returns The generated document ID, or null if an error occurred.
  */
-export const addStudent = async (studentData: Student): Promise<string | null> => {
+export const addStudent = async (studentData: AddStudentInput): Promise<string | null> => {
   try {
     const schoolId = studentData.schoolId ?? DEFAULT_SCHOOL_ID;
     const meta = schoolById(schoolId);
+    const now = Date.now();
+    const enrollmentStatus = studentData.enrollmentStatus ?? 'active';
     const payload: Record<string, unknown> = {
       name: studentData.name,
       grade: studentData.grade,
@@ -46,13 +32,21 @@ export const addStudent = async (studentData: Student): Promise<string | null> =
       schoolId,
       schoolName: studentData.schoolName ?? meta?.name ?? DEFAULT_SCHOOL_NAME,
       circuitId: studentData.circuitId ?? meta?.circuitId ?? DEFAULT_CIRCUIT_ID,
+      enrollmentStatus,
+      updatedAt: now,
     };
+    if (studentData.cohortId !== undefined) payload.cohortId = studentData.cohortId;
+    const ngl = studentData.numericGradeLevel;
+    if (typeof ngl === 'number' && Number.isFinite(ngl) && ngl > 0) payload.numericGradeLevel = ngl;
+    if (studentData.primaryLanguage !== undefined) payload.primaryLanguage = studentData.primaryLanguage;
+    if (studentData.officialSenStatus !== undefined) payload.officialSenStatus = studentData.officialSenStatus;
     if (studentData.guardianPhone !== undefined) payload.guardianPhone = studentData.guardianPhone;
     if (studentData.guardianLanguage !== undefined) payload.guardianLanguage = studentData.guardianLanguage;
     if (studentData.whatsappOptIn !== undefined) payload.whatsappOptIn = studentData.whatsappOptIn;
     if (studentData.consentRecordedAt !== undefined) payload.consentRecordedAt = studentData.consentRecordedAt;
     if (studentData.portalAccessCode !== undefined) payload.portalAccessCode = studentData.portalAccessCode;
     if (studentData.trainingDataOptIn !== undefined) payload.trainingDataOptIn = studentData.trainingDataOptIn;
+    if (studentData.dataProcessingConsent !== undefined) payload.dataProcessingConsent = studentData.dataProcessingConsent;
     const docRef = await addDoc(collection(db, 'students'), payload as Omit<Student, 'id'>);
     return docRef.id;
   } catch (error) {
@@ -63,7 +57,7 @@ export const addStudent = async (studentData: Student): Promise<string | null> =
 
 /**
  * Retrieves all students from the Firestore "students" collection.
- * @returns An array of Student objects.
+ * @returns Student rows (may include `cohortId` when provisioned).
  */
 export const getStudents = async (): Promise<Student[]> => {
   try {
@@ -106,6 +100,7 @@ export const updateStudent = async (studentId: string, updates: Partial<Student>
     if (v !== undefined) patch[k] = v;
   }
   if (Object.keys(patch).length === 0) return;
+  patch.updatedAt = Date.now();
   await updateDoc(doc(db, 'students', studentId), patch);
 };
 

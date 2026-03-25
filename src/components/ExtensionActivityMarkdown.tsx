@@ -47,9 +47,29 @@ export const extensionActivityMarkdownComponents: Components = {
   },
 };
 
+const CEDI_SIGN = /\u20b5/;
+
+/**
+ * KaTeX does not support U+20B5 (₵) inside math; models often wrap currency in `$...$`.
+ * Strip delimiters so ₵ stays in normal markdown text (renders correctly).
+ */
+function demoteMathContainingCedi(markdown: string): string {
+  let out = markdown;
+  out = out.replace(/\$\$([\s\S]*?)\$\$/g, (full, inner: string) => {
+    if (CEDI_SIGN.test(inner)) return `\n\n${inner.trim()}\n\n`;
+    return full;
+  });
+  out = out.replace(/\$([^$\n]+)\$/g, (full, inner: string) => {
+    if (CEDI_SIGN.test(inner)) return inner;
+    return full;
+  });
+  return out;
+}
+
 /** Trim and turn literal `\n` sequences into real newlines (model output quirks). */
 export function normalizeExtensionActivityMarkdown(source: string): string {
-  return source.trim().replace(/\\n/g, '\n');
+  const trimmed = source.trim().replace(/\\n/g, '\n');
+  return demoteMathContainingCedi(trimmed);
 }
 
 type ExtensionActivityMarkdownProps = {
@@ -74,7 +94,7 @@ export function ExtensionActivityMarkdown({ markdown, className }: ExtensionActi
     <div className={rootClass}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[[rehypeKatex, { strict: 'ignore' }]]}
         components={extensionActivityMarkdownComponents}
       >
         {content}
