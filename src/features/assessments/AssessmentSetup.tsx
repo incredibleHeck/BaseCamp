@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React from 'react';
 import { FileUploadZone } from '../../components/FileUploadZone';
 import {
   Camera,
   CheckCircle,
-  Edit3,
   Image as ImageFileIcon,
   Loader2,
   Mic,
@@ -13,18 +12,15 @@ import {
   User,
   Zap,
 } from 'lucide-react';
-import { getStudents, Student } from '../../services/studentService';
-import { VoiceObservationRecorder } from '../ai-tools/VoiceObservationRecorder';
 import { logWorkflow } from '../../utils/workflowLog';
-import { useAssessment } from '../../context/AssessmentContext';
+import { VoiceObservationRecorder } from '../ai-tools/VoiceObservationRecorder';
 import type { CurriculumFramework } from '../../services/ai/curriculumRagService';
-import { parseGradeLevelFromStudentRecord } from '../../utils/longitudinalPromptHelpers';
-import { getCohortsBySchool } from '../../services/cohortService';
-import { useAuth } from '../../context/AuthContext';
-import type { Cohort } from '../../types/domain';
-import { ASSESSMENT_TRANSLANGUAGING_LANGUAGES } from '../../constants/studentLanguages';
-import { cn, selectTriggerClass } from '../../utils/ui-helpers';
+import { cn } from '../../utils/ui-helpers';
 import { Button } from '../../components/ui/button';
+import { useAssessmentSetup } from './useAssessmentSetup';
+import { StudentPicker } from './StudentPicker';
+import { CurriculumSelector } from './CurriculumSelector';
+import { AssessmentMethodGrid } from './AssessmentMethodGrid';
 
 const textareaFieldClass = cn(
   'min-h-[5.5rem] w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm',
@@ -41,9 +37,6 @@ export interface StagedVoiceClip {
   mimeType: string;
   durationMs: number;
 }
-
-/** Dialect picker + auto-map from {@link Student.primaryLanguage} (see `studentLanguages.ts`). */
-const ASSESSMENT_DIALECT_OPTIONS = ASSESSMENT_TRANSLANGUAGING_LANGUAGES;
 
 // 1. Define the shape of the data we will submit
 export interface AssessmentData {
@@ -82,319 +75,61 @@ interface AssessmentSetupProps {
 }
 
 export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps) {
-  const { user } = useAuth();
-  const schoolId = user.schoolId?.trim() || undefined;
+  const { state, handlers } = useAssessmentSetup(initialStudentId);
 
   const {
-    handleDiagnose,
-    analysisStatus,
+    schoolId,
+    isProcessing,
     isOffline,
-    runHybridFromSetup,
-    handleHybridQueued,
-    setSetupSnapshot,
     isHybridRunning,
-    setIsHybridRunning,
-  } = useAssessment();
+    students,
+    cohorts,
+    cohortsLoading,
+    selectedCohortId,
+    selectedStudent,
+    assessmentType,
+    curriculumFramework,
+    inputMode,
+    isLocalDialect,
+    selectedDialect,
+    imageBase64s,
+    batchFiles,
+    uploadScope,
+    selectedRubrics,
+    observations,
+    stagedAudio,
+    stagedImage,
+    hybridUploadKey,
+    stagedImagePreviewUrl,
+    isFormValid,
+    canRecordVoice,
+    isUploadModeValid,
+    isBatchQueueValid,
+    isManualModeValid,
+  } = state;
 
-  const isProcessing = analysisStatus === 'analyzing' || isHybridRunning;
-  const [students, setStudents] = useState<Student[]>([]);
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortsLoading, setCohortsLoading] = useState(false);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(initialStudentId);
-  const [assessmentType, setAssessmentType] = useState<'numeracy' | 'literacy' | ''>('');
-  const [curriculumFramework, setCurriculumFramework] = useState<CurriculumFramework>('GES');
-  const [inputMode, setInputMode] = useState<'upload' | 'manual' | 'voice'>('upload');
-  const [isLocalDialect, setIsLocalDialect] = useState(false);
-  const [selectedDialect, setSelectedDialect] = useState('');
-
-  /** Single-student upload: base64 for existing diagnose flow. */
-  const [imageBase64s, setImageBase64s] = useState<string[]>([]);
-  /** Class batch: raw files (submission not wired yet). */
-  const [batchFiles, setBatchFiles] = useState<File[]>([]);
-  const [uploadScope, setUploadScope] = useState<'single' | 'batch'>('single');
-
-  // Manual entry states
-  const [selectedRubrics, setSelectedRubrics] = useState<string[]>([]);
-  const [observations, setObservations] = useState('');
-
-  /** Voice hybrid staging (not queued until teacher runs diagnosis). */
-  const [stagedAudio, setStagedAudio] = useState<StagedVoiceClip | null>(null);
-  const [stagedImage, setStagedImage] = useState<File | null>(null);
-  const [hybridUploadKey, setHybridUploadKey] = useState(0);
-  const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchStudents = async () => {
-      const fetchedStudents = await getStudents();
-      setStudents(fetchedStudents);
-    };
-    fetchStudents();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!schoolId) {
-      setCohorts([]);
-      setCohortsLoading(false);
-      return;
-    }
-    setCohortsLoading(true);
-    void getCohortsBySchool(schoolId).then((list) => {
-      if (!cancelled) {
-        setCohorts(list);
-        setCohortsLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [schoolId]);
-
-  useEffect(() => {
-    if (!selectedStudent) {
-      setSelectedCohortId('');
-      return;
-    }
-    const st = students.find((s) => s.id === selectedStudent);
-    const cid = st?.cohortId?.trim();
-    if (cid && cohorts.some((c) => c.id === cid)) {
-      setSelectedCohortId(cid);
-    } else {
-      setSelectedCohortId('');
-    }
-  }, [selectedStudent, students, cohorts]);
-
-  useEffect(() => {
-    if (!selectedStudent) {
-      setIsLocalDialect(false);
-      setSelectedDialect('');
-      return;
-    }
-    const st = students.find((s) => s.id === selectedStudent);
-    const raw = st?.primaryLanguage?.trim();
-    if (!raw) {
-      setIsLocalDialect(false);
-      setSelectedDialect('');
-      return;
-    }
-    const match = ASSESSMENT_DIALECT_OPTIONS.find((d) => d.toLowerCase() === raw.toLowerCase());
-    if (match) {
-      setIsLocalDialect(true);
-      setSelectedDialect(match);
-    } else {
-      setIsLocalDialect(false);
-      setSelectedDialect('');
-    }
-  }, [selectedStudent, students]);
-
-  const selectedCohort = useMemo(
-    () => cohorts.find((c) => c.id === selectedCohortId),
-    [cohorts, selectedCohortId]
-  );
-
-  const dialectValue = isLocalDialect && selectedDialect ? selectedDialect : null;
-
-  useEffect(() => {
-    const batchUpload = inputMode === 'upload' && uploadScope === 'batch';
-    setSetupSnapshot({
-      studentId: batchUpload ? '' : selectedStudent,
-      assessmentType,
-      inputMode,
-      dialect: dialectValue,
-      curriculumFramework,
-    });
-  }, [selectedStudent, assessmentType, inputMode, uploadScope, dialectValue, curriculumFramework, setSetupSnapshot]);
-
-  useEffect(() => {
-    if (inputMode !== 'upload') {
-      setUploadScope('single');
-      setBatchFiles([]);
-    }
-  }, [inputMode]);
-
-  useEffect(() => {
-    setBatchFiles([]);
-    setImageBase64s([]);
-  }, [uploadScope]);
-
-  useEffect(() => {
-    if (inputMode !== 'voice') {
-      setStagedAudio(null);
-      setStagedImage(null);
-      setHybridUploadKey((k) => k + 1);
-    }
-  }, [inputMode]);
-
-  useEffect(() => {
-    setStagedAudio(null);
-    setStagedImage(null);
-    setHybridUploadKey((k) => k + 1);
-  }, [selectedStudent, assessmentType]);
-
-  useEffect(() => {
-    if (!stagedImage) {
-      setStagedImagePreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(stagedImage);
-    setStagedImagePreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [stagedImage]);
-
-  const clearVoiceStaging = useCallback(() => {
-    setStagedAudio(null);
-    setStagedImage(null);
-    setHybridUploadKey((k) => k + 1);
-  }, []);
-
-  const handleHybridWorksheetFiles = useCallback((files: File[]) => {
-    setStagedImage(files.length > 0 ? files[0] : null);
-  }, []);
-
-  const handleSingleUploadFilesProcessed = (files: File[]) => {
-    setBatchFiles([]);
-    if (files.length === 0) {
-      setImageBase64s([]);
-      return;
-    }
-    let completed = 0;
-    const results: string[] = new Array(files.length);
-    files.forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        results[index] = reader.result as string;
-        completed++;
-        if (completed === files.length) {
-          setImageBase64s(results.filter(Boolean));
-        }
-      };
-      reader.onerror = () => {
-        completed++;
-        if (completed === files.length) setImageBase64s(results.filter(Boolean));
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handleBatchFilesProcessed = (files: File[]) => {
-    setImageBase64s([]);
-    setBatchFiles(files);
-  };
-
-  const handleRubricToggle = (rubric: string) => {
-    setSelectedRubrics((prev) =>
-      prev.includes(rubric) ? prev.filter((r) => r !== rubric) : [...prev, rubric]
-    );
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputMode === 'voice') return;
-    if (inputMode === 'upload' && uploadScope === 'batch') return;
-    if (!selectedStudent || !assessmentType) {
-      alert('Please select a student and assessment type.');
-      return;
-    }
-    if (!selectedCohortId || !selectedCohort) {
-      alert('Please select a class (cohort) for this assessment.');
-      return;
-    }
-
-    const studentRecord = students.find((s) => s.id === selectedStudent);
-    const gradeLevel = parseGradeLevelFromStudentRecord(studentRecord);
-    const payload: AssessmentData = {
-      studentId: selectedStudent,
-      assessmentType,
-      inputMode,
-      dialect: dialectValue,
-      curriculumFramework,
-      gradeLevel,
-      cohortId: selectedCohortId,
-      classLabel: selectedCohort.name,
-      manualRubric: inputMode === 'manual' ? selectedRubrics : undefined,
-      observations: inputMode === 'manual' ? observations : undefined,
-      imageBase64: inputMode === 'upload' && imageBase64s.length === 1 ? imageBase64s[0] : undefined,
-      imageBase64s: inputMode === 'upload' ? imageBase64s : undefined,
-    };
-    logWorkflow('assessmentSetup:submit_run_diagnosis', {
-      inputMode: payload.inputMode,
-      imagePages: payload.imageBase64s?.filter(Boolean).length ?? 0,
-    });
-    void handleDiagnose(payload);
-  };
-
-  const handleHybridDiagnosisClick = async () => {
-    if (!stagedAudio || !assessmentType) return;
-    if (!selectedStudent) return;
-    if (!selectedCohortId || !selectedCohort) {
-      alert('Please select a class (cohort) for this assessment.');
-      return;
-    }
-
-    setIsHybridRunning(true);
-    logWorkflow('assessmentSetup:hybrid_run_start', {
-      studentId: selectedStudent,
-      hasImage: Boolean(stagedImage),
-      offline: isOffline,
-    });
-
-    try {
-      const studentRecord = students.find((s) => s.id === selectedStudent);
-      const gradeLevel = parseGradeLevelFromStudentRecord(studentRecord);
-      const result = await runHybridFromSetup(selectedStudent, stagedAudio.blob, stagedImage, {
-        assessmentType,
-        dialectContext: dialectValue,
-        curriculumFramework,
-        gradeLevel,
-        cohortId: selectedCohortId,
-        classLabel: selectedCohort.name,
-      });
-
-      if (result.ok && 'queued' in result && result.queued) {
-        handleHybridQueued();
-        clearVoiceStaging();
-        logWorkflow('assessmentSetup:hybrid_queued', { studentId: selectedStudent });
-        return;
-      }
-
-      if (result.ok && 'savedAssessmentId' in result) {
-        clearVoiceStaging();
-        logWorkflow('assessmentSetup:hybrid_saved', { id: result.savedAssessmentId });
-        return;
-      }
-
-      if ('error' in result) {
-        if (result.error === 'not_ready') {
-          alert('Diagnosis engine is still starting. Wait a moment and try again.');
-        } else {
-          alert('Diagnosis could not be completed. Check your connection and try again.');
-        }
-      }
-    } catch (err) {
-      console.error('Hybrid diagnosis failed', err);
-      alert('Something went wrong. Please try again.');
-    } finally {
-      setIsHybridRunning(false);
-    }
-  };
-
-  const cohortReady = Boolean(selectedCohortId && selectedCohort);
-  const isFormValid = !!selectedStudent && !!assessmentType && cohortReady;
-  const canRecordVoice = isFormValid;
-  const isUploadModeValid = isFormValid && imageBase64s.length > 0;
-  const isBatchQueueValid = !!assessmentType && batchFiles.length > 0 && cohortReady;
-  const isManualModeValid = isFormValid && (selectedRubrics.length > 0 || observations.length > 0);
-
-  const handleQueueBatchClick = () => {
-    console.log('Class batch worksheets (preview — not queued yet):', batchFiles);
-  };
-
-  const modeButtons: { mode: 'upload' | 'manual' | 'voice'; label: string; icon: React.ReactNode }[] = [
-    { mode: 'upload', label: 'Photo Upload', icon: <Camera size={16} /> },
-    { mode: 'manual', label: 'Manual Entry', icon: <Edit3 size={16} /> },
-    { mode: 'voice', label: 'Voice', icon: <Mic size={16} /> },
-  ];
+  const {
+    setSelectedCohortId,
+    setSelectedStudent,
+    setAssessmentType,
+    setCurriculumFramework,
+    setInputMode,
+    setIsLocalDialect,
+    setSelectedDialect,
+    setUploadScope,
+    setObservations,
+    setStagedAudio,
+    setStagedImage,
+    setHybridUploadKey,
+    clearVoiceStaging,
+    handleHybridWorksheetFiles,
+    handleSingleUploadFilesProcessed,
+    handleBatchFilesProcessed,
+    handleRubricToggle,
+    handleSubmit,
+    handleHybridDiagnosisClick,
+    handleQueueBatchClick,
+  } = handlers;
 
   const primaryDiagnosisLabel = isOffline ? 'Queue Diagnosis' : 'Run AI Diagnosis';
   const hybridPrimaryBusy = isProcessing || isHybridRunning;
@@ -404,106 +139,22 @@ export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps)
       <h3 className="text-lg font-semibold text-gray-800 mb-4">New Assessment</h3>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          {!(inputMode === 'upload' && uploadScope === 'batch') && (
-            <>
-              <label htmlFor="student" className="block text-sm font-medium text-gray-700 mb-1">
-                Select Student
-              </label>
-              <select
-                id="student"
-                required
-                value={selectedStudent}
-                onChange={(e) => setSelectedStudent(e.target.value)}
-                className={selectTriggerClass}
-              >
-                <option value="" disabled>
-                  Select a student...
-                </option>
-                {students.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.name} ({student.grade})
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-
-          <div className="mt-3">
-            <label htmlFor="cohort" className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
-              Class (cohort)
-            </label>
-            <select
-              id="cohort"
-              required
-              value={selectedCohortId}
-              onChange={(e) => setSelectedCohortId(e.target.value)}
-              disabled={!schoolId || cohortsLoading}
-              className={selectTriggerClass}
-            >
-              <option value="" disabled>
-                Select a Class...
-              </option>
-              {cohorts.map((cohort) => (
-                <option key={cohort.id} value={cohort.id}>
-                  {cohort.name}
-                </option>
-              ))}
-            </select>
-            {!schoolId && (
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300/90">
-                Your account is not linked to a school. Cohorts load from your school profile.
-              </p>
-            )}
-            {schoolId && !cohortsLoading && cohorts.length === 0 && (
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                No cohorts found for this school. Add documents to the Firestore <span className="font-mono">cohorts</span>{' '}
-                collection (with <span className="font-mono">schoolId</span>) to enable class selection.
-              </p>
-            )}
-          </div>
-
-          <div className="mt-3">
-            <label className="flex items-start gap-3 cursor-pointer group">
-              <div className="relative flex items-center">
-                <input
-                  type="checkbox"
-                  checked={isLocalDialect}
-                  onChange={(e) => setIsLocalDialect(e.target.checked)}
-                  className="w-4 h-4 text-amber-500 border-gray-300 rounded focus:ring-amber-500 mt-1"
-                />
-              </div>
-              <div className="text-sm">
-                <span className="font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
-                  Student primarily speaks a local dialect at home
-                </span>
-                <p className="text-xs text-amber-500/80 italic mt-0.5">
-                  Provides context to the AI to distinguish between cognitive literacy gaps and ESL translation errors.
-                </p>
-              </div>
-            </label>
-
-            {isLocalDialect && (
-              <div className="mt-2 ml-7 animate-in fade-in slide-in-from-top-2">
-                <select
-                  value={selectedDialect}
-                  onChange={(e) => setSelectedDialect(e.target.value)}
-                  required={isLocalDialect}
-                  className={selectTriggerClass}
-                >
-                  <option value="" disabled>
-                    Specify dialect...
-                  </option>
-                  {ASSESSMENT_DIALECT_OPTIONS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </div>
+        <StudentPicker
+          inputMode={inputMode}
+          uploadScope={uploadScope}
+          students={students}
+          selectedStudent={selectedStudent}
+          onStudentSelect={setSelectedStudent}
+          cohorts={cohorts}
+          cohortsLoading={cohortsLoading}
+          selectedCohortId={selectedCohortId}
+          onCohortSelect={setSelectedCohortId}
+          schoolId={schoolId}
+          isLocalDialect={isLocalDialect}
+          onIsLocalDialectChange={setIsLocalDialect}
+          selectedDialect={selectedDialect}
+          onDialectSelect={setSelectedDialect}
+        />
 
         {inputMode === 'upload' && uploadScope === 'batch' && (
           <p className="text-sm text-gray-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -512,66 +163,14 @@ export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps)
           </p>
         )}
 
-        <div>
-          <label htmlFor="assessmentType" className="block text-sm font-medium text-gray-700 mb-1">
-            Assessment Type
-          </label>
-          <select
-            id="assessmentType"
-            required
-            value={assessmentType}
-            onChange={(e) => setAssessmentType(e.target.value as 'numeracy' | 'literacy' | '')}
-            className={selectTriggerClass}
-          >
-            <option value="" disabled>
-              Select assessment type...
-            </option>
-            <option value="numeracy">Numeracy (Math)</option>
-            <option value="literacy">Literacy (English)</option>
-          </select>
-        </div>
+        <CurriculumSelector
+          assessmentType={assessmentType}
+          onAssessmentTypeChange={setAssessmentType}
+          curriculumFramework={curriculumFramework}
+          onCurriculumFrameworkChange={setCurriculumFramework}
+        />
 
-        <div>
-          <label htmlFor="curriculumFramework" className="block text-sm font-medium text-gray-700 mb-1">
-            Curriculum Standard
-          </label>
-          <select
-            id="curriculumFramework"
-            value={curriculumFramework}
-            onChange={(e) => setCurriculumFramework(e.target.value as CurriculumFramework)}
-            className={selectTriggerClass}
-          >
-            <option value="GES">Ghana (GES)</option>
-            <option value="Cambridge">Cambridge International</option>
-          </select>
-          <p className="text-xs text-gray-500 mt-1">
-            Cambridge mode uses pilot taxonomies: Primary Mathematics for numeracy and Primary English / Literacy for
-            literacy (filtered by roster grade and keywords). If the wrong subject is selected, you may get a “no match”
-            fallback instead of forced objectives.
-          </p>
-        </div>
-
-        <div className="pt-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Assessment Input Mode</label>
-          <div className="grid grid-cols-1 gap-2 rounded-lg bg-gray-100 p-1 sm:grid-cols-3">
-            {modeButtons.map(({ mode, label, icon }) => (
-              <Button
-                key={mode}
-                type="button"
-                variant={inputMode === mode ? 'outline' : 'ghost'}
-                className={cn(
-                  'h-10 min-h-10 w-full justify-center gap-2 text-sm font-medium',
-                  inputMode === mode &&
-                    'border-slate-200 bg-white text-indigo-600 shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-indigo-400 dark:hover:bg-slate-900'
-                )}
-                onClick={() => setInputMode(mode)}
-              >
-                {icon}
-                <span className="truncate">{label}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
+        <AssessmentMethodGrid inputMode={inputMode} onInputModeChange={setInputMode} />
 
         {inputMode === 'upload' ? (
           <div className="space-y-3 pt-1">
@@ -860,4 +459,3 @@ export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps)
     </div>
   );
 }
-

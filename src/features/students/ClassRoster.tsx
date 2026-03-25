@@ -22,6 +22,7 @@ import { AddStudentForm } from './AddStudentForm';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
+import { useRosterFilters } from './useRosterFilters';
 
 function formatLastAssessment(lastDateMs: number): string {
   const now = Date.now();
@@ -67,11 +68,17 @@ export function ClassRoster({
   const schoolId = user.schoolId?.trim() ?? '';
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selectedCohortId, setSelectedCohortId] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const {
+    searchTerm,
+    setSearchTerm,
+    selectedCohortId,
+    setSelectedCohortId,
+    filteredStudents,
+  } = useRosterFilters(students);
 
   const handleExportGradebook = async () => {
     setIsExporting(true);
@@ -135,7 +142,7 @@ export function ClassRoster({
       setIsLoading(false);
     };
     fetchStudentsAndCohorts();
-  }, [user.role, schoolId]);
+  }, [user.role, schoolId, selectedCohortId, setSelectedCohortId]);
 
   const handleStudentAdded = (newStudent: Student) => {
     const newStudentItem: StudentListItem = {
@@ -149,12 +156,6 @@ export function ClassRoster({
     setStudents((prev) => [newStudentItem, ...prev]);
     setIsAddStudentOpen(false);
   };
-
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCohort = selectedCohortId === 'all' || student.cohortId === selectedCohortId;
-    return matchesSearch && matchesCohort;
-  });
 
   const getStatusDisplay = (score: number) => {
     if (score >= 70) return { icon: <CheckCircle2 size={16} />, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', text: 'On Track' };

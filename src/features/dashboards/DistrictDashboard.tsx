@@ -1,26 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Building, FileText, TrendingUp, Users } from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
   generateDistrictAnalytics,
   type DistrictAnalyticsPayload,
 } from '../../services/analytics/districtAnalyticsService';
 import { useAuth } from '../../context/AuthContext';
-
-const BAR_FILL = '#0f172a';
-
-function formatAvgScore(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
+import { DistrictKPIs } from './DistrictKPIs';
+import { SchoolComparisonCharts } from './SchoolComparisonCharts';
 
 export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId: string) => void }) {
   const { user } = useAuth();
@@ -149,159 +134,10 @@ export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId
 
       {!showSkeleton && !error && data && (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Total schools
-                </CardTitle>
-                <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
-                  {data.overview.totalSchools}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Total students
-                </CardTitle>
-                <Users className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
-                  {data.overview.totalStudents}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Total assessments
-                </CardTitle>
-                <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
-                  {data.overview.totalAssessments}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  District average score
-                </CardTitle>
-                <TrendingUp className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
-                  {formatAvgScore(data.overview.districtAverageScore)}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle
-                  className={
-                    data.overview.activeSenFlags > 0
-                      ? 'text-sm font-medium text-amber-700 dark:text-amber-400'
-                      : 'text-sm font-medium text-slate-600 dark:text-slate-400'
-                  }
-                >
-                  Active SEN flags
-                </CardTitle>
-                <AlertTriangle
-                  className={
-                    data.overview.activeSenFlags > 0
-                      ? 'h-4 w-4 text-amber-600 dark:text-amber-500'
-                      : 'h-4 w-4 text-slate-500 dark:text-slate-400'
-                  }
-                  aria-hidden
-                />
-              </CardHeader>
-              <CardContent>
-                <p
-                  className={
-                    data.overview.activeSenFlags > 0
-                      ? 'text-3xl font-bold tabular-nums text-amber-700 dark:text-amber-400'
-                      : 'text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50'
-                  }
-                >
-                  {data.overview.activeSenFlags}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Average score by school</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {data.schools.length === 0 ? (
-                <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-                  No school data yet. Students grouped by school will appear here.
-                </p>
-              ) : (
-                <div className="h-[350px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={data.schools.map((s) => ({
-                        schoolId: s.schoolId,
-                        schoolName: s.schoolName,
-                        avgScore: s.avgScore,
-                      }))}
-                      margin={{ top: 8, right: 12, left: 4, bottom: 8 }}
-                      onClick={(state: any) => {
-                        if (state && state.activePayload && state.activePayload.length > 0) {
-                          const schoolId = state.activePayload[0].payload.schoolId;
-                          if (schoolId && onSchoolClick) {
-                            onSchoolClick(schoolId);
-                          }
-                        }
-                      }}
-                      className={onSchoolClick ? "cursor-pointer" : ""}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
-                      <XAxis
-                        dataKey="schoolName"
-                        tick={{ fontSize: 11 }}
-                        tickLine={false}
-                        axisLine={{ className: 'stroke-slate-300 dark:stroke-slate-600' }}
-                      />
-                      <YAxis
-                        domain={[0, 100]}
-                        width={36}
-                        tick={{ fontSize: 11 }}
-                        tickLine={false}
-                        axisLine={{ className: 'stroke-slate-300 dark:stroke-slate-600' }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: '0.5rem',
-                          border: '1px solid rgb(226 232 240)',
-                          fontSize: '0.875rem',
-                        }}
-                        formatter={(value: number | string) => [value, 'Avg score']}
-                        labelFormatter={(label) => String(label)}
-                      />
-                      <Bar dataKey="avgScore" fill={BAR_FILL} radius={[6, 6, 0, 0]} maxBarSize={48} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <DistrictKPIs overview={data.overview} />
+          <SchoolComparisonCharts schools={data.schools} onSchoolClick={onSchoolClick} />
         </>
       )}
     </div>
   );
 }
-
