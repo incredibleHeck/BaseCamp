@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { getStudents, Student } from '../../services/studentService';
+import { getStudents, getStudentsBySchool, getStudentsByCohorts, Student } from '../../services/studentService';
 import { logWorkflow } from '../../utils/workflowLog';
 import { useAssessment } from '../../context/AssessmentContext';
 import type { CurriculumFramework } from '../../services/ai/curriculumRagService';
 import { parseGradeLevelFromStudentRecord } from '../../utils/longitudinalPromptHelpers';
-import { getCohortsBySchool } from '../../services/cohortService';
+import { getCohortsBySchool, getCohortsByTeacher } from '../../services/cohortService';
 import { useAuth } from '../../context/AuthContext';
 import type { Cohort } from '../../types/domain';
 import { ASSESSMENT_TRANSLANGUAGING_LANGUAGES } from '../../constants/studentLanguages';
@@ -53,31 +53,48 @@ export function useAssessmentSetup(initialStudentId: string) {
   const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      const fetchedStudents = await getStudents();
-      setStudents(fetchedStudents);
-    };
-    fetchStudents();
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
-    if (!schoolId) {
-      setCohorts([]);
-      setCohortsLoading(false);
-      return;
-    }
-    setCohortsLoading(true);
-    void getCohortsBySchool(schoolId).then((list) => {
-      if (!cancelled) {
-        setCohorts(list);
-        setCohortsLoading(false);
+    
+    const loadData = async () => {
+      setCohortsLoading(true);
+      
+      try {
+        let fetchedCohorts: Cohort[] = [];
+        let fetchedStudents: Student[] = [];
+
+        if (user.role === 'teacher' && user.id) {
+          fetchedCohorts = await getCohortsByTeacher(user.id);
+          const cohortIds = fetchedCohorts.map(c => c.id);
+          if (cohortIds.length > 0) {
+            fetchedStudents = await getStudentsByCohorts(cohortIds);
+          }
+        } else if (schoolId) {
+          fetchedCohorts = await getCohortsBySchool(schoolId);
+          fetchedStudents = await getStudentsBySchool(schoolId);
+        } else {
+          // Fallback for district/admin without schoolId
+          fetchedStudents = await getStudents();
+        }
+
+        if (!cancelled) {
+          setCohorts(fetchedCohorts);
+          setStudents(fetchedStudents);
+        }
+      } catch (error) {
+        console.error('Failed to load cohorts/students:', error);
+      } finally {
+        if (!cancelled) {
+          setCohortsLoading(false);
+        }
       }
-    });
+    };
+
+    void loadData();
+
     return () => {
       cancelled = true;
     };
-  }, [schoolId]);
+  }, [user.id, user.role, schoolId]);
 
   useEffect(() => {
     if (!selectedStudent) {

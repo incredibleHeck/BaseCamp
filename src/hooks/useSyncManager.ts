@@ -169,7 +169,13 @@ export function useSyncManager(connectivityOnline: boolean): SyncManagerState {
               continue;
             }
 
-            const students = await getStudents();
+            let students: Student[] = [];
+            if (item.cohortId) {
+              const { getStudentsByCohorts } = await import('../services/studentService');
+              students = await getStudentsByCohorts([item.cohortId]);
+            } else {
+              students = await getStudents();
+            }
             const roster = students
               .filter((s) => Boolean(s.id?.trim()))
               .map((s) => ({ studentId: s.id!, name: s.name }));

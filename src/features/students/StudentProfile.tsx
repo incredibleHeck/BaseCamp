@@ -22,6 +22,7 @@ import { printLessonPlanWindow, printWorksheetToWindow } from '../../utils/print
 import { StudentProfileAnalyticalView } from './StudentProfileAnalyticalView';
 import { StudentProfileActionPlanView } from './StudentProfileActionPlanView';
 import { WorksheetModal } from '../assessments/WorksheetModal';
+import { useAuth } from '../../context/AuthContext';
 
 interface StudentProfileProps {
   studentId?: string;
@@ -72,6 +73,10 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
   const [activeWorksheet, setActiveWorksheet] = useState<{ gap: string; data: WorksheetResult } | null>(null);
   const [senReport, setSenReport] = useState<SenRiskReport | null>(null);
   const [isAnalyzingSEN, setIsAnalyzingSEN] = useState(false);
+
+  // SEN Coordinator actions
+  const { user: currentUser } = useAuth();
+  const isSenCoordinator = currentUser.role === 'sen_coordinator';
 
   useEffect(() => {
     setSenReport(null);
@@ -267,6 +272,38 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
           ))}
         </select>
       </div>
+
+      {isSenCoordinator && (
+        <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-amber-600" />
+            <div>
+              <h3 className="font-semibold text-amber-900">SEN Coordinator Actions</h3>
+              <p className="text-sm text-amber-700">Review educational screening signals for this student.</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => { console.log('Dismiss Alert clicked'); alert('Alert Dismissed'); }}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Dismiss Alert
+            </button>
+            <button 
+              onClick={() => { console.log('Snooze clicked'); alert('Alert Snoozed for 2 Weeks'); }}
+              className="px-4 py-2 bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-sm font-medium hover:bg-amber-200 transition-colors"
+            >
+              Snooze for 2 Weeks
+            </button>
+            <button 
+              onClick={() => { console.log('Escalate clicked'); alert('Alert Escalated / IEP Created'); }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              Escalate / Create IEP
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">

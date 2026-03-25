@@ -12,7 +12,7 @@ import {
   Loader2,
   Filter,
 } from 'lucide-react';
-import { getStudents, Student } from '../../services/studentService';
+import { getStudents, getStudentsByCohorts, getStudentsBySchool, Student } from '../../services/studentService';
 import { getAssessmentSummaryByStudent } from '../../services/assessmentService';
 import { exportClassGradebookCsv } from '../../services/gradebookExport';
 import { getCohortsBySchool, getCohortsByTeacher } from '../../services/cohortService';
@@ -99,22 +99,30 @@ export function ClassRoster({
     const fetchStudentsAndCohorts = async () => {
       setIsLoading(true);
       
+      let fetchedCohorts: Cohort[] = [];
+      let fetchedStudents: Student[] = [];
+
       // Fetch cohorts if headteacher or teacher
       if (user.role === 'headteacher' && schoolId) {
-        const fetchedCohorts = await getCohortsBySchool(schoolId);
+        fetchedCohorts = await getCohortsBySchool(schoolId);
         setCohorts(fetchedCohorts);
+        fetchedStudents = await getStudentsBySchool(schoolId);
       } else if (user.role === 'teacher') {
-        const fetchedCohorts = await getCohortsByTeacher(user.id);
+        fetchedCohorts = await getCohortsByTeacher(user.id);
         setCohorts(fetchedCohorts);
         if (fetchedCohorts.length > 0 && selectedCohortId === 'all') {
           setSelectedCohortId(fetchedCohorts[0].id);
         }
+        const cohortIds = fetchedCohorts.map(c => c.id);
+        if (cohortIds.length > 0) {
+          fetchedStudents = await getStudentsByCohorts(cohortIds);
+        }
+      } else {
+        fetchedStudents = await getStudents();
       }
 
-      const [fetchedStudents, summaryMap] = await Promise.all([
-        getStudents(),
-        getAssessmentSummaryByStudent(),
-      ]);
+      const summaryMap = await getAssessmentSummaryByStudent();
+      
       const studentListItems = fetchedStudents.map((s) => {
         const id = s.id!;
         const summary = summaryMap.get(id);

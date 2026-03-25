@@ -75,5 +75,10 @@ service cloud.firestore {
                     (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
                     (resource == null || isTeacherOfCohort(resource.data.cohortId)));
     }
+
+    // SEN Alerts collection
+    match /senAlerts/{senAlertId} {
+      allow write: if isAdmin() || isHeadteacher() || request.auth == null;
+    }
   }
 }

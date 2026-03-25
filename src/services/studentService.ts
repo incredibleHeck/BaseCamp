@@ -74,6 +74,55 @@ export const getStudents = async (): Promise<Student[]> => {
 };
 
 /**
+ * Retrieves students for a specific school.
+ */
+export const getStudentsBySchool = async (schoolId: string): Promise<Student[]> => {
+  try {
+    const q = query(collection(db, 'students'), where('schoolId', '==', schoolId));
+    const querySnapshot = await getDocs(q);
+    const students: Student[] = [];
+    querySnapshot.forEach((doc) => {
+      students.push({ id: doc.id, ...doc.data() } as Student);
+    });
+    return students;
+  } catch (error) {
+    console.error('Error fetching students by school: ', error);
+    return [];
+  }
+};
+
+/**
+ * Retrieves students for a list of cohort IDs.
+ */
+export const getStudentsByCohorts = async (cohortIds: string[]): Promise<Student[]> => {
+  if (!cohortIds || cohortIds.length === 0) return [];
+  try {
+    // Firestore 'in' queries support up to 10 items.
+    // If a teacher has more than 10 cohorts, we need to chunk the queries.
+    const students: Student[] = [];
+    
+    // Chunk cohortIds into arrays of 10
+    const chunks = [];
+    for (let i = 0; i < cohortIds.length; i += 10) {
+      chunks.push(cohortIds.slice(i, i + 10));
+    }
+    
+    for (const chunk of chunks) {
+      const q = query(collection(db, 'students'), where('cohortId', 'in', chunk));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((doc) => {
+        students.push({ id: doc.id, ...doc.data() } as Student);
+      });
+    }
+    
+    return students;
+  } catch (error) {
+    console.error('Error fetching students by cohorts: ', error);
+    return [];
+  }
+};
+
+/**
  * Retrieves a single student by ID from the Firestore "students" collection.
  * @param studentId The ID of the student.
  * @returns The Student object or null if not found.

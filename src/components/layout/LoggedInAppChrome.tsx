@@ -15,6 +15,7 @@ import {
   Users,
   UsersRound,
   Building,
+  HeartHandshake,
 } from 'lucide-react';
 import { Header, type UserData } from './Header';
 import { AssessmentSetup } from '../../features/assessments/AssessmentSetup';
@@ -25,7 +26,7 @@ import { DistrictDashboard } from '../../features/dashboards/DistrictDashboard';
 import { HeadmasterDashboard } from '../../features/dashboards/HeadmasterDashboard';
 import { CohortManager } from '../../features/schools/CohortManager';
 import { CircuitHeatmapPanel } from '../../features/assessments/CircuitHeatmapPanel';
-import { SenAlertsInbox } from '../SenAlertsInbox';
+import { SenDashboard } from '../../features/sen-coordinator/SenDashboard';
 import { PlaybookLiftLeaderboard } from '../../features/dashboards/PlaybookLiftLeaderboard';
 import { FineTunePilotPanel } from '../../features/ai-tools/FineTunePilotPanel';
 import { TeacherDirectory } from '../../features/schools/TeacherDirectory';
@@ -181,7 +182,7 @@ export function LoggedInAppChrome({
       case 'district-playbooks':
         return <PlaybookLiftLeaderboard user={user} />;
       case 'sen-inbox':
-        return <SenAlertsInbox user={user} />;
+        return <SenDashboard user={user} onAlertClick={handleViewProfile} />;
       case 'staff-directory':
         return <StaffDirectory user={user} />;
       case 'school-directory':
@@ -264,7 +265,7 @@ export function LoggedInAppChrome({
         view: 'sen-inbox',
         label: 'SEN inbox',
         shortLabel: 'SEN',
-        icon: Inbox,
+        icon: HeartHandshake,
       });
     }
     if (role === 'teacher') {

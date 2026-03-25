@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Building2, School, Loader2, Lock, KeyRound, BookOpen, GraduationCap, Building, HeartHandshake, ArrowLeft, MapPin } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
-import { signInWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInAnonymously, signOut } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { seedDemoEnvironment } from '../utils/demoSeeder';
 import { Input } from './ui/input';
@@ -29,11 +29,22 @@ export function Login() {
     setCodeError(null);
 
     try {
+      // For headteachers, we also allow logging in by email if they typed that instead of username
+      // (Though our seeder sets them to be the same)
       const q = query(collection(db, 'users'), where('username', '==', code));
-      const querySnapshot = await getDocs(q);
+      let querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty && selectedRole === 'headteacher') {
+        const qEmail = query(collection(db, 'users'), where('email', '==', code));
+        querySnapshot = await getDocs(qEmail);
+      }
 
       if (querySnapshot.empty) {
-        setCodeError('Invalid Access Code. Please check with your Headteacher.');
+        setCodeError(
+          selectedRole === 'headteacher' 
+            ? 'Invalid email. Please check with your district administrator.' 
+            : 'Invalid Access Code. Please check with your Headteacher.'
+        );
         setIsCodeLoggingIn(false);
         return;
       }
@@ -73,6 +84,8 @@ export function Login() {
     if (isSeeding) return;
     setIsSeeding(true);
     try {
+      // Ensure we are fully signed out so that request.auth == null rules apply
+      await signOut(auth);
       await seedDemoEnvironment();
       alert('Demo environment successfully seeded.');
     } catch (error) {
@@ -172,20 +185,26 @@ export function Login() {
                   </Button>
                 </div>
 
-                {selectedRole === 'teacher' ? (
+                {selectedRole === 'teacher' || selectedRole === 'headteacher' ? (
                   <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-soft">
                     <h2 className="text-base font-semibold text-zinc-800 mb-4 flex items-center gap-2">
-                      <KeyRound className="w-5 h-5 text-indigo-600" />
-                      Teacher Access
+                      {selectedRole === 'teacher' ? (
+                        <KeyRound className="w-5 h-5 text-indigo-600" />
+                      ) : (
+                        <GraduationCap className="w-5 h-5 text-indigo-600" />
+                      )}
+                      {selectedRole === 'teacher' ? 'Teacher Access' : 'Headteacher Access'}
                     </h2>
                     <p className="text-sm text-zinc-500 mb-6">
-                      Enter the access code provided by your Headteacher.
+                      {selectedRole === 'teacher' 
+                        ? 'Enter the access code provided by your Headteacher.' 
+                        : 'Enter your school-assigned email address.'}
                     </p>
                     <form onSubmit={handleAccessCodeLogin} className="space-y-4">
                       <div>
                         <Input
                           type="text"
-                          placeholder="e.g. adjoa.mensah.sch123"
+                          placeholder={selectedRole === 'teacher' ? "e.g. adjoa.mensah.sch123" : "e.g. headteacher@school1.com"}
                           value={accessCode}
                           onChange={(e) => setAccessCode(e.target.value)}
                           disabled={isCodeLoggingIn}
@@ -216,7 +235,6 @@ export function Login() {
                 ) : (
                   <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-soft text-center">
                     <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-zinc-100 text-indigo-600">
-                      {selectedRole === 'headteacher' && <GraduationCap className="w-6 h-6" />}
                       {selectedRole === 'district' && <Building className="w-6 h-6" />}
                       {selectedRole === 'sen_coordinator' && <HeartHandshake className="w-6 h-6" />}
                       {selectedRole === 'circuit_supervisor' && <MapPin className="w-6 h-6" />}

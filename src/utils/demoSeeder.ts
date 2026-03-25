@@ -1,4 +1,4 @@
-import { collection, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const GHANAIAN_FIRST_NAMES = [
@@ -40,11 +40,30 @@ function getMasteryLevel(score: number): string {
   return 'intervention_needed';
 }
 
+async function clearCollection(collectionName: string) {
+  const querySnapshot = await getDocs(collection(db, collectionName));
+  if (querySnapshot.empty) return;
+  
+  const batch = writeBatch(db);
+  querySnapshot.forEach((document) => {
+    batch.delete(document.ref);
+  });
+  await batch.commit();
+}
+
 /**
  * Seeds the demo environment with realistic, relational Ghanaian school data.
- * Targets: 1 District, 2 Schools, 4 Teachers, 4 Cohorts, 40 Students, ~160 Assessments.
+ * Targets: 1 District, 3 Schools, 3 Headteachers, 9 Teachers, 9 Cohorts, 45 Students, ~135 Assessments.
  */
 export async function seedDemoEnvironment() {
+  console.log('Purging existing demo data...');
+  await clearCollection('users');
+  await clearCollection('cohorts');
+  await clearCollection('students');
+  await clearCollection('assessments');
+  await clearCollection('senAlerts');
+
+  console.log('Seeding new demo environment...');
   const batch = writeBatch(db);
   const districtId = 'dist-demo-1';
   
@@ -56,108 +75,115 @@ export async function seedDemoEnvironment() {
     createdAt: Date.now(),
   });
 
-  // 2. Create Schools
-  const schools = [
-    { id: 'sch-achimota', name: 'Achimota Basic School' },
-    { id: 'sch-mando', name: 'Mando Primary' }
-  ];
-
-  for (const school of schools) {
-    batch.set(doc(db, 'schools', school.id), {
-      name: school.name,
-      districtId: districtId,
-      location: school.id === 'sch-achimota' ? 'Achimota, Accra' : 'Mando, Central Region',
-    });
-  }
-
-  // 3. Create Teachers (2 per school) and Cohorts
-  const teacherIds: string[] = [];
-  const cohortData: Array<{ id: string; schoolId: string; name: string; grade: number; teacherId: string }> = [];
-
-  schools.forEach((school, sIdx) => {
-    [1, 2].forEach((tIdx) => {
-      const teacherId = `teacher-${school.id}-${tIdx}`;
-      teacherIds.push(teacherId);
-
-      // User Doc for Teacher
-      batch.set(doc(db, 'users', teacherId), {
-        name: generateName(),
-        role: 'teacher',
-        schoolId: school.id,
-        districtId: districtId,
-        location: school.name,
-        email: `${teacherId}@example.edu.gh`,
-      });
-
-      // 4. Create Cohort assigned to this teacher
-      const grade = sIdx === 0 ? 4 : 6; 
-      const cohortName = `Primary ${grade}${tIdx === 1 ? 'A' : 'B'}`;
-      const cohortId = `cohort-${school.id}-${grade}${tIdx === 1 ? 'A' : 'B'}`;
-      
-      batch.set(doc(db, 'cohorts', cohortId), {
-        name: cohortName,
-        schoolId: school.id,
-        teacherId: teacherId,
-        gradeLevel: grade,
-      });
-
-      cohortData.push({ id: cohortId, schoolId: school.id, name: cohortName, grade, teacherId });
-    });
-  });
-
   const now = Date.now();
   const threeMonthsMs = 90 * 24 * 60 * 60 * 1000;
 
-  // 5. Create 40 Students (10 per cohort) + Assessment History
-  cohortData.forEach((cohort) => {
-    for (let i = 1; i <= 10; i++) {
-      const studentId = `student-${cohort.id}-${i}`;
-      const hasSen = Math.random() < 0.15; // ~15% SEN
-      
-      batch.set(doc(db, 'students', studentId), {
-        name: generateName(),
-        grade: cohort.name,
-        cohortId: cohort.id,
-        numericGradeLevel: cohort.grade,
-        schoolId: cohort.schoolId,
-        primaryLanguage: getRandomElement(PRIMARY_LANGUAGES),
-        dataProcessingConsent: true,
-        createdAt: now - Math.floor(Math.random() * threeMonthsMs),
-        ...(hasSen ? { officialSenStatus: getRandomElement(SEN_STATUSES) } : {}),
+  // 2. Create Schools & Headteachers
+  for (let s = 1; s <= 3; s++) {
+    const schoolId = `school${s}`;
+    
+    batch.set(doc(db, 'schools', schoolId), {
+      name: `Demo School ${s}`,
+      districtId: districtId,
+      location: 'Greater Accra',
+    });
+
+    const headteacherId = `ht-${schoolId}`;
+    batch.set(doc(db, 'users', headteacherId), {
+      name: `Headteacher ${s}`,
+      role: 'headteacher',
+      email: `headteacher@school${s}.com`,
+      username: `headteacher@school${s}.com`,
+      schoolId: schoolId,
+      districtId: districtId,
+    });
+
+    // 3. Create Teachers
+    for (let t = 1; t <= 3; t++) {
+      const teacherId = `teacher-${schoolId}-${t}`;
+      batch.set(doc(db, 'users', teacherId), {
+        name: `Teacher ${t}`,
+        role: 'teacher',
+        email: `teacher${t}@school${s}.com`,
+        username: `teacher${t}@school${s}.com`,
+        schoolId: schoolId,
+        districtId: districtId,
       });
 
-      // Generate 3-5 Assessments per student
-      const assessmentCount = 3 + Math.floor(Math.random() * 3);
-      for (let j = 0; j < assessmentCount; j++) {
-        const assessmentId = `assess-${studentId}-${j}`;
-        const template = getRandomElement(ASSESSMENT_TEMPLATES);
-        const rawScore = 40 + Math.floor(Math.random() * 56); // 40-95
-        
-        // Spread over last 3 months
-        const updatedAt = now - (Math.floor(Math.random() * 90) * 24 * 60 * 60 * 1000);
+      // 4. Create Cohort
+      const grade = 3 + t; // Basic 4, 5, 6
+      const cohortId = `cohort-${schoolId}-${t}`;
+      batch.set(doc(db, 'cohorts', cohortId), {
+        name: `Basic ${grade}`,
+        schoolId: schoolId,
+        teacherId: teacherId,
+        gradeLevel: grade,
+        numericGradeLevel: grade,
+      });
 
-        batch.set(doc(db, 'assessments', assessmentId), {
-          studentId,
-          type: template.type,
-          diagnosis: template.diagnosis,
-          score: rawScore,
-          rawScore: rawScore,
-          masteryLevel: getMasteryLevel(rawScore),
-          schoolId: cohort.schoolId,
-          cohortId: cohort.id,
-          updatedAt: updatedAt,
-          timestamp: updatedAt,
-          status: 'Completed',
-          createdByUserId: cohort.teacherId
+      // 5. Create Students
+      for (let st = 1; st <= 5; st++) {
+        const studentId = `student-${cohortId}-${st}`;
+        const hasSen = Math.random() < 0.20; // ~20% SEN
+        const officialSenStatus = hasSen ? getRandomElement(SEN_STATUSES) : null;
+
+        batch.set(doc(db, 'students', studentId), {
+          name: generateName(),
+          grade: `Basic ${grade}`,
+          cohortId: cohortId,
+          numericGradeLevel: grade,
+          schoolId: schoolId,
+          primaryLanguage: getRandomElement(PRIMARY_LANGUAGES),
+          dataProcessingConsent: true,
+          createdAt: now - Math.floor(Math.random() * threeMonthsMs),
+          ...(officialSenStatus ? { officialSenStatus } : {}),
         });
+
+        // 6. Generate SEN Alert if student has SEN status
+        if (officialSenStatus) {
+          const senAlertId = `sen-${studentId}`;
+          batch.set(doc(db, 'senAlerts', senAlertId), {
+            studentId,
+            schoolId,
+            cohortId,
+            status: 'open',
+            riskLevel: 'high',
+            condition: officialSenStatus,
+            createdAt: now - Math.floor(Math.random() * threeMonthsMs),
+          });
+        }
+
+        // 7. Generate 2-3 Assessments per student
+        const assessmentCount = 2 + Math.floor(Math.random() * 2);
+        for (let a = 0; a < assessmentCount; a++) {
+          const assessmentId = `assess-${studentId}-${a}`;
+          const template = getRandomElement(ASSESSMENT_TEMPLATES);
+          const rawScore = 40 + Math.floor(Math.random() * 56); // 40-95
+          const updatedAt = now - (Math.floor(Math.random() * 90) * 24 * 60 * 60 * 1000);
+
+          batch.set(doc(db, 'assessments', assessmentId), {
+            studentId,
+            type: template.type,
+            diagnosis: template.diagnosis,
+            score: rawScore,
+            rawScore: rawScore,
+            masteryLevel: getMasteryLevel(rawScore),
+            schoolId: schoolId,
+            cohortId: cohortId,
+            updatedAt: updatedAt,
+            timestamp: updatedAt,
+            status: 'Completed',
+            createdByUserId: teacherId
+          });
+        }
       }
     }
-  });
+  }
 
   // Execute Batch
   try {
     await batch.commit();
-    console.log('✅ Demo environment successfully seeded with Ghanaian school data and history.');
+    console.log('Demo Environment Seeded Successfully!');
   } catch (error) {
     console.error('❌ Failed to seed demo environment:', error);
     throw error;
