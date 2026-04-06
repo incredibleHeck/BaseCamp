@@ -43,7 +43,7 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 ### Phase 4 checklist (MVP in repo)
 
 - [x] **Foundations** – Guardian fields + consent timestamp + `portalAccessCode` + `trainingDataOptIn` on students; [`updateStudent`](../../src/services/studentService.ts); WhatsApp **outbox stub** [`whatsappConnectService.ts`](../../src/services/whatsappConnectService.ts); Firestore `whatsappOutbox`.
-- [x] **HeckTeck Connect MVP** – Weekly digest + **Twi/Ga/Ewe** (via Gemini translate) on [`Phase4FamilyConnectCard.tsx`](../../src/components/Phase4FamilyConnectCard.tsx) (teacher profile); queues row in `whatsappOutbox`.
+- [x] **HecTech Connect MVP** – Weekly digest + **Twi/Ga/Ewe** (via Gemini translate) on [`Phase4FamilyConnectCard.tsx`](../../src/components/Phase4FamilyConnectCard.tsx) (teacher profile); queues row in `whatsappOutbox`.
 - [x] **Student portal MVP** – Hash route **`#/portal`** [`StudentPortalApp.tsx`](../../src/components/StudentPortalApp.tsx); gamified MCQ from gap tags; [`portalSessions`](../../src/services/portalSessionService.ts); [`public/manifest.webmanifest`](../../public/manifest.webmanifest).
 - [x] **Fine-tuning pilot** – JSONL export + gap-tag A/B flag [`FineTunePilotPanel.tsx`](../../src/components/FineTunePilotPanel.tsx); [`VITE_FT_PILOT_GAP_TAGS`](../../.env.example) + [`suggestGapTagsFromObservations`](../../src/services/aiPrompts.ts).
 

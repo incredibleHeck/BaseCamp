@@ -1,5 +1,20 @@
-import { collection, addDoc, getDocs, doc, getDoc, updateDoc, query, where, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  query,
+  where,
+  limit,
+  writeBatch,
+  deleteField,
+  setDoc,
+} from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { normalizePortalLookupKey } from '../utils/accessLookupKeys';
 import {
   DEFAULT_CIRCUIT_ID,
   DEFAULT_DISTRICT_ID,
@@ -142,29 +157,87 @@ export const getStudent = async (studentId: string): Promise<Student | null> => 
   }
 };
 
+function generatePortalSessionToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const updateStudent = async (studentId: string, updates: Partial<Student>): Promise<void> => {
-  const { id: _id, ...rest } = updates as Student & { id?: string };
+  const { id: _id, portalAccessCode: portalPatch, ...rest } = updates as Student & { id?: string };
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rest)) {
     if (v !== undefined) patch[k] = v;
   }
+
+  if (portalPatch !== undefined) {
+    const prevSnap = await getDoc(doc(db, 'students', studentId));
+    const prev = prevSnap.data() as Record<string, unknown> | undefined;
+    const oldCodeRaw = typeof prev?.portalAccessCode === 'string' ? prev.portalAccessCode : '';
+    const oldKey = oldCodeRaw ? normalizePortalLookupKey(oldCodeRaw) : '';
+
+    const newKey =
+      typeof portalPatch === 'string' && portalPatch.trim()
+        ? normalizePortalLookupKey(portalPatch)
+        : '';
+
+    const batch = writeBatch(db);
+    if (oldKey) {
+      batch.delete(doc(db, 'portalLookups', oldKey));
+    }
+
+    if (newKey) {
+      const portalSessionToken = generatePortalSessionToken();
+      patch.portalAccessCode = newKey;
+      patch.portalSessionToken = portalSessionToken;
+      batch.set(doc(db, 'portalLookups', newKey), { studentId, portalSessionToken });
+    } else {
+      patch.portalAccessCode = '';
+      patch.portalSessionToken = deleteField();
+    }
+
+    patch.updatedAt = Date.now();
+    batch.update(doc(db, 'students', studentId), patch);
+    await batch.commit();
+    return;
+  }
+
   if (Object.keys(patch).length === 0) return;
   patch.updatedAt = Date.now();
   await updateDoc(doc(db, 'students', studentId), patch);
 };
 
-/** Lookup for student portal (lab code). Code is stored normalized uppercase. */
+/**
+ * Student portal entry: resolves code via `portalLookups`, then establishes an anonymous Auth session
+ * whose user doc carries `portalStudentId` + `portalSessionToken` for tight Firestore rules.
+ */
 export const getStudentByPortalCode = async (code: string): Promise<Student | null> => {
-  const normalized = code.trim().toUpperCase();
+  const normalized = normalizePortalLookupKey(code);
   if (normalized.length < 4) return null;
   try {
-    const q = query(collection(db, 'students'), where('portalAccessCode', '==', normalized), limit(1));
-    const snap = await getDocs(q);
-    let found: Student | null = null;
-    snap.forEach((d) => {
-      found = { id: d.id, ...d.data() } as Student;
-    });
-    return found;
+    const lookupSnap = await getDoc(doc(db, 'portalLookups', normalized));
+    if (!lookupSnap.exists()) return null;
+    const raw = lookupSnap.data() as Record<string, unknown>;
+    const sid = typeof raw.studentId === 'string' ? raw.studentId : '';
+    const portalSessionToken = typeof raw.portalSessionToken === 'string' ? raw.portalSessionToken : '';
+    if (!sid || !portalSessionToken) return null;
+
+    const cred = await signInAnonymously(auth);
+    const uid = cred.user.uid;
+    await setDoc(
+      doc(db, 'users', uid),
+      {
+        role: 'student_portal',
+        portalStudentId: sid,
+        portalSessionToken,
+        name: 'Student',
+      },
+      { merge: true }
+    );
+
+    const stSnap = await getDoc(doc(db, 'students', sid));
+    if (!stSnap.exists()) return null;
+    return { id: stSnap.id, ...stSnap.data() } as Student;
   } catch (e) {
     console.error('getStudentByPortalCode', e);
     return null;

@@ -1,5 +1,6 @@
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { DiagnosticReport } from './types';
+import type { AiCurriculumPromptType, DiagnosticReport } from './types';
+import { getCurriculumPromptAlignmentBlock } from './utils';
 
 /** Lesson plan stand-in when remedial steps are skipped for high mastery (UI + Firestore). */
 export const MASTERY_EXTENSION_LESSON_PLACEHOLDER: { title: string; instructions: string[] } = {
@@ -29,6 +30,7 @@ export interface GenerateExtensionActivityOptions {
   dialectContext?: string;
   /** Formatted curriculum / standard context from RAG (may be empty). */
   curriculumContext?: string;
+  curriculumType?: AiCurriculumPromptType;
 }
 
 const DEFAULT_GRADE_LEVEL = 4;
@@ -68,7 +70,7 @@ export async function generateExtensionActivity(
     return null;
   }
 
-  const { report, curriculumContext } = options;
+  const { report, curriculumContext, curriculumType } = options;
   const grade = resolveExtensionGradeLevel(options.studentGradeLevel);
   const dialectLabel = resolveDialectLabel(options.dialectContext);
   const curriculumBlock =
@@ -81,6 +83,8 @@ ${curriculumContext.trim()}
 
   const systemInstruction = `
 You are an expert in Gifted and Talented education.
+
+${getCurriculumPromptAlignmentBlock(curriculumType)}
 
 The student has mastered the attached curriculum standard. Do NOT teach the standard. Instead, generate a 10-minute "Extension Challenge" that pushes them into the upper tiers of Bloom's Taxonomy (Analyze, Evaluate, Create).
 

@@ -1,8 +1,11 @@
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { SenRiskReport } from './types';
-import { cleanJsonResponse, normalizeStringArray } from './utils';
+import type { AiCurriculumPromptType, SenRiskReport } from './types';
+import { cleanJsonResponse, getCurriculumPromptAlignmentBlock, normalizeStringArray } from './utils';
 
-export const analyzeLongitudinalSEN = async (history: unknown[]): Promise<SenRiskReport | null> => {
+export const analyzeLongitudinalSEN = async (
+  history: unknown[],
+  curriculumType?: AiCurriculumPromptType
+): Promise<SenRiskReport | null> => {
   if (!API_KEY) {
     alert('Gemini API key is not configured. Please check the console.');
     return null;
@@ -25,6 +28,8 @@ export const analyzeLongitudinalSEN = async (history: unknown[]): Promise<SenRis
 
     const prompt = `
       You are a Special Educational Needs Coordinator working within Ghana Education Service (GES).
+
+      ${getCurriculumPromptAlignmentBlock(curriculumType)}
 
       TASK:
       Analyze the student's ENTIRE assessment history over time to identify repeated learning patterns that may indicate SEN / learning disability risks.

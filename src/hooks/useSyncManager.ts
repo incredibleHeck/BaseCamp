@@ -7,7 +7,7 @@ import {
   type QueuedAssessment,
 } from '../services/core/offlineQueueService';
 import { saveAssessment, type Assessment } from '../services/assessmentService';
-import { getStudent, getStudents } from '../services/studentService';
+import { getStudent, getStudents, type Student } from '../services/studentService';
 import {
   getDefaultAcademicYear,
   getDefaultTerm,

@@ -4,9 +4,12 @@ import type { Assessment } from '../../services/assessmentService';
 import type { WorksheetResult } from '../../services/ai/aiPrompts';
 import type { GapInterventionEntry } from '../../hooks/useStudentProfileData';
 import { formatAssessmentDateTime } from '../../utils/studentProfileHelpers';
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import { ExtensionActivityMarkdown } from '../ai-tools/ExtensionActivityMarkdown';
 
 interface StudentProfileActionPlanViewProps {
+  /** School-level AI curriculum hint for generated activities. */
+  curriculumAlignmentLabel?: string;
   gapInterventions: GapInterventionEntry[];
   lastWorksheetByCard: Record<string, { gap: string; data: WorksheetResult }>;
   regeneratingAssessmentId: string | null;
@@ -19,6 +22,7 @@ interface StudentProfileActionPlanViewProps {
 }
 
 export function StudentProfileActionPlanView({
+  curriculumAlignmentLabel,
   gapInterventions,
   lastWorksheetByCard,
   regeneratingAssessmentId,
@@ -64,7 +68,12 @@ export function StudentProfileActionPlanView({
                 <h3 className="text-lg font-bold text-gray-900">
                   {subject} · {formatAssessmentDateTime(assessment.timestamp)}
                 </h3>
-                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{assessment.diagnosis}</p>
+                <div className="mt-1 max-h-24 overflow-hidden">
+                  <MarkdownRenderer
+                    content={assessment.diagnosis}
+                    className="prose-sm !my-0 prose-p:text-gray-600 prose-headings:text-gray-800"
+                  />
+                </div>
               </div>
             </div>
 
@@ -84,12 +93,20 @@ export function StudentProfileActionPlanView({
 
             {assessment.remedialPlan ? (
               <div className="mb-4 text-sm text-gray-700 bg-slate-50 border border-slate-100 rounded-lg p-3">
-                <span className="font-semibold text-slate-800">Remedial plan: </span>
-                {assessment.remedialPlan}
+                <p className="font-semibold text-slate-800 mb-1">Remedial plan</p>
+                <MarkdownRenderer
+                  content={assessment.remedialPlan}
+                  className="prose-sm !my-0 prose-p:text-gray-700 prose-headings:text-slate-900"
+                />
               </div>
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              {curriculumAlignmentLabel ? (
+                <p className="text-xs text-slate-600 w-full sm:order-first">
+                  Aligned to: <span className="font-semibold text-slate-800">{curriculumAlignmentLabel}</span>
+                </p>
+              ) : null}
               {!hasExtensionChallenge ? (
                 <>
                   <button
@@ -99,7 +116,7 @@ export function StudentProfileActionPlanView({
                     className="inline-flex items-center justify-center gap-2 bg-yellow-100 hover:bg-yellow-200 disabled:opacity-60 text-yellow-900 text-sm font-medium py-2.5 px-4 rounded-lg border border-yellow-200 min-h-[44px]"
                   >
                     {isRegenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                    {hasLesson ? 'Regenerate 5-min activity' : 'Generate 5-min activity'}
+                    {hasLesson ? 'Regenerate 10-min activity' : 'Generate 10-min activity'}
                   </button>
                   {hasLesson ? (
                     <button
@@ -171,9 +188,14 @@ export function StudentProfileActionPlanView({
             ) : hasLesson && assessment.lessonPlan ? (
               <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-lg p-4">
                 <h4 className="font-semibold text-gray-900 mb-2">{assessment.lessonPlan.title || 'Activity'}</h4>
-                <ol className="list-decimal list-inside text-sm text-gray-700 space-y-1">
+                <ol className="list-decimal list-outside text-sm text-gray-700 space-y-2 pl-6 marker:text-gray-600">
                   {(assessment.lessonPlan.instructions || []).map((step, i) => (
-                    <li key={i}>{step}</li>
+                    <li key={i}>
+                      <MarkdownRenderer
+                        content={step}
+                        className="prose-sm !my-0 inline-block w-full prose-p:text-gray-700"
+                      />
+                    </li>
                   ))}
                 </ol>
               </div>

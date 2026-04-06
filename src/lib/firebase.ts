@@ -14,6 +14,13 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
+import { getFunctions, type Functions } from 'firebase/functions';
+
+const FUNCTIONS_REGION =
+  typeof import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION === 'string' &&
+  import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION.trim().length > 0
+    ? import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION.trim()
+    : 'europe-west1';
 
 const env = import.meta.env;
 const firebaseConfig = {
@@ -62,3 +69,6 @@ try {
 
 export const db: Firestore = getFirestore(app);
 export const auth: Auth = getAuth(app);
+export const functions: Functions = getFunctions(app, FUNCTIONS_REGION);
+
+export { app };

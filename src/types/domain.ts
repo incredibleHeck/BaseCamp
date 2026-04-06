@@ -25,6 +25,10 @@ export interface School {
   academicYearLabel?: string;
   currentTerm?: string;
   updatedAt?: number;
+  /** Multi-tenant curriculum: Cambridge (e.g. international), GES (Ghana Education Service), or both. */
+  curriculumType?: 'cambridge' | 'ges' | 'both';
+  /** School sector for reporting and policy. */
+  schoolType?: 'public' | 'private';
 }
 
 export interface Student {
@@ -49,6 +53,8 @@ export interface Student {
   consentRecordedAt?: number;
   /** Lab / portal login code (teacher-provisioned) */
   portalAccessCode?: string;
+  /** Server-side secret paired with {@link portalAccessCode} for portal session rules (not shown in UI). */
+  portalSessionToken?: string;
   /** Optional: include de-identified rows in fine-tuning pilot export */
   trainingDataOptIn?: boolean;
   /** Explicit denial blocks AI training / fine-tune exports regardless of {@link trainingDataOptIn}. */

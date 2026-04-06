@@ -7,6 +7,8 @@ import {
   generateExtensionActivity,
   generateSubjectRoutedLessonPlan,
   MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+  resolveAiCurriculumPromptType,
+  type AiCurriculumPromptType,
   type DiagnosticReport as AIDiagnosticReport,
   shouldUseExtensionActivity,
 } from './ai/aiPrompts';
@@ -95,7 +97,11 @@ async function enrichReportAfterPrimaryDiagnosis(
   report: AIDiagnosticReport,
   subjectKey: 'literacy' | 'numeracy',
   curriculumContext: string,
-  opts: { studentGradeLevel?: number; dialectContext?: string | undefined }
+  opts: {
+    studentGradeLevel?: number;
+    dialectContext?: string | undefined;
+    curriculumType?: AiCurriculumPromptType;
+  }
 ): Promise<AIDiagnosticReport> {
   const gradeForLesson =
     typeof opts.studentGradeLevel === 'number' && Number.isFinite(opts.studentGradeLevel)
@@ -109,6 +115,7 @@ async function enrichReportAfterPrimaryDiagnosis(
       studentGradeLevel: opts.studentGradeLevel,
       dialectContext: dialect,
       curriculumContext,
+      curriculumType: opts.curriculumType,
     });
     if (ext) {
       return {
@@ -123,7 +130,8 @@ async function enrichReportAfterPrimaryDiagnosis(
       subjectKey,
       gradeForLesson,
       dialect,
-      curriculumContext
+      curriculumContext,
+      opts.curriculumType
     );
     return {
       ...report,
@@ -137,7 +145,8 @@ async function enrichReportAfterPrimaryDiagnosis(
     subjectKey,
     gradeForLesson,
     dialect,
-    curriculumContext
+    curriculumContext,
+    opts.curriculumType
   );
   return {
     ...report,
@@ -156,6 +165,8 @@ export type AssessmentPipelineInput =
       dialectContext: string;
       curriculumFramework: CurriculumFramework;
       gradeLevel?: number;
+      /** School-level override; falls back to mapping from `curriculumFramework`. */
+      aiCurriculumPromptType?: AiCurriculumPromptType;
     }
   | {
       variant: 'worksheet';
@@ -165,6 +176,7 @@ export type AssessmentPipelineInput =
       curriculumFramework: CurriculumFramework;
       gradeLevel?: number;
       images: string[];
+      aiCurriculumPromptType?: AiCurriculumPromptType;
     }
   | {
       variant: 'manual';
@@ -175,6 +187,7 @@ export type AssessmentPipelineInput =
       gradeLevel?: number;
       manualRubric: string[];
       observations: string;
+      aiCurriculumPromptType?: AiCurriculumPromptType;
     }
   | {
       variant: 'batch_detect';
@@ -184,6 +197,7 @@ export type AssessmentPipelineInput =
       gradeLevel?: number;
       imageBase64: string;
       classRoster: { studentId: string; name: string }[];
+      aiCurriculumPromptType?: AiCurriculumPromptType;
     };
 
 export type AssessmentPipelineResult =
@@ -199,8 +213,17 @@ export async function executeFullAssessmentPipeline(
 ): Promise<AssessmentPipelineResult> {
   try {
     if (payload.variant === 'hybrid') {
-      const { studentId, audioBase64, audioMimeType, worksheetImage, assessmentType, dialectContext, curriculumFramework, gradeLevel } =
-        payload;
+      const {
+        studentId,
+        audioBase64,
+        audioMimeType,
+        worksheetImage,
+        assessmentType,
+        dialectContext,
+        curriculumFramework,
+        gradeLevel,
+        aiCurriculumPromptType: aiPromptOverride,
+      } = payload;
       if (!studentId?.trim()) return { ok: false, reason: 'missing_student' };
       if (!assessmentType) return { ok: false, reason: 'missing_assessment_type' };
 
@@ -211,6 +234,7 @@ export async function executeFullAssessmentPipeline(
       const displayName = student?.name ?? 'the learner';
       const hybridRagHint = [studentContext, displayName].join(' ').slice(0, 800);
       const hybridRag = getCurriculumContext(subjectKey, hybridRagHint, curriculumFramework, gradeLevel);
+      const curriculumPromptType = resolveAiCurriculumPromptType(aiPromptOverride ?? null, curriculumFramework);
 
       const longitudinal = await loadLongitudinalPromptFields(studentId, assessmentType, gradeLevel, {
         student,
@@ -231,6 +255,7 @@ export async function executeFullAssessmentPipeline(
         allowedObjectiveIds: hybridRag.allowedObjectiveIds,
         studentGradeLevel: longitudinal.studentGradeLevel,
         recentHistorySummary: longitudinal.recentHistorySummary,
+        curriculumType: curriculumPromptType,
       });
 
       if (!raw) return { ok: false, reason: 'null_report' };
@@ -239,17 +264,27 @@ export async function executeFullAssessmentPipeline(
       const merged = await enrichReportAfterPrimaryDiagnosis(raw, subjectKey, hybridRag.formattedContext, {
         studentGradeLevel: longitudinal.studentGradeLevel,
         dialectContext: dialectForLesson,
+        curriculumType: curriculumPromptType,
       });
 
       return { ok: true, report: buildFullReport(merged) };
     }
 
     if (payload.variant === 'batch_detect') {
-      const { assessmentType, dialectContext, curriculumFramework, gradeLevel, imageBase64, classRoster } = payload;
+      const {
+        assessmentType,
+        dialectContext,
+        curriculumFramework,
+        gradeLevel,
+        imageBase64,
+        classRoster,
+        aiCurriculumPromptType: aiPromptOverride,
+      } = payload;
       if (!assessmentType) return { ok: false, reason: 'missing_assessment_type' };
 
       const subjectKey = subjectKeyFromAssessmentType(assessmentType);
       const rag = getCurriculumContext(subjectKey, '', curriculumFramework, gradeLevel);
+      const curriculumPromptType = resolveAiCurriculumPromptType(aiPromptOverride ?? null, curriculumFramework);
 
       const raw = await analyzeWorksheet(imageBase64, assessmentType, dialectContext, {
         autoDetectStudent: true,
@@ -258,6 +293,7 @@ export async function executeFullAssessmentPipeline(
         gradeLevel,
         curriculumContext: rag.formattedContext,
         allowedObjectiveIds: rag.allowedObjectiveIds,
+        curriculumType: curriculumPromptType,
       });
 
       if (!raw) return { ok: false, reason: 'null_report' };
@@ -271,6 +307,7 @@ export async function executeFullAssessmentPipeline(
       const merged = await enrichReportAfterPrimaryDiagnosis(raw, subjectKey, rag.formattedContext, {
         studentGradeLevel: longitudinal.studentGradeLevel,
         dialectContext: dialectForLesson,
+        curriculumType: curriculumPromptType,
       });
 
       return { ok: true, report: buildFullReport(merged) };
@@ -285,6 +322,7 @@ export async function executeFullAssessmentPipeline(
         gradeLevel,
         manualRubric,
         observations,
+        aiCurriculumPromptType: aiPromptOverride,
       } = payload;
       if (!assessmentType) return { ok: false, reason: 'missing_assessment_type' };
 
@@ -296,6 +334,7 @@ export async function executeFullAssessmentPipeline(
         gradeLevel
       );
       const rag = getCurriculumContext(assessmentType, manualHint, curriculumFramework, gradeLevel);
+      const curriculumPromptType = resolveAiCurriculumPromptType(aiPromptOverride ?? null, curriculumFramework);
 
       const raw = await analyzeManualEntry(
         assessmentType,
@@ -307,6 +346,7 @@ export async function executeFullAssessmentPipeline(
           gradeLevel,
           curriculumContext: rag.formattedContext,
           allowedObjectiveIds: rag.allowedObjectiveIds,
+          curriculumType: curriculumPromptType,
           ...longitudinal,
         }
       );
@@ -317,13 +357,22 @@ export async function executeFullAssessmentPipeline(
       const merged = await enrichReportAfterPrimaryDiagnosis(raw, subjectKey, rag.formattedContext, {
         studentGradeLevel: longitudinal.studentGradeLevel,
         dialectContext: dialectForLesson,
+        curriculumType: curriculumPromptType,
       });
 
       return { ok: true, report: buildFullReport(merged) };
     }
 
     // worksheet (single or multi page)
-    const { studentId, assessmentType, dialectContext, curriculumFramework, gradeLevel, images } = payload;
+    const {
+      studentId,
+      assessmentType,
+      dialectContext,
+      curriculumFramework,
+      gradeLevel,
+      images,
+      aiCurriculumPromptType: aiPromptOverride,
+    } = payload;
     if (!assessmentType) return { ok: false, reason: 'missing_assessment_type' };
     const nonEmpty = images.filter((s) => s && String(s).trim().length > 0);
     if (nonEmpty.length === 0) return { ok: false, reason: 'no_images' };
@@ -331,11 +380,13 @@ export async function executeFullAssessmentPipeline(
     const subjectKey = subjectKeyFromAssessmentType(assessmentType);
     const longitudinal = await loadLongitudinalPromptFields(studentId ?? undefined, assessmentType, gradeLevel);
     const rag = getCurriculumContext(assessmentType, '', curriculumFramework, gradeLevel);
+    const curriculumPromptType = resolveAiCurriculumPromptType(aiPromptOverride ?? null, curriculumFramework);
     const baseOpts = {
       curriculumFramework,
       gradeLevel,
       curriculumContext: rag.formattedContext,
       allowedObjectiveIds: rag.allowedObjectiveIds,
+      curriculumType: curriculumPromptType,
       ...longitudinal,
     };
 
@@ -350,6 +401,7 @@ export async function executeFullAssessmentPipeline(
     const merged = await enrichReportAfterPrimaryDiagnosis(raw, subjectKey, rag.formattedContext, {
       studentGradeLevel: longitudinal.studentGradeLevel,
       dialectContext: dialectForLesson,
+      curriculumType: curriculumPromptType,
     });
 
     return { ok: true, report: buildFullReport(merged) };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Loader2 } from 'lucide-react';
+import { Users, Plus, Loader2, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
@@ -11,7 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { getTeachersBySchool, addTeacher, type SchoolTeacherSummary } from '../../services/userService';
+import {
+  getTeachersBySchool,
+  addTeacher,
+  deleteTeacher,
+  type CreateTeacherResult,
+  type SchoolTeacherSummary,
+} from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
 
 interface StaffDirectoryProps {
@@ -23,11 +29,15 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Dialog state
+  // Add dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newTeacherName, setNewTeacherName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [generatedUsername, setGeneratedUsername] = useState<string | null>(null);
+  const [createdTeacher, setCreatedTeacher] = useState<CreateTeacherResult | null>(null);
+
+  // Delete dialog state
+  const [teacherToDelete, setTeacherToDelete] = useState<SchoolTeacherSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const schoolId = user.schoolId;
 
@@ -61,8 +71,8 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
     setIsSubmitting(true);
     setError(null);
     try {
-      const username = await addTeacher(newTeacherName, schoolId, user.id);
-      setGeneratedUsername(username);
+      const result = await addTeacher(newTeacherName, schoolId, user.id);
+      setCreatedTeacher(result);
       await loadTeachers(); // Refresh the list
     } catch (err) {
       setError('Failed to create teacher account.');
@@ -76,9 +86,25 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
     setIsDialogOpen(false);
     setTimeout(() => {
       setNewTeacherName('');
-      setGeneratedUsername(null);
+      setCreatedTeacher(null);
       setError(null);
     }, 200);
+  };
+
+  const handleDeleteTeacher = async () => {
+    if (!teacherToDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deleteTeacher(teacherToDelete.id);
+      setTeacherToDelete(null);
+      await loadTeachers();
+    } catch (err) {
+      setError('Failed to remove teacher.');
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (!schoolId) {
@@ -115,22 +141,36 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
               </p>
             </DialogHeader>
             
-            {generatedUsername ? (
+            {createdTeacher ? (
               <div className="py-6 flex flex-col items-center justify-center text-center space-y-4">
                 <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
                   <Users className="h-6 w-6" />
                 </div>
                 <div>
                   <h4 className="text-lg font-semibold text-zinc-900">Account Created!</h4>
-                  <p className="text-sm text-zinc-500 mt-1">Please share these login details with the teacher.</p>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    Share school ID, username, and this one-time password. The teacher logs in with School ID + username + PIN on the login screen.
+                  </p>
                 </div>
-                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 w-full mt-4">
-                  <div className="flex justify-between items-center mb-2">
+                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 w-full mt-4 space-y-3 text-left">
+                  <div>
                     <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Username</span>
+                    <code className="text-sm font-mono font-bold text-indigo-600 block bg-white p-2 rounded border border-zinc-100 mt-1">
+                      {createdTeacher.username}
+                    </code>
                   </div>
-                  <code className="text-lg font-mono font-bold text-indigo-600 block bg-white p-2 rounded border border-zinc-100">
-                    {generatedUsername}
-                  </code>
+                  <div>
+                    <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Managed email (internal)</span>
+                    <code className="text-xs font-mono text-zinc-700 block bg-white p-2 rounded border border-zinc-100 mt-1 break-all">
+                      {createdTeacher.email}
+                    </code>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Temporary password</span>
+                    <code className="text-sm font-mono font-bold text-amber-800 block bg-amber-50 p-2 rounded border border-amber-200 mt-1 break-all">
+                      {createdTeacher.temporaryPassword}
+                    </code>
+                  </div>
                 </div>
                 <Button onClick={resetDialog} className="w-full mt-4">
                   Done
@@ -200,7 +240,8 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Username</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -223,10 +264,21 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
                         <span className="text-xs text-zinc-400 italic">Not set</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>
                       <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
                         Active
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => setTeacherToDelete(teacher)}
+                      >
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        Remove
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -235,6 +287,38 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog isOpen={!!teacherToDelete} onClose={() => !isDeleting && setTeacherToDelete(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Remove Teacher</DialogTitle>
+            <p className="text-sm text-zinc-500">
+              Are you sure you want to remove <span className="font-semibold text-zinc-900">{teacherToDelete?.name}</span> from your school?
+              They will be unassigned from all classes.
+            </p>
+          </DialogHeader>
+          {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTeacherToDelete(null)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTeacher}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                'Remove Teacher'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

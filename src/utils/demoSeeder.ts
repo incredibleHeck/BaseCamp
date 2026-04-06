@@ -1,5 +1,6 @@
 import { collection, doc, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { normalizeAccessLookupKey } from './accessLookupKeys';
 
 const GHANAIAN_FIRST_NAMES = [
   'Kwame', 'Abena', 'Kofi', 'Ama', 'Osei', 'Mensah', 'Adjoa', 'Yaw', 
@@ -58,6 +59,7 @@ async function clearCollection(collectionName: string) {
 export async function seedDemoEnvironment() {
   console.log('Purging existing demo data...');
   await clearCollection('users');
+  await clearCollection('accessLookups');
   await clearCollection('cohorts');
   await clearCollection('students');
   await clearCollection('assessments');
@@ -89,25 +91,45 @@ export async function seedDemoEnvironment() {
     });
 
     const headteacherId = `ht-${schoolId}`;
+    const headEmail = `headteacher@school${s}.com`;
     batch.set(doc(db, 'users', headteacherId), {
       name: `Headteacher ${s}`,
       role: 'headteacher',
-      email: `headteacher@school${s}.com`,
-      username: `headteacher@school${s}.com`,
+      email: headEmail,
+      username: headEmail,
       schoolId: schoolId,
       districtId: districtId,
+    });
+    batch.set(doc(db, 'accessLookups', normalizeAccessLookupKey(headEmail)), {
+      profileUserId: headteacherId,
+      role: 'headteacher',
+      name: `Headteacher ${s}`,
+      schoolId,
+      districtId,
+      email: headEmail,
+      username: headEmail,
     });
 
     // 3. Create Teachers
     for (let t = 1; t <= 3; t++) {
       const teacherId = `teacher-${schoolId}-${t}`;
+      const teacherUsername = `teacher${t}@school${s}.com`;
       batch.set(doc(db, 'users', teacherId), {
         name: `Teacher ${t}`,
         role: 'teacher',
-        email: `teacher${t}@school${s}.com`,
-        username: `teacher${t}@school${s}.com`,
+        email: teacherUsername,
+        username: teacherUsername,
         schoolId: schoolId,
         districtId: districtId,
+      });
+      batch.set(doc(db, 'accessLookups', normalizeAccessLookupKey(teacherUsername)), {
+        profileUserId: teacherId,
+        role: 'teacher',
+        name: `Teacher ${t}`,
+        schoolId,
+        districtId,
+        email: teacherUsername,
+        username: teacherUsername,
       });
 
       // 4. Create Cohort

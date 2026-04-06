@@ -2,7 +2,7 @@ import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 /** Sandbox / demo — replace with Meta Cloud API + BSP in production. */
-export const WHATSAPP_TEMPLATE_STUB_ID = 'heckteck_weekly_progress_v1_demo';
+export const WHATSAPP_TEMPLATE_STUB_ID = 'hectech_weekly_progress_v1_demo';
 
 export interface WhatsAppOutboxRecord {
   id?: string;

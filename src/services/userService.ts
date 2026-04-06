@@ -1,6 +1,11 @@
-import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
-import { db } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+
+import { auth, db, functions } from '../lib/firebase';
+
+const createSchoolTeacherCallable = httpsCallable(functions, 'createSchoolTeacher');
+const deleteSchoolTeacherCallable = httpsCallable(functions, 'deleteSchoolTeacher');
 
 const USERS_COLLECTION = 'users';
 
@@ -14,6 +19,13 @@ export type HeadteacherSummary = {
   id: string;
   name: string;
   schoolId?: string;
+};
+
+export type CreateTeacherResult = {
+  uid: string;
+  username: string;
+  email: string;
+  temporaryPassword: string;
 };
 
 /**
@@ -86,38 +98,43 @@ export async function getTeachersBySchool(schoolId: string): Promise<SchoolTeach
 }
 
 /**
- * Adds a new teacher to a school and generates a username.
+ * Adds a new teacher via Cloud Function (Firebase Auth + `users/{uid}`).
+ * The function verifies the caller is a headteacher and uses their school from Firestore.
  */
-export async function addTeacher(name: string, schoolId: string, headteacherId: string): Promise<string> {
+export async function addTeacher(name: string, schoolId: string, _headteacherId: string): Promise<CreateTeacherResult> {
   const trimmedName = name.trim();
   if (!trimmedName || !schoolId) {
     throw new Error('Name and schoolId are required to add a teacher.');
   }
 
-  // Generate a simple username: firstname.lastname.sch
-  const nameParts = trimmedName.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/);
-  const firstName = nameParts[0] || 'teacher';
-  const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-  const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  
-  let username = `${firstName}`;
-  if (lastName) username += `.${lastName}`;
-  username += `.sch${randomSuffix}`;
+  if (!auth.currentUser) {
+    throw new Error('Sign in required.');
+  }
 
   try {
-    await addDoc(collection(db, USERS_COLLECTION), {
-      name: trimmedName,
-      role: 'teacher',
-      schoolId: schoolId,
-      username: username,
-      createdBy: headteacherId,
-      createdAt: serverTimestamp(),
-      location: 'School Campus', // Default location
-    });
-
-    return username;
+    const res = await createSchoolTeacherCallable({ name: trimmedName });
+    const data = res.data as CreateTeacherResult;
+    if (!data?.uid || !data.username || !data.temporaryPassword) {
+      throw new Error('Invalid response from createSchoolTeacher.');
+    }
+    return data;
   } catch (error) {
     console.error('userService.addTeacher failed:', error);
     throw new Error('Failed to add teacher.');
+  }
+}
+
+/**
+ * Removes a teacher: Cloud Function deletes Auth user, cohort unassign, and Firestore user doc.
+ */
+export async function deleteTeacher(teacherId: string): Promise<void> {
+  const id = teacherId?.trim();
+  if (!id) throw new Error('teacherId is required.');
+
+  try {
+    await deleteSchoolTeacherCallable({ teacherUid: id });
+  } catch (error) {
+    console.error('userService.deleteTeacher failed:', error);
+    throw new Error('Failed to remove teacher.');
   }
 }

@@ -1,22 +1,73 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
+// Production rules (replaces expired Firebase "Test mode" — time-limited open access).
+// Client access requires Firebase Auth + a matching `users/{uid}` profile (same idea as Firestore).
+// Use path prefixes when you add uploads: users/{uid}/..., schools/{schoolId}/..., students/{studentId}/...
+
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // This rule allows anyone with your Storage bucket reference to view, edit,
-    // and delete all data in your Storage bucket. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Storage bucket will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Storage bucket will be denied until you Update
-    // your rules
+    function userDocPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function userExists() {
+      return request.auth != null && firestore.exists(userDocPath());
+    }
+
+    function userData() {
+      return firestore.get(userDocPath()).data;
+    }
+
+    function isSuperAdmin() {
+      return userExists() && userData().role == 'super_admin';
+    }
+
+    function isDistrictScoped() {
+      return userExists() &&
+        userData().role in ['district', 'sen_coordinator', 'circuit_supervisor'];
+    }
+
+    function userSchoolId() {
+      return userData().schoolId;
+    }
+
+    function userDistrictId() {
+      return userData().districtId;
+    }
+
+    function schoolDistrictId(schoolId) {
+      return firestore.get(/databases/(default)/documents/schools/$(schoolId)).data.districtId;
+    }
+
+    // Personal scratch / uploads keyed by Auth uid (mirrors Firestore `users/{uid}` ownership).
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if userExists() && request.auth.uid == userId;
+    }
+
+    // Shared school assets (worksheets, exports, etc.) — same school or district oversight / admin.
+    match /schools/{schoolId}/{allPaths=**} {
+      allow read, write: if userExists() && (
+        isSuperAdmin() ||
+        (userSchoolId() == schoolId) ||
+        (isDistrictScoped() &&
+          firestore.exists(/databases/(default)/documents/schools/$(schoolId)) &&
+          schoolDistrictId(schoolId) == userDistrictId())
+      );
+    }
+
+    // Student portal session: only that learner’s folder, with token check (aligned with Firestore portal rules).
+    match /students/{studentId}/{allPaths=**} {
+      allow read, write: if userExists() &&
+        userData().role == 'student_portal' &&
+        studentId == userData().portalStudentId &&
+        firestore.exists(/databases/(default)/documents/students/$(studentId)) &&
+        firestore.get(/databases/(default)/documents/students/$(studentId)).data.portalSessionToken
+          == userData().portalSessionToken;
+    }
+
     match /{allPaths=**} {
-      allow read, write: if request.time < timestamp.date(2026, 4, 4);
+      allow read, write: if false;
     }
   }
 }

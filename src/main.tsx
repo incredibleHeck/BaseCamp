@@ -2,6 +2,7 @@ import {StrictMode, useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import {StudentPortalApp} from './features/students/StudentPortalApp.tsx';
+import {HeadteacherSignUp} from './components/auth/HeadteacherSignUp.tsx';
 import './index.css';
 
 function Root() {
@@ -15,6 +16,10 @@ function Root() {
 
   if (hash.startsWith('#/portal')) {
     return <StudentPortalApp />;
+  }
+
+  if (hash.startsWith('#/headteacher-signup')) {
+    return <HeadteacherSignUp />;
   }
 
   return <App />;

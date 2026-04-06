@@ -1,3 +1,6 @@
+/** Drives dynamic curriculum alignment strings in Gemini prompts (Cambridge vs GES vs blended). */
+export type AiCurriculumPromptType = 'cambridge' | 'ges' | 'both';
+
 /**
  * Longitudinal / developmental SEN screening hint from the diagnostic model (non-clinical;
  * flags errors that may be unusual for the learner's grade band).
@@ -50,6 +53,8 @@ export interface DiagnosticReport {
    * null when GES-only or no code appears in curriculum context.
    */
   alignedStandardCode?: string | null;
+  /** Which curriculum framework was used for this diagnosis run. */
+  curriculumFramework?: 'GES' | 'Cambridge';
   /** Set when worksheet analysis used class roster + handwriting match (batch queue). */
   detectedStudentId?: string | null;
   /** Optional developmental / SEN screening signal from the model (not a medical diagnosis). */
@@ -78,16 +83,17 @@ export interface LessonPlanResult {
 export interface GenerateLessonPlanOptions {
   studentGradeLevel?: number;
   dialectContext?: string;
+  curriculumType?: AiCurriculumPromptType;
 }
 
 /**
- * Cambridge Primary Mathematics remedial micro-lesson (5-minute CPA + TWM).
+ * Cambridge Primary Mathematics remedial micro-lesson (10-minute CPA + TWM).
  * Returned by `generateMathLessonPlan` (strict JSON from Gemini).
  */
 export interface MathLessonPlanResult {
   title: string;
   objective?: string;
-  /** Human-readable duration, e.g. "5 minutes". */
+  /** Human-readable duration, e.g. "10 minutes". */
   estimatedDuration: string;
   /** Low-resource, locally available items (paper, pencil, found objects; empty array if none). */
   materialsNeeded: string[];
@@ -98,7 +104,7 @@ export interface MathLessonPlanResult {
 }
 
 /**
- * Cambridge Primary English / literacy remedial micro-lesson (5-minute Oracy → Decoding → Application).
+ * Cambridge Primary English / literacy remedial micro-lesson (10-minute Oracy → Decoding → Application).
  * Same JSON shape as `MathLessonPlanResult`; returned by `generateEnglishLessonPlan`.
  */
 export type EnglishLessonPlanResult = MathLessonPlanResult;

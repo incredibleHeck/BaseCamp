@@ -11,9 +11,12 @@ import {
   Trophy,
 } from 'lucide-react';
 import type { DiagnosticReport } from '../../hooks/useAnalysisFlow';
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import { ExtensionActivityMarkdown } from '../ai-tools/ExtensionActivityMarkdown';
 
 export interface DiagnosticReportCardProps {
+  /** Shown near AI lesson actions, e.g. "Cambridge" / "GES". */
+  curriculumAlignmentLabel?: string;
   data: DiagnosticReport;
   showSmsDraft: boolean;
   setShowSmsDraft: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -31,6 +34,7 @@ export interface DiagnosticReportCardProps {
 }
 
 export function DiagnosticReportCard({
+  curriculumAlignmentLabel,
   data,
   showSmsDraft,
   setShowSmsDraft,
@@ -48,6 +52,7 @@ export function DiagnosticReportCard({
 }: DiagnosticReportCardProps) {
   const extensionMarkdown = data.extensionActivity ?? '';
   const showExtensionChallenge = extensionMarkdown.trim().length > 0;
+  const isCambridge = data.curriculumFramework === 'Cambridge' || Boolean(data.alignedStandardCode);
 
   return (
     <div className="flex-grow flex flex-col animate-in fade-in duration-500">
@@ -63,11 +68,17 @@ export function DiagnosticReportCard({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-red-50 border border-red-100 rounded-lg p-4">
             <h4 className="text-sm font-semibold text-red-800 mb-2">Critical Learning Gap Detected</h4>
-            <p className="text-sm text-red-700">{data.diagnosis}</p>
+            <MarkdownRenderer
+              content={data.diagnosis}
+              className="prose-sm !mb-0 prose-p:text-red-800 prose-headings:text-red-900 prose-strong:text-red-900 prose-li:text-red-800"
+            />
           </div>
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
             <h4 className="text-sm font-semibold text-blue-800 mb-2">Mastered Concepts</h4>
-            <p className="text-sm text-blue-700">{data.masteredConcepts}</p>
+            <MarkdownRenderer
+              content={data.masteredConcepts}
+              className="prose-sm !mb-0 prose-p:text-blue-800 prose-headings:text-blue-900 prose-strong:text-blue-900 prose-li:text-blue-800"
+            />
           </div>
         </div>
 
@@ -83,7 +94,7 @@ export function DiagnosticReportCard({
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <h4 className="text-sm font-semibold text-amber-900">
-                  {data.alignedStandardCode ? 'Cambridge curriculum alignment' : 'GES curriculum alignment'}
+                  {isCambridge ? 'Cambridge curriculum alignment' : 'GES curriculum alignment'}
                 </h4>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full border ${
@@ -95,38 +106,50 @@ export function DiagnosticReportCard({
                   {data.gesAlignment.verified ? 'Verified' : 'Review'}
                 </span>
               </div>
-              <p className="text-sm font-mono text-amber-950">{data.gesAlignment.objectiveId}</p>
-              {data.gesAlignment.objectiveTitle ? (
-                <p className="text-sm text-amber-900 mt-1">{data.gesAlignment.objectiveTitle}</p>
-              ) : null}
+              {isCambridge ? (
+                <p className="text-sm font-semibold text-amber-950 mt-1">
+                  {data.gesAlignment.excerpt?.split(' — Typical gap signal:')[0] || data.alignedStandardCode || data.gesAlignment.objectiveId}
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm font-mono text-amber-950">{data.gesAlignment.objectiveId}</p>
+                  {data.gesAlignment.objectiveTitle ? (
+                    <p className="text-sm text-amber-900 mt-1">{data.gesAlignment.objectiveTitle}</p>
+                  ) : null}
+                </>
+              )}
               {data.gesAlignment.excerpt ? (
-                <p className="text-xs text-amber-800 mt-2 leading-relaxed">{data.gesAlignment.excerpt}</p>
+                <p className="text-xs text-amber-800 mt-2 leading-relaxed">
+                  {isCambridge
+                    ? data.gesAlignment.excerpt.includes(' — Typical gap signal:')
+                      ? data.gesAlignment.excerpt.split(' — Typical gap signal:')[1]?.trim()
+                      : data.gesAlignment.excerpt
+                    : data.gesAlignment.excerpt}
+                </p>
               ) : null}
             </div>
           ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center">
               <p className="text-sm text-gray-600">
-                No GES objective linked for this run (add more syllabus data in RAG corpus to improve
-                coverage).
+                {isCambridge
+                  ? 'No Cambridge objective linked for this run (add more syllabus data in RAG corpus to improve coverage).'
+                  : 'No GES objective linked for this run (add more syllabus data in RAG corpus to improve coverage).'}
               </p>
             </div>
           )}
         </div>
 
-        {data.alignedStandardCode ? (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
-            <h4 className="text-xs font-semibold text-indigo-900 uppercase tracking-wide">
-              Cambridge standard code (judge / British Council)
-            </h4>
-            <p className="font-mono text-lg text-indigo-950 mt-1">{data.alignedStandardCode}</p>
-          </div>
-        ) : null}
-
         <div className="bg-gray-50 border border-gray-100 rounded-lg p-5">
           <h4 className="text-base font-semibold text-gray-900 mb-3">Recommended Intervention</h4>
-          <ul className="list-disc list-inside text-sm text-gray-700 space-y-2 mb-4">
+          <ul className="list-none space-y-3 mb-4">
             {data.recommendations.map((rec, index) => (
-              <li key={index}>{rec}</li>
+              <li key={index} className="flex gap-2 text-sm">
+                <span className="text-gray-600 shrink-0 select-none">•</span>
+                <MarkdownRenderer
+                  content={rec}
+                  className="prose-sm !my-0 flex-1 min-w-0 prose-p:text-gray-700 prose-headings:text-gray-900"
+                />
+              </li>
             ))}
           </ul>
 
@@ -156,6 +179,11 @@ export function DiagnosticReportCard({
             </div>
           ) : (
             <>
+              {curriculumAlignmentLabel ? (
+                <p className="text-xs text-slate-600 mb-2">
+                  Aligned to: <span className="font-semibold text-slate-800">{curriculumAlignmentLabel}</span>
+                </p>
+              ) : null}
               {!isGeneratingLesson && (
                 <button
                   type="button"
@@ -164,8 +192,8 @@ export function DiagnosticReportCard({
                 >
                   <Sparkles size={16} />
                   {showLessonPlan || data.lessonPlan?.instructions?.length
-                    ? 'Regenerate 5-Minute Remedial Activity'
-                    : '✨ Generate 5-Minute Remedial Activity'}
+                    ? 'Regenerate 10-Minute Remedial Activity'
+                    : '✨ Generate 10-Minute Remedial Activity'}
                 </button>
               )}
 
@@ -185,18 +213,30 @@ export function DiagnosticReportCard({
                     <Sparkles size={16} className="text-yellow-600" />
                   </div>
 
-                  {displayLessonPlan?.objective && (
+                  {(displayLessonPlan?.objective || (isCambridge && data.gesAlignment?.excerpt)) && (
                     <div className="mb-4 bg-white border border-yellow-200 rounded-md p-3 shadow-sm">
                       <h6 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Lesson Objective</h6>
-                      <p className="text-sm text-gray-800">{displayLessonPlan.objective}</p>
+                      <MarkdownRenderer
+                        content={
+                          isCambridge && data.gesAlignment?.excerpt
+                            ? data.gesAlignment.excerpt.split(' — Typical gap signal:')[0] ?? ''
+                            : displayLessonPlan?.objective ?? ''
+                        }
+                        className="prose-sm !my-0 prose-p:text-gray-800 prose-headings:text-gray-900"
+                      />
                     </div>
                   )}
 
                   <div className="space-y-3 mb-4">
                     <p className="text-sm text-gray-800 font-medium">Instructions:</p>
-                    <ol className="list-decimal list-inside text-sm text-gray-700 space-y-2 pl-2">
+                    <ol className="list-decimal list-outside text-sm text-gray-700 space-y-3 pl-6 marker:text-gray-600">
                       {displayInstructions.map((step, idx) => (
-                        <li key={idx}>{step}</li>
+                        <li key={idx}>
+                          <MarkdownRenderer
+                            content={step}
+                            className="prose-sm !my-0 inline-block w-full prose-p:text-gray-700"
+                          />
+                        </li>
                       ))}
                     </ol>
                   </div>
@@ -258,9 +298,10 @@ export function DiagnosticReportCard({
               <div className="flex-grow">
                 <h5 className="text-sm font-semibold text-gray-900 mb-1">Draft Message to Parent</h5>
                 <div className="bg-white border border-gray-200 rounded-lg p-3 rounded-tl-none shadow-sm mb-3">
-                  <p className="text-sm text-gray-700">
-                    {data.smsDraft || 'BaseCamp Alert: Student requires additional support. - Teacher'}
-                  </p>
+                  <MarkdownRenderer
+                    content={data.smsDraft || 'BaseCamp Alert: Student requires additional support. - Teacher'}
+                    className="prose-sm !my-0 prose-p:text-gray-700"
+                  />
                 </div>
 
                 <div className="flex gap-2">

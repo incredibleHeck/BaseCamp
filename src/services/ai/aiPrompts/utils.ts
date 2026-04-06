@@ -1,5 +1,49 @@
 import { validateCurriculumObjectiveId, type CurriculumFramework } from '../curriculumRagService';
-import type { GesAlignment, SenWarningFlag } from './types';
+import type { AiCurriculumPromptType, GesAlignment, SenWarningFlag } from './types';
+
+/** Injected into Gemini prompts for Cambridge vs GES vs blended alignment. */
+export function getCurriculumPromptAlignmentBlock(curriculumType?: AiCurriculumPromptType): string {
+  if (curriculumType === 'cambridge') {
+    return 'CRITICAL: You must align all pedagogy, terminology, and standards strictly with the Cambridge International Curriculum.';
+  }
+  if (curriculumType === 'ges') {
+    return 'CRITICAL: You must align all pedagogy, terminology, and standards strictly with the Ghana Education Service (GES) NaCCA curriculum.';
+  }
+  return 'CRITICAL: Align pedagogy, terminology, and standards using a balanced blend of the Cambridge International Curriculum and the Ghana Education Service (GES) NaCCA curriculum where appropriate to the learner evidence and retrieved curriculum context.';
+}
+
+/** Maps pipeline framework selection to prompt alignment; `undefined` yields blended instructions. */
+export function mapFrameworkToAiCurriculumPromptType(
+  fw?: CurriculumFramework
+): AiCurriculumPromptType | undefined {
+  if (fw === 'GES') return 'ges';
+  if (fw === 'Cambridge') return 'cambridge';
+  return undefined;
+}
+
+/** Prefer school Firestore `curriculumType`; fall back to per-run framework (GES/Cambridge). */
+export function resolveAiCurriculumPromptType(
+  schoolCurriculum: 'cambridge' | 'ges' | 'both' | undefined | null,
+  frameworkFallback?: CurriculumFramework
+): AiCurriculumPromptType | undefined {
+  if (schoolCurriculum === 'cambridge' || schoolCurriculum === 'ges' || schoolCurriculum === 'both') {
+    return schoolCurriculum;
+  }
+  return mapFrameworkToAiCurriculumPromptType(frameworkFallback);
+}
+
+/** Short label for “Aligned to” UI badges. */
+export function formatCurriculumAlignmentLabel(
+  schoolCurriculum: 'cambridge' | 'ges' | 'both' | undefined | null,
+  frameworkFallback?: CurriculumFramework
+): string {
+  if (schoolCurriculum === 'cambridge') return 'Cambridge';
+  if (schoolCurriculum === 'ges') return 'GES';
+  if (schoolCurriculum === 'both') return 'Cambridge & GES';
+  if (frameworkFallback === 'Cambridge') return 'Cambridge';
+  if (frameworkFallback === 'GES') return 'GES';
+  return 'Cambridge & GES';
+}
 
 const SEN_WARNING_SEVERITIES = new Set(['low', 'medium', 'high']);
 const SEN_WARNING_CATEGORIES = new Set<string>([

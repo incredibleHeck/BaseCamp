@@ -1,12 +1,13 @@
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { WorksheetContext, WorksheetResult } from './types';
-import { cleanJsonResponse } from './utils';
+import type { AiCurriculumPromptType, WorksheetContext, WorksheetResult } from './types';
+import { cleanJsonResponse, getCurriculumPromptAlignmentBlock } from './utils';
 
 export const generatePracticeWorksheet = async (
   gapTags: string | string[],
   subject: string,
   grade: string = 'Primary 6',
-  context: WorksheetContext
+  context: WorksheetContext,
+  curriculumType?: AiCurriculumPromptType
 ): Promise<WorksheetResult | null> => {
   if (!API_KEY) {
     alert('Gemini API key is not configured. Please check the console.');
@@ -26,7 +27,7 @@ export const generatePracticeWorksheet = async (
   const contextBlock = `
       REQUIRED diagnostic context (you MUST use this to align your practice questions with the full report):
       - Diagnosis: ${context.diagnosis}
-      - Remedial plan (5-minute activity idea): ${context.remedialPlan}
+      - Remedial plan (10-minute activity idea): ${context.remedialPlan}
       - Lesson plan title: ${context.lessonPlan.title}
       - Lesson plan steps: ${lessonStepsText}
 
@@ -37,6 +38,8 @@ export const generatePracticeWorksheet = async (
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const prompt = `
       You are an expert Ghanaian GES (Ghana Education Service) teacher. Generate a short targeted practice worksheet to help a student overcome specific learning gaps from their AI diagnostic report.
+
+      ${getCurriculumPromptAlignmentBlock(curriculumType)}
 
       ${gapListText}
       Subject: ${subject}

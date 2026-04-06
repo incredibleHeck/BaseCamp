@@ -1,6 +1,6 @@
 import { generateEnglishLessonPlan } from './englishLessonPlan';
 import { generateMathLessonPlan } from './mathLessonPlan';
-import type { DiagnosticReport, LessonPlanResult, MathLessonPlanResult } from './types';
+import type { AiCurriculumPromptType, DiagnosticReport, LessonPlanResult, MathLessonPlanResult } from './types';
 
 /** Maps CPA / Oracy-style JSON lesson output into the `{ title, instructions }` shape used across the app. */
 export function mapSpecializedLessonPlanToLessonPlanResult(plan: MathLessonPlanResult): LessonPlanResult {
@@ -28,7 +28,8 @@ export async function generateSubjectRoutedLessonPlan(
   subject: string | undefined,
   studentGradeLevel: number,
   dialectContext: string | null | undefined,
-  curriculumContext: string
+  curriculumContext: string,
+  curriculumType?: AiCurriculumPromptType
 ): Promise<LessonPlanResult | null> {
   const isMath =
     assessmentType === 'numeracy' ||
@@ -36,8 +37,8 @@ export async function generateSubjectRoutedLessonPlan(
     subject?.toLowerCase() === 'math';
 
   const raw = isMath
-    ? await generateMathLessonPlan(report, studentGradeLevel, dialectContext, curriculumContext)
-    : await generateEnglishLessonPlan(report, studentGradeLevel, dialectContext, curriculumContext);
+    ? await generateMathLessonPlan(report, studentGradeLevel, dialectContext, curriculumContext, curriculumType)
+    : await generateEnglishLessonPlan(report, studentGradeLevel, dialectContext, curriculumContext, curriculumType);
 
   return raw ? mapSpecializedLessonPlanToLessonPlanResult(raw) : null;
 }

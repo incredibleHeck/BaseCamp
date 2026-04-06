@@ -3,6 +3,7 @@
  */
 
 export type {
+  AiCurriculumPromptType,
   DiagnosticReport,
   EnglishLessonPlanResult,
   GenerateLessonPlanOptions,
@@ -17,6 +18,13 @@ export type {
   WorksheetContext,
   WorksheetResult,
 } from './types';
+
+export {
+  formatCurriculumAlignmentLabel,
+  getCurriculumPromptAlignmentBlock,
+  mapFrameworkToAiCurriculumPromptType,
+  resolveAiCurriculumPromptType,
+} from './utils';
 
 export {
   analyzeManualEntry,

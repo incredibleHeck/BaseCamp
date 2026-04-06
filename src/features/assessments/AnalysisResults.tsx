@@ -53,7 +53,7 @@ export function AnalysisResults() {
         <div className="flex-grow flex flex-col items-center justify-center text-center p-8">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-6" />
           <h3 className="text-lg font-medium text-gray-900 mb-2 animate-pulse">
-            Analyzing via HeckTeck AI Engine...
+            Analyzing via HecTech AI Engine...
           </h3>
           <p className="text-gray-500 max-w-sm">
             Processing context and identifying learning gaps. This usually takes a few seconds.
@@ -63,6 +63,7 @@ export function AnalysisResults() {
 
       {analysisStatus === 'results' && reportData && (
         <DiagnosticReportCard
+          curriculumAlignmentLabel={flow.curriculumAlignmentLabel}
           data={flow.data}
           showSmsDraft={flow.showSmsDraft}
           setShowSmsDraft={flow.setShowSmsDraft}

@@ -57,7 +57,7 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
               BaseCamp Diagnostics
             </h1>
             <span className="text-[9px] sm:text-[10px] font-medium text-indigo-600 uppercase tracking-wider truncate">
-              Powered by HeckTeck AI
+              Powered by HecTech AI
             </span>
           </div>
         </div>

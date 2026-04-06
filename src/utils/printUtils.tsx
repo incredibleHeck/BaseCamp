@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import katexCss from 'katex/dist/katex.min.css?inline';
@@ -10,7 +11,7 @@ import { escapeHtml } from './studentProfileHelpers';
 
 export function renderMarkdownMathToHtml(markdown: string): string {
   return ReactDOMServer.renderToStaticMarkup(
-    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
       {markdown}
     </ReactMarkdown>
   );
@@ -18,7 +19,7 @@ export function renderMarkdownMathToHtml(markdown: string): string {
 
 export function printLessonPlanWindow(assessment: Assessment): void {
   const lessonPlan = assessment.lessonPlan;
-  const title = lessonPlan?.title?.trim() || '5-Minute Remedial Activity';
+  const title = lessonPlan?.title?.trim() || '10-Minute Remedial Activity';
   const steps = lessonPlan?.instructions?.length ? lessonPlan.instructions : [];
   const html = `
 <!DOCTYPE html>

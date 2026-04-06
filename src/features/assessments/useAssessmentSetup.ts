@@ -309,6 +309,15 @@ export function useAssessmentSetup(initialStudentId: string) {
         return;
       }
 
+      if (result.ok && 'displayedOnly' in result && result.displayedOnly) {
+        clearVoiceStaging();
+        logWorkflow('assessmentSetup:hybrid_displayed_save_failed', { studentId: selectedStudent });
+        alert(
+          'The diagnosis finished and is shown above, but it could not be saved to your database (usually Firestore permissions). Sign out and sign in again after deploying the latest rules, or check the console for details.'
+        );
+        return;
+      }
+
       if ('error' in result) {
         if (result.error === 'not_ready') {
           alert('Diagnosis engine is still starting. Wait a moment and try again.');

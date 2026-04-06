@@ -165,7 +165,7 @@ export function Phase4FamilyConnectCard({
         <div>
           <h3 className="text-lg font-bold text-gray-900">Phase 4 · Family & lab</h3>
           <p className="text-sm text-gray-600 mt-0.5">
-            HeckTeck Connect (WhatsApp digest preview + outbox) and student portal access code. WhatsApp delivery is a{' '}
+            HecTech Connect (WhatsApp digest preview + outbox) and student portal access code. WhatsApp delivery is a{' '}
             <strong>demo stub</strong> until Meta Cloud API is wired.
           </p>
         </div>
@@ -289,7 +289,7 @@ export function Phase4FamilyConnectCard({
       </div>
 
       <div className="border-t border-indigo-100 pt-4 space-y-3">
-        <h4 className="text-sm font-semibold text-gray-800">Weekly digest (HeckTeck Connect)</h4>
+        <h4 className="text-sm font-semibold text-gray-800">Weekly digest (HecTech Connect)</h4>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

@@ -68,7 +68,7 @@ In [package.json](package.json), change `"name": "react-example"` to a project-s
 In [AnalysisResults.tsx](src/components/AnalysisResults.tsx), the fallback `data` object (when `reportData` is null) does not include `lessonPlan`. The UI uses `data.lessonPlan?.title` and `data.lessonPlan?.instructions`; if the API sometimes omits `lessonPlan`, the type and runtime shape should still be safe.
 
 - Extend the fallback object (the one used when `reportData` is null) to include `lessonPlan: { title: 'No lesson plan', instructions: [] }` so the UI always has a defined structure.
-- Ensure the `DiagnosticReport` type used in that component (or the spread from the API result) explicitly allows `lessonPlan` to be optional and that the "Generate 5-Minute Remedial Activity" block uses fallbacks for `title` and `instructions` (you already have fallback instructions in the JSX; ensure the fallback `data` matches so there are no undefined accesses).
+- Ensure the `DiagnosticReport` type used in that component (or the spread from the API result) explicitly allows `lessonPlan` to be optional and that the "Generate 10-Minute Remedial Activity" block uses fallbacks for `title` and `instructions` (you already have fallback instructions in the JSX; ensure the fallback `data` matches so there are no undefined accesses).
 
 ---
 
@@ -84,7 +84,7 @@ In [AnalysisResults.tsx](src/components/AnalysisResults.tsx), the fallback `data
 ## 8. Optional / minor
 
 - **FileUploadZone / AssessmentSetup:** AssessmentSetup does not use `onFileReadyChange`. Wiring it is optional; leaving as-is is fine for the demo.
-- **"Generate 5-Minute Remedial Activity" button:** Currently a 2s delay then reveals the plan already in the API response. Acceptable for demo; no change required unless you want to add a small label like "Reveal plan" for clarity.
+- **"Generate 10-Minute Remedial Activity" button:** Currently a 2s delay then reveals the plan already in the API response. Acceptable for demo; no change required unless you want to add a small label like "Reveal plan" for clarity.
 
 ---
 

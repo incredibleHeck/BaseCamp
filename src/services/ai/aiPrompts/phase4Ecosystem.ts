@@ -1,8 +1,8 @@
 import type { Assessment } from '../../assessmentService';
 import { getGapTagPilotMode } from '../../../config/featureFlags';
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { PortalPracticeItem, PortalPracticeRound, WeeklyDigestEnglish } from './types';
-import { cleanJsonResponse, normalizeTagArray } from './utils';
+import type { AiCurriculumPromptType, PortalPracticeItem, PortalPracticeRound, WeeklyDigestEnglish } from './types';
+import { cleanJsonResponse, getCurriculumPromptAlignmentBlock, normalizeTagArray } from './utils';
 
 function assessmentHistoryToBriefJson(history: Assessment[], maxItems: number): string {
   const slice = [...history]
@@ -31,7 +31,8 @@ function assessmentHistoryToBriefJson(history: Assessment[], maxItems: number): 
 
 export const generateWeeklyParentDigestEnglish = async (
   studentFirstName: string,
-  history: Assessment[]
+  history: Assessment[],
+  curriculumType?: AiCurriculumPromptType
 ): Promise<WeeklyDigestEnglish | null> => {
   if (!API_KEY) return null;
   if (!history.length) return null;
@@ -39,7 +40,9 @@ export const generateWeeklyParentDigestEnglish = async (
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const brief = assessmentHistoryToBriefJson(history, 6);
     const prompt = `
-You are HeckTeck Connect, helping Ghanaian teachers message parents in simple, respectful language.
+You are HecTech Connect, helping Ghanaian teachers message parents in simple, respectful language.
+
+${getCurriculumPromptAlignmentBlock(curriculumType)}
 
 TASK: Write a SHORT weekly progress summary for a guardian (SMS/WhatsApp length ~ 2–4 sentences + one home activity).
 STUDENT_FIRST_NAME: ${studentFirstName}
@@ -68,7 +71,11 @@ OUTPUT: strict JSON only, no markdown:
   }
 };
 
-export const translateParentDigest = async (englishText: string, targetLanguage: string): Promise<string | null> => {
+export const translateParentDigest = async (
+  englishText: string,
+  targetLanguage: string,
+  curriculumType?: AiCurriculumPromptType
+): Promise<string | null> => {
   if (!API_KEY) return null;
   const lang = targetLanguage.trim();
   if (!lang || lang === 'English') return englishText;
@@ -78,6 +85,8 @@ export const translateParentDigest = async (englishText: string, targetLanguage:
 Translate the following parent message into ${lang} for WhatsApp.
 Keep it short, natural, and simple (parent may have low literacy). No medical claims.
 Use plain text only — no quotes or JSON.
+
+${getCurriculumPromptAlignmentBlock(curriculumType)}
 
 MESSAGE:
 ${englishText}
@@ -93,7 +102,8 @@ ${englishText}
 
 export const generateStudentPortalPracticeRound = async (
   gapTags: string[],
-  subject: 'numeracy' | 'literacy'
+  subject: 'numeracy' | 'literacy',
+  curriculumType?: AiCurriculumPromptType
 ): Promise<PortalPracticeRound | null> => {
   if (!API_KEY) return null;
   const tags = gapTags.filter(Boolean).slice(0, 5);
@@ -102,6 +112,8 @@ export const generateStudentPortalPracticeRound = async (
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const prompt = `
 You create short gamified practice for Ghanaian Primary students (P4–P6).
+
+${getCurriculumPromptAlignmentBlock(curriculumType)}
 
 SUBJECT: ${subject}
 GAP_TAGS: ${JSON.stringify(tags)}
@@ -145,7 +157,10 @@ Example shape:
   }
 };
 
-export const suggestGapTagsFromObservations = async (observations: string): Promise<string[] | null> => {
+export const suggestGapTagsFromObservations = async (
+  observations: string,
+  curriculumType?: AiCurriculumPromptType
+): Promise<string[] | null> => {
   if (!API_KEY) return null;
   const text = observations.trim();
   if (!text) return null;
@@ -158,6 +173,8 @@ export const suggestGapTagsFromObservations = async (observations: string): Prom
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const prompt = `
 ${localHead}
+
+${getCurriculumPromptAlignmentBlock(curriculumType)}
 
 TEACHER_OBSERVATIONS:
 ${text.slice(0, 2000)}

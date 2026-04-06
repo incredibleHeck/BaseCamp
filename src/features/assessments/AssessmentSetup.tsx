@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FileUploadZone } from '../../components/FileUploadZone';
 import {
   Camera,
@@ -21,6 +21,9 @@ import { useAssessmentSetup } from './useAssessmentSetup';
 import { StudentPicker } from './StudentPicker';
 import { CurriculumSelector } from './CurriculumSelector';
 import { AssessmentMethodGrid } from './AssessmentMethodGrid';
+import { useAuth } from '../../context/AuthContext';
+import { useSchoolConfig } from '../../hooks/useSchoolConfig';
+import { formatCurriculumAlignmentLabel } from '../../services/ai/aiPrompts';
 
 const textareaFieldClass = cn(
   'min-h-[5.5rem] w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm',
@@ -76,6 +79,8 @@ interface AssessmentSetupProps {
 
 export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps) {
   const { state, handlers } = useAssessmentSetup(initialStudentId);
+  const { user } = useAuth();
+  const { school } = useSchoolConfig(user.schoolId);
 
   const {
     schoolId,
@@ -134,6 +139,11 @@ export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps)
   const primaryDiagnosisLabel = isOffline ? 'Queue Diagnosis' : 'Run AI Diagnosis';
   const hybridPrimaryBusy = isProcessing || isHybridRunning;
 
+  const curriculumAlignmentLabel = useMemo(
+    () => formatCurriculumAlignmentLabel(school?.curriculumType, curriculumFramework),
+    [school?.curriculumType, curriculumFramework]
+  );
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <h3 className="text-lg font-semibold text-gray-800 mb-4">New Assessment</h3>
@@ -169,6 +179,11 @@ export function AssessmentSetup({ initialStudentId = '' }: AssessmentSetupProps)
           curriculumFramework={curriculumFramework}
           onCurriculumFrameworkChange={setCurriculumFramework}
         />
+
+        <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          Aligned to: <span className="font-semibold text-slate-800">{curriculumAlignmentLabel}</span>
+          <span className="text-slate-500"> · AI uses your school setting when set, otherwise this subject framework.</span>
+        </p>
 
         <AssessmentMethodGrid inputMode={inputMode} onInputModeChange={setInputMode} />
 

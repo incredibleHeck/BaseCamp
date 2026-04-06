@@ -1,12 +1,13 @@
 import { getCurriculumContext, type CurriculumFramework } from '../curriculumRagService';
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { DiagnosticReport } from './types';
+import type { AiCurriculumPromptType, DiagnosticReport } from './types';
 import {
   buildGlobalCurriculumEngineInstructions,
   buildLearnerTemporalContextBlock,
   cleanJsonResponse,
   getAlignmentJsonInstruction,
   getAlignedStandardCodeJsonInstruction,
+  getCurriculumPromptAlignmentBlock,
   getDialectInstruction,
   getSenWarningFlagJsonInstruction,
   LONGITUDINAL_DIAGNOSIS_BLOCK,
@@ -37,6 +38,8 @@ export type AnalyzeWorksheetOptions = {
   /** Compact text summary of recent performance for longitudinal context. */
   recentHistorySummary?: string;
   officialSenStatus?: string;
+  /** Cambridge vs GES vs blended alignment for the diagnostic prompt. */
+  curriculumType?: AiCurriculumPromptType;
 };
 
 export type WorksheetRagOptions = {
@@ -48,6 +51,7 @@ export type WorksheetRagOptions = {
   studentGradeLevel?: number;
   recentHistorySummary?: string;
   officialSenStatus?: string;
+  curriculumType?: AiCurriculumPromptType;
 };
 
 function resolveCurriculumPayload(
@@ -156,6 +160,8 @@ export const analyzeWorksheet = async (
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map learner evidence to the official standard in the curriculumContext below (GES and/or Cambridge as provided), then design remediation grounded in the teacher's dialectContext.
 
+      ${getCurriculumPromptAlignmentBlock(options?.curriculumType)}
+
       Subject: ${subject}
 
       ${dialectInstruction}
@@ -183,7 +189,7 @@ export const analyzeWorksheet = async (
         "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
         "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings providing simple remedial actions"],
-        "remedialPlan": "5-minute activity: must follow Step 2 localization rules (dialectContext).",
+        "remedialPlan": "10-minute activity: must follow Step 2 localization rules (dialectContext).",
         "lessonPlan": {
           "title": "A short, engaging title for the activity.",
           "instructions": ["Step 1", "Step 2", "Step 3"]
@@ -219,6 +225,7 @@ export const analyzeWorksheet = async (
       masteryTags: normalizeTagArray(parsedData.masteryTags),
       gesAlignment: gesAlignment === undefined ? undefined : gesAlignment,
       alignedStandardCode,
+      curriculumFramework: framework,
       ...(senWarningFlag !== undefined ? { senWarningFlag } : {}),
       ...(autoDetect ? { detectedStudentId: detectedStudentId ?? null } : {}),
     };
@@ -275,6 +282,8 @@ export const analyzeWorksheetMultiple = async (
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map learner evidence to the standard in curriculumContext, then localize remediation per dialectContext.
 
+      ${getCurriculumPromptAlignmentBlock(ragOptions?.curriculumType)}
+
       The following ${imageParts.length} image(s) are multiple pages of the same worksheet or exercise book. Analyze all pages together for one combined diagnosis.
 
       Subject: ${subject}
@@ -299,7 +308,7 @@ export const analyzeWorksheetMultiple = async (
         "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
         "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings with simple remedial actions"],
-        "remedialPlan": "5-minute activity following Step 2 localization (dialectContext).",
+        "remedialPlan": "10-minute activity following Step 2 localization (dialectContext).",
         "lessonPlan": {
           "title": "A short, engaging title for the activity.",
           "instructions": ["Step 1", "Step 2", "Step 3"]
@@ -328,6 +337,7 @@ export const analyzeWorksheetMultiple = async (
       masteryTags: normalizeTagArray(parsedData.masteryTags),
       gesAlignment: gesAlignment === undefined ? undefined : gesAlignment,
       alignedStandardCode,
+      curriculumFramework: framework,
       ...(senWarningFlag !== undefined ? { senWarningFlag } : {}),
     };
     return report;
@@ -377,6 +387,8 @@ export const analyzeManualEntry = async (
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map teacher rubric evidence to curriculumContext, then localize remediation per dialectContext.
 
+      ${getCurriculumPromptAlignmentBlock(ragOptions?.curriculumType)}
+
       Subject: ${subject}
       ${getDialectInstruction(dialectContext)}
       ${temporalBlock}
@@ -406,7 +418,7 @@ export const analyzeManualEntry = async (
         "gapTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact learning gaps (e.g., 'ESL Vocabulary', 'Subtraction', 'Word Problems')."],
         "masteryTags": ["Array of 1 to 3 short phrases (max 4 words) naming the exact skills mastered (e.g., 'Fraction Addition', 'Simplifying Fractions')."],
         "recommendations": ["An array of strings with simple remedial actions"],
-        "remedialPlan": "5-minute activity following Step 2 localization (dialectContext).",
+        "remedialPlan": "10-minute activity following Step 2 localization (dialectContext).",
         "lessonPlan": {
           "title": "A short, engaging title for the activity.",
           "instructions": ["Step 1", "Step 2", "Step 3"]
@@ -435,6 +447,7 @@ export const analyzeManualEntry = async (
       masteryTags: normalizeTagArray(parsedData.masteryTags),
       gesAlignment: gesAlignment === undefined ? undefined : gesAlignment,
       alignedStandardCode,
+      curriculumFramework: framework,
       ...(senWarningFlag !== undefined ? { senWarningFlag } : {}),
     };
     return report;

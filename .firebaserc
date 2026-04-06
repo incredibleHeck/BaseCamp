@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "basecamp-diagnostics"
+    "default": "basecamp-pilot",
+    "pilot": "basecamp-pilot",
+    "demo": "basecamp-diagnostics"
   }
 }

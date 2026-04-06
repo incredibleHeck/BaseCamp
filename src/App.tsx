@@ -14,6 +14,8 @@ import { AssessmentProvider } from './context/AssessmentContext';
 import { DEFAULT_DISTRICT_ID } from './config/organizationDefaults';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
 
+const demoSeedEnabled = import.meta.env.VITE_ENABLE_DEMO_SEED === 'true';
+
 const VALID_ROLES: UserData['role'][] = [
   'teacher',
   'headteacher',
@@ -33,60 +35,65 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Check if we logged in via Access Code (which uses anonymous auth)
-          const accessCodeUserId = localStorage.getItem('accessCodeUserId');
-          const targetUserId = accessCodeUserId || user.uid;
-
-          const userDocRef = doc(db, 'users', targetUserId);
-          const userDocSnap = await getDoc(userDocRef);
-
-          let role: UserData['role'] = 'teacher';
-          let name = 'Teacher User';
-          let location = 'Mando Basic School';
-          let districtId: string | undefined;
-          let circuitId: string | undefined;
-          let schoolId: string | undefined;
-
-          if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            const r = data.role as string;
-            role = VALID_ROLES.includes(r as UserData['role']) ? (r as UserData['role']) : 'teacher';
-            name = data.name || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
-            location =
-              data.location ||
-              (role === 'district' || role === 'sen_coordinator' || role === 'super_admin'
-                ? 'Greater Accra'
-                : 'Mando Basic School');
-            districtId = typeof data.districtId === 'string' ? data.districtId : undefined;
-            circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
-            schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
-          } else {
-            console.warn(`User document for ${targetUserId} not found. Defaulting to teacher role.`);
-            const fallbackRole = localStorage.getItem('mockUserRole') as UserData['role'];
-            if (fallbackRole && VALID_ROLES.includes(fallbackRole)) {
-              role = fallbackRole;
-              name = `${role.charAt(0).toUpperCase() + role.replace(/_/g, ' ')} User`;
-              location =
-                role === 'district' || role === 'sen_coordinator' || role === 'super_admin'
-                  ? 'Greater Accra'
-                  : 'Mando Basic School';
+          const userDocRef = doc(db, 'users', user.uid);
+          let userDocSnap = await getDoc(userDocRef);
+          if (user.isAnonymous && !userDocSnap.exists()) {
+            for (let attempt = 0; attempt < 15 && !userDocSnap.exists(); attempt++) {
+              await new Promise((r) => setTimeout(r, 120));
+              userDocSnap = await getDoc(userDocRef);
             }
           }
 
-          if (role === 'headteacher' && !schoolId) schoolId = 'sch-mando';
-          if (role === 'circuit_supervisor' && !circuitId) circuitId = 'circuit-north';
-          if (
-            (role === 'district' ||
-              role === 'sen_coordinator' ||
-              role === 'super_admin' ||
-              role === 'circuit_supervisor') &&
-            !districtId
-          ) {
-            districtId = DEFAULT_DISTRICT_ID;
+          if (!userDocSnap.exists()) {
+            localStorage.setItem(
+              'authProfileError',
+              user.isAnonymous
+                ? 'Could not load your profile. Try logging in again.'
+                : 'Your account has no profile in BaseCamp. Contact your administrator.'
+            );
+            await signOut(auth);
+            setCurrentUser(null);
+            setIsAuthLoading(false);
+            return;
+          }
+
+          const data = userDocSnap.data();
+          const r = data.role as string;
+          const role = VALID_ROLES.includes(r as UserData['role']) ? (r as UserData['role']) : 'teacher';
+          let name = data.name || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
+          let location =
+            data.location ||
+            (role === 'district' || role === 'sen_coordinator' || role === 'super_admin'
+              ? 'Greater Accra'
+              : 'Mando Basic School');
+          let districtId = typeof data.districtId === 'string' ? data.districtId : undefined;
+          let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
+          let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
+
+          if (demoSeedEnabled) {
+            if (role === 'headteacher' && !schoolId) schoolId = 'sch-mando';
+            if (role === 'circuit_supervisor' && !circuitId) circuitId = 'circuit-north';
+            if (
+              (role === 'district' ||
+                role === 'sen_coordinator' ||
+                role === 'super_admin' ||
+                role === 'circuit_supervisor') &&
+              !districtId
+            ) {
+              districtId = DEFAULT_DISTRICT_ID;
+            }
+          }
+
+          let stableId = user.uid;
+          if (demoSeedEnabled) {
+            const lp = data.linkedProfileId;
+            if (typeof lp === 'string' && lp.trim().length > 0) {
+              stableId = lp.trim();
+            }
           }
 
           const loadedUser: UserData = {
-            id: targetUserId,
+            id: stableId,
             role,
             name,
             location,
@@ -190,7 +197,6 @@ function LoggedInApp({ user }: LoggedInAppProps) {
 
   const handleLogout = async () => {
     try {
-      localStorage.removeItem('mockUserRole');
       localStorage.removeItem('accessCodeUserId');
       await signOut(auth);
     } catch (error) {

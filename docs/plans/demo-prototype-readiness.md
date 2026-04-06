@@ -39,7 +39,7 @@ Ensure fallback `data` includes `lessonPlan` shape so UI never reads undefined.
 ## 8. Optional
 
 - File upload wiring in AssessmentSetup.
-- “Generate 5-Minute Remedial Activity” UX clarity.
+- “Generate 10-Minute Remedial Activity” UX clarity.
 
 ## Implementation order
 

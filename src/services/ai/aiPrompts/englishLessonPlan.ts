@@ -1,6 +1,6 @@
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { DiagnosticReport, EnglishLessonPlanResult } from './types';
-import { cleanJsonResponse, escapeForPrompt, normalizeStringArray } from './utils';
+import type { AiCurriculumPromptType, DiagnosticReport, EnglishLessonPlanResult } from './types';
+import { cleanJsonResponse, escapeForPrompt, getCurriculumPromptAlignmentBlock, normalizeStringArray } from './utils';
 
 const DEFAULT_GRADE_LEVEL = 4;
 /** Full K–9 product scope; grades 10–12 still accepted from rosters and map to the 7–9 concrete band. */
@@ -59,7 +59,7 @@ LANGUAGE:
 `.trim();
 
   return `
-You are a Master Cambridge Primary English and ESL educator. You design 5-minute remedial micro-interventions that align with the spirit and pedagogy of the Cambridge Primary English programme and Teacher Guide: explicit literacy progression, oracy-first where appropriate, and text-anchored grammar and comprehension.
+You are a Master Cambridge Primary English and ESL educator. You design 10-minute remedial micro-interventions that align with the spirit and pedagogy of the Cambridge Primary English programme and Teacher Guide: explicit literacy progression, oracy-first where appropriate, and text-anchored grammar and comprehension.
 
 PLATFORM SCOPE: The product’s Cambridge English standards span Grades 1 through 9 (full K–9). Match vocabulary, text length, and task demand to studentGradeLevel (${grade}) within that progression.${gradeBandNote}
 
@@ -95,8 +95,8 @@ Exemplar C (Grade 6, reading comprehension / inference, English only):
 - Phase 3 — Application: Learner writes one inference as a full sentence starting with “The text suggests…” OR reads their sentence aloud.
 
 === OUTPUT DISCIPLINE ===
-- Total time: about 5 minutes; keep instructions concise (typically 6–10 steps including phase labels).
-- "estimatedDuration": always a string such as "5 minutes".
+- Total time: about 10 minutes; keep instructions concise (typically 6–10 steps including phase labels).
+- "estimatedDuration": always a string such as "10 minutes".
 - Never output markdown code fences around JSON.
 `.trim();
 }
@@ -106,14 +106,15 @@ function buildReportPayload(report: DiagnosticReport): string {
     report.recommendations?.length ? report.recommendations.join(' | ') : '(none)'
   );
   const gaps = escapeForPrompt(report.gapTags?.length ? report.gapTags.join(', ') : '(none)');
-  const ges =
+  const isCambridgeRun = report.alignedStandardCode != null && report.alignedStandardCode !== '';
+  const curriculumLabel = isCambridgeRun ? 'Cambridge' : 'GES';
+  const curriculumLine =
     report.gesAlignment?.objectiveId != null
-      ? `GES: ${report.gesAlignment.objectiveId} — ${report.gesAlignment.objectiveTitle}\nExcerpt: ${report.gesAlignment.excerpt}`
-      : '(no GES block)';
-  const cam =
-    report.alignedStandardCode != null && report.alignedStandardCode !== ''
-      ? `Cambridge standard code: ${report.alignedStandardCode}`
-      : '(no Cambridge code)';
+      ? `${curriculumLabel} Objective: ${report.gesAlignment.excerpt ?? report.gesAlignment.objectiveId} — ${report.gesAlignment.objectiveTitle}`
+      : `(no ${curriculumLabel} objective)`;
+  const cam = isCambridgeRun
+    ? `Cambridge standard code: ${report.alignedStandardCode}`
+    : '';
 
   return `
 DIAGNOSTIC REPORT (bind remediation to this evidence):
@@ -122,8 +123,8 @@ DIAGNOSTIC REPORT (bind remediation to this evidence):
 - Gap tags: ${gaps}
 - Recommendations: ${rec}
 - Remedial plan (distil; do not paste verbatim): ${escapeForPrompt(report.remedialPlan ?? '')}
-- ${cam}
-- ${ges}
+${cam ? `- ${cam}` : ''}
+- ${curriculumLine}
 `.trim();
 }
 
@@ -133,7 +134,7 @@ function parseEnglishLessonPlan(raw: unknown): EnglishLessonPlanResult | null {
   const title = typeof o.title === 'string' ? o.title.trim() : '';
   const objective = typeof o.objective === 'string' ? o.objective.trim() : undefined;
   const estimatedDuration =
-    typeof o.estimatedDuration === 'string' ? o.estimatedDuration.trim() : '5 minutes';
+    typeof o.estimatedDuration === 'string' ? o.estimatedDuration.trim() : '10 minutes';
   const materialsNeeded = normalizeStringArray(o.materialsNeeded);
   const instructions = normalizeStringArray(o.instructions);
   const translanguagingCues = normalizeStringArray(o.translanguagingCues);
@@ -142,7 +143,7 @@ function parseEnglishLessonPlan(raw: unknown): EnglishLessonPlanResult | null {
   return {
     title,
     objective,
-    estimatedDuration: estimatedDuration || '5 minutes',
+    estimatedDuration: estimatedDuration || '10 minutes',
     materialsNeeded,
     instructions,
     translanguagingCues,
@@ -150,18 +151,20 @@ function parseEnglishLessonPlan(raw: unknown): EnglishLessonPlanResult | null {
 }
 
 /**
- * Generate a Cambridge-aligned 5-minute English / literacy remedial lesson (Oracy → Decoding → Application + optional translanguaging).
+ * Generate a Cambridge-aligned 10-minute English / literacy remedial lesson (Oracy → Decoding → Application + optional translanguaging).
  *
  * @param report — Full diagnostic report (gap, mastery, curriculum hooks).
  * @param studentGradeLevel — Numeric grade 1–12 (Cambridge stage / JHS aligned).
  * @param dialectContext — Local language label for ESL bridge, or null/empty/"None" for English-only.
  * @param curriculumContext — RAG or teacher-pasted Cambridge / syllabus text to ground vocabulary and objectives.
+ * @param curriculumType — Cambridge vs GES vs blended alignment for the model.
  */
 export async function generateEnglishLessonPlan(
   report: DiagnosticReport,
   studentGradeLevel: number,
   dialectContext: string | null | undefined,
-  curriculumContext: string
+  curriculumContext: string,
+  curriculumType?: AiCurriculumPromptType
 ): Promise<EnglishLessonPlanResult | null> {
   if (!API_KEY) {
     console.error('Gemini API key is not configured.');
@@ -187,6 +190,8 @@ export async function generateEnglishLessonPlan(
   const userTask = `
 ${masterPrompt}
 
+${getCurriculumPromptAlignmentBlock(curriculumType)}
+
 === CURRICULUM / RAG CONTEXT (ground objectives and wording) ===
 ${curriculumBlock}
 
@@ -194,13 +199,13 @@ ${curriculumBlock}
 ${reportBlock}
 
 === TASK ===
-Produce ONE new 5-minute remedial lesson plan for the LITERACY / English gap above. Ground remediation in Cambridge Primary English–aligned progression at studentGradeLevel ${grade}. Follow the three phases explicitly (Phase 1 — Oracy, Phase 2 — Decoding / Text analysis, Phase 3 — Application), respect the age-scaled literacy focus for this grade band, use only zero-cost materials, and comply with translanguaging rules if a dialect was specified.${objectiveInstruction}
+Produce ONE new 10-minute remedial lesson plan for the LITERACY / English gap above. Ground remediation in Cambridge Primary English–aligned progression at studentGradeLevel ${grade}. Follow the three phases explicitly (Phase 1 — Oracy, Phase 2 — Decoding / Text analysis, Phase 3 — Application), respect the age-scaled literacy focus for this grade band, use only zero-cost materials, and comply with translanguaging rules if a dialect was specified.${objectiveInstruction}
 
 Respond with STRICT JSON ONLY (no markdown fences, no commentary):
 {
   "title": "Short engaging title",
   "objective": "The specific taxonomy/objective for this lesson",
-  "estimatedDuration": "5 minutes",
+  "estimatedDuration": "10 minutes",
   "materialsNeeded": ["Low-resource item 1", "Low-resource item 2"],
   "instructions": [
     "Phase 1 — Oracy: ...",

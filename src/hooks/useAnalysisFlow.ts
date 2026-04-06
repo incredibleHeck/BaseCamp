@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { saveAssessment, updateAssessment, type Assessment } from '../services/assessmentService';
 import {
+  formatCurriculumAlignmentLabel,
   generateExtensionActivity,
   generateSubjectRoutedLessonPlan,
   MASTERY_EXTENSION_LESSON_PLACEHOLDER,
+  resolveAiCurriculumPromptType,
   shouldUseExtensionActivity,
   type DiagnosticReport as AIDiagnosticReport,
   type GenerateLessonPlanOptions,
@@ -25,6 +27,8 @@ import {
   executeFullAssessmentPipeline,
   loadLongitudinalPromptFields,
 } from '../services/assessmentPipelineService';
+import { useAuth } from '../context/AuthContext';
+import { useSchoolConfig } from './useSchoolConfig';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
 
@@ -35,6 +39,8 @@ export interface DiagnosticReport extends AIDiagnosticReport {
 export type HybridAssessmentFlowResult =
   | { ok: true; savedAssessmentId: string }
   | { ok: true; queued: true }
+  /** AI succeeded and UI shows the report, but Firestore save failed (e.g. rules / permissions). */
+  | { ok: true; displayedOnly: true }
   | { ok: false; error: string };
 
 /** Pass from UI when the hook’s props may not yet include this assessment (same-tick as diagnosis start). */
@@ -82,6 +88,9 @@ const EMPTY_REPORT: DiagnosticReport = {
 };
 
 export function useAnalysisFlow() {
+  const { user } = useAuth();
+  const { school } = useSchoolConfig(user.schoolId);
+
   const {
     analysisStatus: status,
     lastAssessmentData,
@@ -103,6 +112,17 @@ export function useAnalysisFlow() {
   const observations = lastAssessmentData?.observations;
   const curriculumFramework = lastAssessmentData?.curriculumFramework ?? 'GES';
   const gradeLevel = lastAssessmentData?.gradeLevel;
+
+  const resolvedAiCurriculumPromptType = useMemo(
+    () => resolveAiCurriculumPromptType(school?.curriculumType, curriculumFramework),
+    [school?.curriculumType, curriculumFramework]
+  );
+  const curriculumAlignmentLabel = useMemo(
+    () => formatCurriculumAlignmentLabel(school?.curriculumType, curriculumFramework),
+    [school?.curriculumType, curriculumFramework]
+  );
+  const aiCurriculumPromptRef = useRef(resolvedAiCurriculumPromptType);
+  aiCurriculumPromptRef.current = resolvedAiCurriculumPromptType;
   const cohortIdFromSetup = lastAssessmentData?.cohortId?.trim();
   const classLabelFromSetup = lastAssessmentData?.classLabel?.trim();
 
@@ -182,6 +202,10 @@ export function useAnalysisFlow() {
           dialectContext: effectiveDialect,
           curriculumFramework: effectiveFramework,
           gradeLevel: effectiveGrade,
+          aiCurriculumPromptType: resolveAiCurriculumPromptType(
+            school?.curriculumType,
+            effectiveFramework
+          ),
         });
 
         if (pipeline.ok === false) {
@@ -234,8 +258,8 @@ export function useAnalysisFlow() {
 
         const resultId = await saveAssessment(assessment);
         if (!resultId) {
-          abortAnalysisFlow();
-          return { ok: false, error: 'save_failed' };
+          logWorkflow('analysis:hybrid_save_failed', { studentId });
+          return { ok: true, displayedOnly: true };
         }
         setSavedAssessmentId(resultId);
         setIsSaved(true);
@@ -262,6 +286,7 @@ export function useAnalysisFlow() {
       cohortIdFromSetup,
       classLabelFromSetup,
       isOffline,
+      school?.curriculumType,
       setAnalysisResults,
       abortAnalysisFlow,
     ]
@@ -311,6 +336,7 @@ export function useAnalysisFlow() {
             curriculumFramework,
             gradeLevel,
             images: worksheetImages,
+            aiCurriculumPromptType: aiCurriculumPromptRef.current,
           });
           if (result.ok === true) {
             setAnalysisResults(result.report as DiagnosticReport);
@@ -341,6 +367,7 @@ export function useAnalysisFlow() {
             gradeLevel,
             manualRubric: manualRubric ?? [],
             observations: observations?.trim() ?? '',
+            aiCurriculumPromptType: aiCurriculumPromptRef.current,
           });
           if (result.ok === true) {
             setAnalysisResults(result.report as DiagnosticReport);
@@ -398,6 +425,7 @@ export function useAnalysisFlow() {
     const lessonPlanOpts: GenerateLessonPlanOptions = {
       studentGradeLevel: longitudinal.studentGradeLevel,
       dialectContext: dialectContext?.trim() || undefined,
+      curriculumType: resolvedAiCurriculumPromptType,
     };
 
     const gradeForLesson =
@@ -417,6 +445,7 @@ export function useAnalysisFlow() {
           studentGradeLevel: lessonPlanOpts.studentGradeLevel,
           dialectContext: lessonPlanOpts.dialectContext,
           curriculumContext: rag.formattedContext,
+          curriculumType: lessonPlanOpts.curriculumType,
         });
         if (ext && reportData) {
           setReportData({
@@ -433,7 +462,8 @@ export function useAnalysisFlow() {
             subject,
             gradeForLesson,
             lessonPlanOpts.dialectContext,
-            rag.formattedContext
+            rag.formattedContext,
+            lessonPlanOpts.curriculumType
           );
           if (result) {
             setRegeneratedLessonPlan(result);
@@ -448,7 +478,8 @@ export function useAnalysisFlow() {
           subject,
           gradeForLesson,
           lessonPlanOpts.dialectContext,
-          rag.formattedContext
+          rag.formattedContext,
+          lessonPlanOpts.curriculumType
         );
         if (result) {
           setRegeneratedLessonPlan(result);
@@ -470,7 +501,7 @@ export function useAnalysisFlow() {
       ];
 
   const handlePrintActivity = () => {
-    const title = displayLessonPlan?.title ?? '5-Minute Remedial Activity';
+    const title = displayLessonPlan?.title ?? '10-Minute Remedial Activity';
     const html = `
 <!DOCTYPE html>
 <html>
@@ -488,7 +519,7 @@ export function useAnalysisFlow() {
   <h1>${title}</h1>
   <p><strong>Instructions:</strong></p>
   <ol>${displayInstructions.map((step: string) => `<li>${step.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}</ol>
-  <p style="margin-top: 2rem; font-size: 0.875rem; color: #666;">BaseCamp Diagnostics · HeckTeck AI</p>
+  <p style="margin-top: 2rem; font-size: 0.875rem; color: #666;">BaseCamp Diagnostics · HecTech AI</p>
 </body>
 </html>`;
     const win = window.open('', '_blank');
@@ -590,6 +621,7 @@ export function useAnalysisFlow() {
     handleGenerateAudio,
     handleSave,
     analyzeHybridAssessment,
+    curriculumAlignmentLabel,
   };
 }
 

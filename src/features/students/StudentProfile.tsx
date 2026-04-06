@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Download, User, Users, LineChart, ClipboardList, Loader2, AlertTriangle } from 'lucide-react';
 import { updateAssessment, type Assessment } from '../../services/assessmentService';
 import {
   analyzeLongitudinalSEN,
+  formatCurriculumAlignmentLabel,
   generatePracticeWorksheet,
   generateSubjectRoutedLessonPlan,
+  resolveAiCurriculumPromptType,
   type DiagnosticReport,
   type SenRiskReport,
   type WorksheetResult,
@@ -23,6 +25,7 @@ import { StudentProfileAnalyticalView } from './StudentProfileAnalyticalView';
 import { StudentProfileActionPlanView } from './StudentProfileActionPlanView';
 import { WorksheetModal } from '../assessments/WorksheetModal';
 import { useAuth } from '../../context/AuthContext';
+import { useSchoolConfig } from '../../hooks/useSchoolConfig';
 
 interface StudentProfileProps {
   studentId?: string;
@@ -76,6 +79,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
 
   // SEN Coordinator actions
   const { user: currentUser } = useAuth();
+  const { school } = useSchoolConfig(currentUser.schoolId);
+  const curriculumAlignmentLabel = useMemo(
+    () => formatCurriculumAlignmentLabel(school?.curriculumType, 'GES'),
+    [school?.curriculumType]
+  );
   const isSenCoordinator = currentUser.role === 'sen_coordinator';
 
   useEffect(() => {
@@ -87,7 +95,10 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     if (isAnalyzingSEN) return;
     setIsAnalyzingSEN(true);
     try {
-      const result = await analyzeLongitudinalSEN(history);
+      const result = await analyzeLongitudinalSEN(
+        history,
+        resolveAiCurriculumPromptType(school?.curriculumType, 'GES')
+      );
       setSenReport(result);
     } finally {
       setIsAnalyzingSEN(false);
@@ -153,7 +164,8 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         atKey,
         grade,
         dialect,
-        rag.formattedContext
+        rag.formattedContext,
+        resolveAiCurriculumPromptType(school?.curriculumType, fw)
       );
       if (result) {
         await updateAssessment(assessment.id, { lessonPlan: result });
@@ -180,7 +192,13 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         remedialPlan: assessment.remedialPlan || '',
         lessonPlan: assessment.lessonPlan ?? { title: '', instructions: [] },
       };
-      const result = await generatePracticeWorksheet(gapsForCard, subject, grade, context);
+      const result = await generatePracticeWorksheet(
+        gapsForCard,
+        subject,
+        grade,
+        context,
+        resolveAiCurriculumPromptType(school?.curriculumType, inferCurriculumFrameworkFromAssessment(assessment))
+      );
       if (result && assessment.id) {
         await updateAssessment(assessment.id, { worksheet: result });
         setHistory((prev) => prev.map((a) => (a.id === assessment.id ? { ...a, worksheet: result } : a)));
@@ -379,6 +397,7 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         />
       ) : viewMode === 'action-plan' ? (
         <StudentProfileActionPlanView
+          curriculumAlignmentLabel={curriculumAlignmentLabel}
           gapInterventions={gapInterventions}
           lastWorksheetByCard={lastWorksheetByCard}
           regeneratingAssessmentId={regeneratingAssessmentId}
@@ -419,7 +438,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         </div>
       ) : null}
 
-      <WorksheetModal activeWorksheet={activeWorksheet} onClose={() => setActiveWorksheet(null)} />
+      <WorksheetModal
+        activeWorksheet={activeWorksheet}
+        onClose={() => setActiveWorksheet(null)}
+        curriculumAlignmentLabel={curriculumAlignmentLabel}
+      />
     </div>
   );
 }

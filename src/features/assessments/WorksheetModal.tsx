@@ -1,25 +1,31 @@
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import { Printer } from 'lucide-react';
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import type { WorksheetResult } from '../../services/ai/aiPrompts';
 import { printWorksheetToWindow } from '../../utils/printUtils';
 
 interface WorksheetModalProps {
   activeWorksheet: { gap: string; data: WorksheetResult } | null;
   onClose: () => void;
+  /** Optional curriculum context for the generated sheet. */
+  curriculumAlignmentLabel?: string;
 }
 
-export function WorksheetModal({ activeWorksheet, onClose }: WorksheetModalProps) {
+export function WorksheetModal({ activeWorksheet, onClose, curriculumAlignmentLabel }: WorksheetModalProps) {
   if (!activeWorksheet) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-4 p-4 border-b border-gray-200 print:hidden">
-          <h3 className="text-lg font-semibold text-gray-900">Practice Worksheet</h3>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Practice Worksheet</h3>
+            {curriculumAlignmentLabel ? (
+              <p className="text-xs text-slate-500 mt-1">
+                Aligned to: <span className="font-medium text-slate-700">{curriculumAlignmentLabel}</span>
+              </p>
+            ) : null}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -57,10 +63,11 @@ export function WorksheetModal({ activeWorksheet, onClose }: WorksheetModalProps
           <div className="space-y-16 print:space-y-16">
             {activeWorksheet.data.questions.map((q, idx) => (
               <div key={idx} className="mb-16 print:mb-16">
-                <div className="text-lg font-medium text-gray-900 mb-6 print:text-black [&_.katex]:text-inherit">
-                  <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {`${idx + 1}. ${q}`}
-                  </ReactMarkdown>
+                <div className="mb-6 print:text-black [&_.prose]:text-lg [&_.prose]:font-medium [&_.prose]:text-gray-900 print:[&_.prose]:text-black">
+                  <MarkdownRenderer
+                    content={`${idx + 1}. ${q}`}
+                    className="!my-0 max-w-none"
+                  />
                 </div>
                 <div className="space-y-2">
                   {[1, 2, 3, 4].map((line) => (

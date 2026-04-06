@@ -3,13 +3,14 @@ import type { Assessment } from '../../assessmentService';
 import type { Student } from '../../studentService';
 import { getCurriculumContext, type CurriculumFramework } from '../curriculumRagService';
 import { API_KEY, genAI, GEMINI_MODEL } from './geminiClient';
-import type { DiagnosticReport } from './types';
+import type { AiCurriculumPromptType, DiagnosticReport } from './types';
 import {
   buildGlobalCurriculumEngineInstructions,
   buildLearnerTemporalContextBlock,
   cleanJsonResponse,
   getAlignmentJsonInstruction,
   getAlignedStandardCodeJsonInstruction,
+  getCurriculumPromptAlignmentBlock,
   getDialectInstruction,
   getSenWarningFlagJsonInstruction,
   LONGITUDINAL_DIAGNOSIS_BLOCK,
@@ -53,6 +54,8 @@ export interface MultimodalVoiceObservationParams {
   studentContext: string;
   /** Optional worksheet or exercise photo to align audio with written work. */
   worksheetImage?: WorksheetImageInline | null;
+  /** Cambridge vs GES vs blended alignment for observation analysis. */
+  curriculumType?: AiCurriculumPromptType;
 }
 
 function assessmentTimeLabel(ts: Assessment['timestamp']): string {
@@ -122,7 +125,8 @@ const VOICE_OBSERVATION_JSON_SCHEMA = `
 function buildVoiceObservationUserPrompt(
   studentDisplayName: string,
   studentContext: string,
-  hasWorksheetImage: boolean
+  hasWorksheetImage: boolean,
+  curriculumType?: AiCurriculumPromptType
 ): string {
   const visualClause = hasWorksheetImage
     ? 'Listen to the teacher audio and view the attached worksheet image. Use both together to infer what the learner actually produced or struggled with.'
@@ -130,6 +134,8 @@ function buildVoiceObservationUserPrompt(
 
   return `
       You are an expert Ghanaian educational diagnostician working in the tradition of careful classroom observation (GES-aligned, culturally grounded).
+
+      ${getCurriculumPromptAlignmentBlock(curriculumType)}
 
       You are evaluating a student named ${studentDisplayName}.
 
@@ -163,7 +169,14 @@ export async function analyzeMultimodalVoiceObservation(
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const audioPart = { inlineData: { data: audioData, mimeType: safeMime } };
     const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
-      { text: buildVoiceObservationUserPrompt(params.studentDisplayName, params.studentContext, hasImage) },
+      {
+        text: buildVoiceObservationUserPrompt(
+          params.studentDisplayName,
+          params.studentContext,
+          hasImage,
+          params.curriculumType
+        ),
+      },
       audioPart,
     ];
 
@@ -255,6 +268,8 @@ export async function analyzeHybridTeacherDiagnostic(
     const prompt = `
       You are an expert educational diagnostician for multilingual classrooms. Map audio (+ optional image) evidence to curriculumContext, then localize remediation per dialectContext.
 
+      ${getCurriculumPromptAlignmentBlock(params.curriculumType)}
+
       LEARNER: ${params.studentDisplayName}
 
       PRIOR CONTEXT (recurring gaps and mastery — use to avoid misdiagnosis):
@@ -283,7 +298,7 @@ export async function analyzeHybridTeacherDiagnostic(
         "gapTags": ["1–3 short phrases (max 4 words) for gaps"],
         "masteryTags": ["1–3 short phrases (max 4 words) for strengths"],
         "recommendations": ["Remedial actions for the teacher"],
-        "remedialPlan": "5-minute activity following Step 2 localization (dialectContext).",
+        "remedialPlan": "10-minute activity following Step 2 localization (dialectContext).",
         "lessonPlan": { "title": "Short title", "instructions": ["Step 1", "Step 2", "Step 3"] },
         "smsDraft": "Professional SMS to parent/guardian.",
         "score": 0,
@@ -326,6 +341,7 @@ export async function analyzeHybridTeacherDiagnostic(
       masteryTags: normalizeTagArray(parsedData.masteryTags),
       gesAlignment: gesAlignment === undefined ? undefined : gesAlignment,
       alignedStandardCode,
+      curriculumFramework: framework,
       ...(senWarningFlag !== undefined ? { senWarningFlag } : {}),
     };
     return report;
@@ -340,7 +356,9 @@ export async function analyzeHybridTeacherDiagnostic(
 export async function transcribeAndAnalyzeVoiceObservation(
   audioBase64Raw: string,
   mimeType: string,
-  options?: Partial<Pick<MultimodalVoiceObservationParams, 'studentDisplayName' | 'studentContext' | 'worksheetImage'>>
+  options?: Partial<
+    Pick<MultimodalVoiceObservationParams, 'studentDisplayName' | 'studentContext' | 'worksheetImage' | 'curriculumType'>
+  >
 ): Promise<VoiceObservationAnalysis | null> {
   return analyzeMultimodalVoiceObservation({
     audioBase64: audioBase64Raw,
@@ -350,5 +368,6 @@ export async function transcribeAndAnalyzeVoiceObservation(
       ? options.studentContext
       : 'No prior assessment history was provided for this learner.',
     worksheetImage: options?.worksheetImage ?? undefined,
+    curriculumType: options?.curriculumType,
   });
 }

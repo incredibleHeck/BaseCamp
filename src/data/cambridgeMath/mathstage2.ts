@@ -262,7 +262,7 @@ export const cambridgeMathStage2: CurriculumObjective[] = [
     cambridgeStandard:
       '2Gt.01 Order and compare units of time (seconds, minutes, hours, days, weeks, months and years).',
     diagnosticTrigger:
-      "Student claims a routine task like brushing teeth takes '5 hours' instead of '5 minutes', indicating a profound lack of temporal magnitude scaling and real-world anchoring for abstract time units.",
+      "Student claims a routine task like brushing teeth takes '5 hours' instead of '10 minutes', indicating a profound lack of temporal magnitude scaling and real-world anchoring for abstract time units.",
   },
   {
     id: 'MATH-G2-MEA-2GT02',

@@ -6,7 +6,7 @@
 
 ---
 
-## Pillar 1: HeckTeck Connect (WhatsApp parent bot)
+## Pillar 1: HecTech Connect (WhatsApp parent bot)
 
 ### Problem
 
@@ -126,7 +126,7 @@ Reliance on **large enterprise APIs** is costly at scale and limits customizatio
 ## Suggested implementation order
 
 1. **Foundations** – guardian phone + consent model; student account schema; WhatsApp sandbox + one template message.
-2. **HeckTeck Connect MVP** – weekly digest in one additional language; measure delivery and quality.
+2. **HecTech Connect MVP** – weekly digest in one additional language; measure delivery and quality.
 3. **Student portal MVP** – one subject/skill path; gamified items from existing gap tags; teacher assigns from dashboard.
 4. **Fine-tuning pilot** – small model on approved subset; A/B vs API for one task (e.g. gap tagging).
 
@@ -146,7 +146,7 @@ Reliance on **large enterprise APIs** is costly at scale and limits customizatio
 | Step (plan order) | What shipped | Key files |
 | ----------------- | ------------- | --------- |
 | **1. Foundations** | `guardianPhone`, `guardianLanguage`, `whatsappOptIn`, `consentRecordedAt`, `portalAccessCode`, `trainingDataOptIn` on students; `updateStudent`; `whatsappOutbox` writes (no Meta API). | [`studentService.ts`](../../src/services/studentService.ts), [`whatsappConnectService.ts`](../../src/services/whatsappConnectService.ts) |
-| **2. HeckTeck Connect MVP** | AI weekly digest (English) + translation to guardian language; copy + **demo queue** to Firestore. | [`aiPrompts/phase4Ecosystem.ts`](../../src/services/aiPrompts/phase4Ecosystem.ts), [`parentDigestService.ts`](../../src/services/parentDigestService.ts), [`Phase4FamilyConnectCard.tsx`](../../src/components/Phase4FamilyConnectCard.tsx) |
+| **2. HecTech Connect MVP** | AI weekly digest (English) + translation to guardian language; copy + **demo queue** to Firestore. | [`aiPrompts/phase4Ecosystem.ts`](../../src/services/aiPrompts/phase4Ecosystem.ts), [`parentDigestService.ts`](../../src/services/parentDigestService.ts), [`Phase4FamilyConnectCard.tsx`](../../src/components/Phase4FamilyConnectCard.tsx) |
 | **3. Student portal MVP** | **`#/portal`** entry (hash route); code lookup; MCQ practice from latest gaps; points; `portalSessions` log; **web manifest** for installable shell. | [`main.tsx`](../../src/main.tsx), [`StudentPortalApp.tsx`](../../src/components/StudentPortalApp.tsx), [`portalSessionService.ts`](../../src/services/portalSessionService.ts), [`public/manifest.webmanifest`](../../public/manifest.webmanifest) |
 | **4. Fine-tuning pilot** | JSONL export of **opted-in** de-identified snippets; env-driven **A/B** system prompt for gap tags (still Gemini). | [`fineTunePilotService.ts`](../../src/services/fineTunePilotService.ts), [`FineTunePilotPanel.tsx`](../../src/components/FineTunePilotPanel.tsx), [`featureFlags.ts`](../../src/config/featureFlags.ts) |
 

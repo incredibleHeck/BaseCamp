@@ -2,6 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle, Info, Loader2 } from 'lucide-react';
 import type { Assessment } from '../../services/assessmentService';
 import type { SenRiskReport } from '../../services/ai/aiPrompts';
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import { formatAssessmentDateTime, type FallbackHistoricalRecord, type Readiness } from '../../utils/studentProfileHelpers';
 
 interface StudentProfileAnalyticalViewProps {
@@ -67,7 +68,7 @@ export function StudentProfileAnalyticalView({
                       Score: <span className="font-semibold text-slate-900">{assessment.score}</span>/100
                       {assessment.gesObjectiveId ? (
                         <span className="ml-2 text-amber-800">
-                          · GES: {assessment.gesObjectiveId}
+                          · {assessment.alignedStandardCode ? 'Cambridge' : 'GES'}: {assessment.alignedStandardCode || assessment.gesObjectiveId}
                           {assessment.gesVerified ? ' (verified)' : ''}
                         </span>
                       ) : null}
@@ -75,9 +76,15 @@ export function StudentProfileAnalyticalView({
                   ) : null}
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mt-2">
                     <p className="text-sm text-gray-800 font-semibold mb-1">Diagnosis:</p>
-                    <p className="text-sm text-gray-600 mb-3">{assessment.diagnosis}</p>
+                    <MarkdownRenderer
+                      content={assessment.diagnosis}
+                      className="prose-sm !mt-0 mb-3 prose-p:text-gray-600 prose-headings:text-gray-900"
+                    />
                     <p className="text-sm text-emerald-800 font-semibold mb-1">Recommended Remedial Plan:</p>
-                    <p className="text-sm text-gray-600">{assessment.remedialPlan}</p>
+                    <MarkdownRenderer
+                      content={assessment.remedialPlan ?? ''}
+                      className="prose-sm !my-0 prose-p:text-gray-600 prose-headings:text-gray-900"
+                    />
                   </div>
                 </div>
               );
@@ -220,7 +227,10 @@ export function StudentProfileAnalyticalView({
                   </div>
                   <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
                     <p className="text-xs font-semibold text-indigo-900 mb-1">Specialist Recommendation</p>
-                    <p className="text-sm text-indigo-900">{senReport.specialistRecommendation}</p>
+                    <MarkdownRenderer
+                      content={senReport.specialistRecommendation}
+                      className="prose-sm !my-0 prose-p:text-indigo-900 prose-headings:text-indigo-950 prose-strong:text-indigo-950"
+                    />
                   </div>
                   <p className="text-xs text-gray-500">
                     Note: This is a pedagogical pattern analysis, not a medical diagnosis. Consult a GES Special
