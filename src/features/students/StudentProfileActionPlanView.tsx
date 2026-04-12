@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Loader2, Printer, Sparkles, Trophy } from 'lucide-react';
+import { FileText, Loader2, Printer, Smartphone, Sparkles, Trophy } from 'lucide-react';
 import type { Assessment } from '../../services/assessmentService';
 import type { WorksheetResult } from '../../services/ai/aiPrompts';
 import type { GapInterventionEntry } from '../../hooks/useStudentProfileData';
@@ -14,9 +14,11 @@ interface StudentProfileActionPlanViewProps {
   lastWorksheetByCard: Record<string, { gap: string; data: WorksheetResult }>;
   regeneratingAssessmentId: string | null;
   generatingSheetFor: string | null;
+  pushingQuizFor: string | null;
   onRegenerateLessonPlan: (assessment: Assessment) => void | Promise<void>;
   onPrintLessonPlan: (assessment: Assessment) => void;
   onGeneratePracticeSheet: (gaps: string[], subject: string, assessment: Assessment) => void | Promise<void>;
+  onPushInteractiveQuiz: (gaps: string[], subject: string, assessment: Assessment) => void | Promise<void>;
   onPrintWorksheet: (cardKey: string) => void;
   onOpenWorksheet: (entry: { gap: string; data: WorksheetResult }) => void;
 }
@@ -27,9 +29,11 @@ export function StudentProfileActionPlanView({
   lastWorksheetByCard,
   regeneratingAssessmentId,
   generatingSheetFor,
+  pushingQuizFor,
   onRegenerateLessonPlan,
   onPrintLessonPlan,
   onGeneratePracticeSheet,
+  onPushInteractiveQuiz,
   onPrintWorksheet,
   onOpenWorksheet,
 }: StudentProfileActionPlanViewProps) {
@@ -57,6 +61,7 @@ export function StudentProfileActionPlanView({
         const storedSheet = lastWorksheetByCard[cardKey];
         const isRegenerating = regeneratingAssessmentId === assessment.id;
         const isGeneratingSheet = generatingSheetFor === cardKey;
+        const isPushingQuiz = pushingQuizFor === cardKey;
 
         return (
           <div
@@ -138,6 +143,24 @@ export function StudentProfileActionPlanView({
               >
                 {isGeneratingSheet ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
                 {storedSheet ? 'Regenerate worksheet' : 'Generate practice worksheet'}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isPushingQuiz || isGeneratingSheet || isRegenerating || !assessment.id
+                }
+                onClick={() => void onPushInteractiveQuiz(gaps, subject, assessment)}
+                className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg border border-indigo-400/40 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/20 hover:from-indigo-500 hover:via-violet-500 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPushingQuiz ? (
+                  <Loader2 size={16} className="animate-spin shrink-0" />
+                ) : (
+                  <>
+                    <Sparkles size={16} className="shrink-0 opacity-90" />
+                    <Smartphone size={16} className="shrink-0" />
+                  </>
+                )}
+                Push Interactive Quiz to Student Device
               </button>
               {storedSheet ? (
                 <>

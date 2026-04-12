@@ -9,12 +9,37 @@ import { buildManagedStaffEmail } from '../utils/managedCredentials';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { AnimatePresence, motion } from 'motion/react';
+import { isDemoHostedBuild } from '../config/demoMode';
 
 type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
 
-const DEMO_PASSWORD_PLACEHOLDER = 'HecTech@2026!';
+/** Placeholder only — not a guaranteed password. Super admin must exist in Firebase Auth for this project. */
+const ADMIN_PASSWORD_PLACEHOLDER = 'Your Firebase Auth password';
 
-const demoSeedEnabled = import.meta.env.VITE_ENABLE_DEMO_SEED === 'true';
+const demoSeedEnabled = isDemoHostedBuild;
+
+function authErrorMessage(error: unknown): string {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : '';
+  if (
+    code === 'auth/invalid-credential' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/user-not-found' ||
+    code === 'auth/invalid-email'
+  ) {
+    return (
+      'Wrong password or no email/password user in this Firebase project. ' +
+      'In Firebase Console → Authentication → Users, create the user (e.g. superadmin@basecamp.com) or reset the password, ' +
+      'then sign in with that same password here.'
+    );
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many attempts. Try again in a few minutes.';
+  }
+  return 'Login failed. Check email and password.';
+}
 
 function defaultEmailForAdminRole(role: Role): string {
   switch (role) {
@@ -214,7 +239,7 @@ export function Login() {
     } catch (error) {
       console.error(`Authentication failed for ${selectedRole}:`, error);
       setIsLoggingIn(null);
-      setAdminLoginError('Login failed. Check email and password, or create the user in Firebase Authentication.');
+      setAdminLoginError(authErrorMessage(error));
     }
   };
 
@@ -235,11 +260,7 @@ export function Login() {
       alert('Demo environment successfully seeded.');
     } catch (error) {
       console.error('Seeding failed:', error);
-      const msg = error instanceof Error ? error.message : String(error);
-      alert(
-        `Seeding failed: ${msg}\n\n` +
-          'Use a Firebase Auth user with a super admin role and Firestore rules deployed. Email must be superadmin@basecamp.com or super_admin@basecamp.com for demo seed privileges.'
-      );
+      alert(`Seeding failed.\n\n${authErrorMessage(error)}\n\nAllowed seed emails: superadmin@basecamp.com or super_admin@basecamp.com (must exist in Firebase Authentication for this project).`);
     } finally {
       try {
         await signOut(auth);
@@ -393,7 +414,8 @@ export function Login() {
                           <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">teacher1@school1.com</code>{' '}
                           (Teacher tile) or{' '}
                           <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">headteacher@school1.com</code>{' '}
-                          (Headteacher tile). Same pattern for school&nbsp;2 and&nbsp;3.
+                          (Headteacher tile). Same pattern for school&nbsp;2 and&nbsp;3. Use{' '}
+                          <strong>.com</strong> (period), not a comma.
                         </p>
                         <form onSubmit={handleDemoAccessCodeLogin} className="space-y-4">
                           <div>
@@ -490,7 +512,7 @@ export function Login() {
                                   onChange={(e) => setHeadteacherAdminPassword(e.target.value)}
                                   disabled={isCodeLoggingIn}
                                   className="bg-white"
-                                  placeholder={DEMO_PASSWORD_PLACEHOLDER}
+                                  placeholder={ADMIN_PASSWORD_PLACEHOLDER}
                                 />
                               </div>
                               {codeError && <p className="text-sm text-red-600 font-medium">{codeError}</p>}
@@ -629,7 +651,7 @@ export function Login() {
                           onChange={(e) => setAdminPassword(e.target.value)}
                           disabled={isLoggingIn !== null}
                           className="bg-white"
-                          placeholder={DEMO_PASSWORD_PLACEHOLDER}
+                          placeholder={ADMIN_PASSWORD_PLACEHOLDER}
                         />
                       </div>
                       {adminLoginError && <p className="text-sm text-red-600 font-medium">{adminLoginError}</p>}
@@ -661,6 +683,11 @@ export function Login() {
           {demoSeedEnabled && (
             <div className="mt-4 space-y-2 max-w-xs mx-auto">
               <p className="text-[10px] text-gray-500 uppercase tracking-wider text-center">Seed demo data</p>
+              <p className="text-[10px] text-amber-900/80 bg-amber-50/90 border border-amber-200/80 rounded-lg px-2 py-1.5 leading-snug">
+                Uses email/password sign-in. The account must exist in Firebase Console → Authentication for{' '}
+                <span className="font-mono">{import.meta.env.VITE_FIREBASE_PROJECT_ID || 'this project'}</span>{' '}
+                (create user + password if missing).
+              </p>
               <label htmlFor="seed-email" className="sr-only">
                 Super admin email for seeding
               </label>
@@ -685,7 +712,7 @@ export function Login() {
                 onChange={(e) => setSeedPassword(e.target.value)}
                 disabled={isSeeding}
                 className="bg-white text-xs h-9"
-                placeholder="Password"
+                placeholder={ADMIN_PASSWORD_PLACEHOLDER}
               />
               <button
                 type="button"

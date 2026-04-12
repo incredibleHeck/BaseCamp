@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   UserPlus,
@@ -23,6 +23,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { useRosterFilters } from './useRosterFilters';
+import { DEFAULT_CLASS_LABEL } from '../../config/academicContext';
 
 function formatLastAssessment(lastDateMs: number): string {
   const now = Date.now();
@@ -54,15 +55,16 @@ export interface StudentListItem {
 }
 
 interface ClassRosterProps {
-  className?: string;
+  /** Optional override for the roster heading and gradebook export class column. */
+  rosterLabel?: string;
   onViewProfile: (studentId: string) => void;
   onNewAssessment: (studentId: string) => void;
 }
 
-export function ClassRoster({ 
-  className = "Primary 6A",
+export function ClassRoster({
+  rosterLabel: rosterLabelOverride,
   onViewProfile,
-  onNewAssessment
+  onNewAssessment,
 }: ClassRosterProps) {
   const { user } = useAuth();
   const schoolId = user.schoolId?.trim() ?? '';
@@ -80,10 +82,40 @@ export function ClassRoster({
     filteredStudents,
   } = useRosterFilters(students);
 
+  const resolvedRosterLabel = useMemo((): string => {
+    const override = rosterLabelOverride?.trim();
+    if (override) return override;
+
+    if (selectedCohortId !== 'all') {
+      const match = cohorts.find((c) => c.id === selectedCohortId);
+      if (match?.name?.trim()) return match.name.trim();
+    }
+
+    if (user.role === 'headteacher' && selectedCohortId === 'all' && cohorts.length > 0) {
+      return 'All classes';
+    }
+
+    if (cohorts.length === 1) {
+      const n = cohorts[0].name?.trim();
+      if (n) return n;
+    }
+
+    if (
+      user.role === 'super_admin' ||
+      user.role === 'district' ||
+      user.role === 'sen_coordinator' ||
+      user.role === 'circuit_supervisor'
+    ) {
+      return 'All students';
+    }
+
+    return DEFAULT_CLASS_LABEL;
+  }, [rosterLabelOverride, cohorts, selectedCohortId, user.role]);
+
   const handleExportGradebook = async () => {
     setIsExporting(true);
     try {
-      const ok = await exportClassGradebookCsv(className);
+      const ok = await exportClassGradebookCsv(resolvedRosterLabel);
       if (!ok) {
         alert('Could not export gradebook. Check your connection and try again.');
       }
@@ -183,7 +215,7 @@ export function ClassRoster({
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full animate-in fade-in duration-500">
         <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">{className} Roster</h2>
+            <h2 className="text-xl font-bold text-gray-900">{resolvedRosterLabel} Roster</h2>
             <p className="text-sm text-gray-500 mt-1">{students.length} Students Enrolled</p>
           </div>
           

@@ -1,5 +1,8 @@
 rules_version = '2';
 
+// Deploy ONLY to basecamp-diagnostics (investor demo). Contains demo seed + access-code staff login.
+// Production (basecamp-pilot) uses firestore.rules — do not deploy this file to pilot.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -26,8 +29,8 @@ service cloud.firestore {
     }
 
     /**
-     * Super-admin Auth emails (case-insensitive). Used so list queries (e.g. all students) work when
-     * `users/{uid}` exists with role super_admin OR when that doc is missing but email matches.
+     * Demo seed + recovery: super-admin Auth emails when Firestore `users/{uid}` is missing or out of sync.
+     * Matches client demo seeder login (superadmin@basecamp.com).
      */
     function isDemoSeedSuperAdminAuth() {
       return request.auth != null &&
@@ -61,12 +64,36 @@ service cloud.firestore {
       return ud().districtId;
     }
 
-    function isTeacherOfCohort(cohortId) {
-      let cohort = get(/databases/$(database)/documents/cohorts/$(cohortId)).data;
-      return isTeacher() && (
-        cohort.teacherId == request.auth.uid ||
-        ('linkedTeacherId' in ud() && ud().linkedTeacherId == cohort.teacherId)
+    /**
+     * Staff user matches a cohort teacher id (Auth uid or access-code linked profile id).
+     * Avoid `in` / map edge cases; use `is string` for optional profile fields.
+     */
+    function teacherIdMatchesStaffLinks(tid) {
+      return tid is string && (
+        tid == request.auth.uid ||
+        (ud().linkedTeacherId is string && ud().linkedTeacherId == tid) ||
+        (ud().role == 'teacher' && ud().linkedProfileId is string && ud().linkedProfileId == tid)
       );
+    }
+
+    /**
+     * Cohort document fields (use resource.data on /cohorts/* — no get() on same doc for list queries).
+     */
+    function teacherOwnsCohortFields(data) {
+      return data.teacherId is string && teacherIdMatchesStaffLinks(data.teacherId);
+    }
+
+    function isTeacherOfCohortData(data) {
+      return isTeacher() && teacherOwnsCohortFields(data);
+    }
+
+    /** Student/assessment/senAlert docs with denormalized cohortTeacherId (no get(/cohorts/) for list queries). */
+    function teacherReadsDenormCohortTeacherData(d) {
+      return isTeacher() && d.cohortTeacherId is string && teacherIdMatchesStaffLinks(d.cohortTeacherId);
+    }
+
+    function isTeacherOfCohort(cohortId) {
+      return isTeacherOfCohortData(get(/databases/$(database)/documents/cohorts/$(cohortId)).data);
     }
 
     function isHeadteacherOfCohortSchool(cohortId) {
@@ -80,31 +107,35 @@ service cloud.firestore {
         get(/databases/$(database)/documents/students/$(studentId)).data.portalSessionToken == ud().portalSessionToken;
     }
 
+    function studentPortalClearsActiveQuiz(studentId) {
+      return studentPortalReadsStudent(studentId) &&
+        request.resource != null &&
+        resource != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeQuiz', 'updatedAt']) &&
+        !('activeQuiz' in request.resource.data);
+    }
+
     function canStaffManageStudent(studentId) {
       let st = get(/databases/$(database)/documents/students/$(studentId)).data;
       return isTeacherOfCohort(st.cohortId) ||
         (isHeadteacher() && st.schoolId == getUserSchoolId());
     }
 
-    // --- Public single-doc lookups (no list) ---
+    // --- Lookups ---
 
     match /accessLookups/{key} {
       allow get: if true;
-      // Demo seeder + admin tools need collection queries to purge/recreate lookup docs.
       allow list: if isAdmin() || isDemoSeedSuperAdminAuth();
-      allow create, update: if isAdmin() || isDemoSeedSuperAdminAuth() || request.auth == null ||
-        (isHeadteacher() && request.resource.data.schoolId == getUserSchoolId());
-      allow delete: if isAdmin() || isDemoSeedSuperAdminAuth() || request.auth == null ||
-        (isHeadteacher() && resource.data.schoolId == getUserSchoolId());
+      allow create, update, delete: if isAdmin() || isDemoSeedSuperAdminAuth();
     }
 
     match /portalLookups/{code} {
       allow get: if true;
       allow list: if false;
-      allow create, update: if isAdmin() || request.auth == null ||
+      allow create, update: if isAdmin() ||
         (request.resource.data.studentId is string &&
           canStaffManageStudent(request.resource.data.studentId));
-      allow delete: if isAdmin() || request.auth == null ||
+      allow delete: if isAdmin() ||
         (resource.data.studentId is string && canStaffManageStudent(resource.data.studentId));
     }
 
@@ -117,7 +148,7 @@ service cloud.firestore {
         (isHeadteacher() && getUserDistrictId() == districtId) ||
         (isTeacher() && getUserDistrictId() == districtId)
       );
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || request.auth == null;
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth();
     }
 
     match /schools/{schoolId} {
@@ -131,7 +162,9 @@ service cloud.firestore {
           schoolId ==
             get(/databases/$(database)/documents/students/$(ud().portalStudentId)).data.schoolId)
       );
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || request.auth == null;
+      // Headteacher self-serve onboarding: any authenticated user may create a school doc once.
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || isDemoSeedSuperAdminAuth();
     }
 
     // --- Users ---
@@ -146,16 +179,12 @@ service cloud.firestore {
         (isDistrictScoped() && resource.data.districtId == getUserDistrictId())
       );
 
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || request.auth == null
-        || (isHeadteacher() && (
-             (resource == null && request.resource.data.role == 'teacher'
-              && request.resource.data.schoolId == ud().schoolId)
-             ||
-             (resource != null && resource.data.role == 'teacher'
-              && resource.data.schoolId == ud().schoolId)
-           ))
-        || (isAuthenticated() && request.auth.uid == userId && (
-             resource == null ||
+      // Self-create, or super admin / demo seed creating staff profile docs (non-Auth UIDs).
+      allow create: if isAdmin() || isDemoSeedSuperAdminAuth() ||
+        (isAuthenticated() && request.auth.uid == userId);
+      // Updates/deletes unchanged from prior strict write (no broad create here).
+      allow update, delete: if isAdmin() || isDemoSeedSuperAdminAuth() ||
+        (isAuthenticated() && request.auth.uid == userId && (
              !('role' in resource.data) ||
              resource.data.role != 'student_portal' ||
              (request.resource.data.role == 'student_portal' &&
@@ -170,19 +199,20 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         isDemoSeedSuperAdminAuth() ||
-        isTeacherOfCohort(cohortId) ||
+        isTeacherOfCohortData(resource.data) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() &&
           get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
             == getUserDistrictId())
       );
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher() || request.auth == null;
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher();
     }
 
     match /students/{studentId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         isDemoSeedSuperAdminAuth() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() && resource.data.schoolId != null &&
@@ -191,19 +221,21 @@ service cloud.firestore {
         studentPortalReadsStudent(studentId)
       );
 
-      allow write: if request.auth == null || isAdmin() || isDemoSeedSuperAdminAuth() ||
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() ||
         (isTeacher() &&
           (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
           (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
         (isHeadteacher() &&
           (request.resource == null || isHeadteacherOfCohortSchool(request.resource.data.cohortId)) &&
-          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)));
+          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId))) ||
+        studentPortalClearsActiveQuiz(studentId);
     }
 
     match /assessments/{assessmentId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         isDemoSeedSuperAdminAuth() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() && resource.data.schoolId != null &&
@@ -212,7 +244,7 @@ service cloud.firestore {
         (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
       );
 
-      allow write: if request.auth == null || isAdmin() || isDemoSeedSuperAdminAuth() ||
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() ||
         (isTeacher() &&
           (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
           (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
@@ -225,13 +257,14 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         isDemoSeedSuperAdminAuth() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() &&
           get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
             == getUserDistrictId())
       );
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher() || request.auth == null;
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher();
     }
 
     match /voiceObservations/{obsId} {

@@ -1,5 +1,7 @@
 rules_version = '2';
 
+// Production (basecamp-pilot). No demo seed / isDemoSeedSuperAdminAuth — use firestore.rules.demo for diagnostics only.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -50,12 +52,28 @@ service cloud.firestore {
       return ud().districtId;
     }
 
-    function isTeacherOfCohort(cohortId) {
-      let cohort = get(/databases/$(database)/documents/cohorts/$(cohortId)).data;
-      return isTeacher() && (
-        cohort.teacherId == request.auth.uid ||
-        ('linkedTeacherId' in ud() && ud().linkedTeacherId == cohort.teacherId)
+    function teacherIdMatchesStaffLinks(tid) {
+      return tid is string && (
+        tid == request.auth.uid ||
+        (ud().linkedTeacherId is string && ud().linkedTeacherId == tid) ||
+        (ud().role == 'teacher' && ud().linkedProfileId is string && ud().linkedProfileId == tid)
       );
+    }
+
+    function teacherOwnsCohortFields(data) {
+      return data.teacherId is string && teacherIdMatchesStaffLinks(data.teacherId);
+    }
+
+    function isTeacherOfCohortData(data) {
+      return isTeacher() && teacherOwnsCohortFields(data);
+    }
+
+    function teacherReadsDenormCohortTeacherData(d) {
+      return isTeacher() && d.cohortTeacherId is string && teacherIdMatchesStaffLinks(d.cohortTeacherId);
+    }
+
+    function isTeacherOfCohort(cohortId) {
+      return isTeacherOfCohortData(get(/databases/$(database)/documents/cohorts/$(cohortId)).data);
     }
 
     function isHeadteacherOfCohortSchool(cohortId) {
@@ -67,6 +85,14 @@ service cloud.firestore {
       return isStudentPortal() &&
         studentId == ud().portalStudentId &&
         get(/databases/$(database)/documents/students/$(studentId)).data.portalSessionToken == ud().portalSessionToken;
+    }
+
+    function studentPortalClearsActiveQuiz(studentId) {
+      return studentPortalReadsStudent(studentId) &&
+        request.resource != null &&
+        resource != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeQuiz', 'updatedAt']) &&
+        !('activeQuiz' in request.resource.data);
     }
 
     function canStaffManageStudent(studentId) {
@@ -149,7 +175,7 @@ service cloud.firestore {
     match /cohorts/{cohortId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        isTeacherOfCohort(cohortId) ||
+        isTeacherOfCohortData(resource.data) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() &&
           get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
@@ -161,6 +187,7 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() && resource.data.schoolId != null &&
@@ -175,12 +202,14 @@ service cloud.firestore {
           (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
         (isHeadteacher() &&
           (request.resource == null || isHeadteacherOfCohortSchool(request.resource.data.cohortId)) &&
-          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)));
+          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId))) ||
+        studentPortalClearsActiveQuiz(studentId);
     }
 
     match /assessments/{assessmentId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() && resource.data.schoolId != null &&
@@ -201,6 +230,7 @@ service cloud.firestore {
     match /senAlerts/{senAlertId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
+        teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
         (isDistrictScoped() &&

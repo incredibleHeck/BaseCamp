@@ -44,6 +44,7 @@ export {
   type GenerateExtensionActivityOptions,
 } from './extensionActivity';
 export { generatePracticeWorksheet } from './worksheetGeneration';
+export { generateGamifiedQuiz } from './quizGeneration';
 export {
   analyzeHybridTeacherDiagnostic,
   analyzeMultimodalVoiceObservation,

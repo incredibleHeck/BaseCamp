@@ -1,7 +1,5 @@
-import { getDocs, collection } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import type { Assessment } from './assessmentService';
-import { getStudentHistory } from './assessmentService';
+import { fetchAllAssessments, getStudentHistory } from './assessmentService';
 import { getStudents, type Student } from './studentService';
 
 export interface GradebookRow {
@@ -34,20 +32,17 @@ function timestampToMs(ts: unknown): number {
  * Load all assessments and join student names for CSV export (teacher-gradebook MVP).
  */
 export async function buildGradebookRows(classLabel: string): Promise<GradebookRow[]> {
-  const [snap, students] = await Promise.all([
-    getDocs(collection(db, 'assessments')),
-    getStudents(),
-  ]);
+  const [assessments, students] = await Promise.all([fetchAllAssessments(), getStudents()]);
   const nameById = new Map<string, string>();
   for (const s of students) {
     if (s.id) nameById.set(s.id, s.name);
   }
 
   const rows: GradebookRow[] = [];
-  snap.forEach((docSnap) => {
-    const data = docSnap.data() as Record<string, unknown>;
+  for (const assessment of assessments) {
+    const data = assessment as unknown as Record<string, unknown>;
     const studentId = String(data.studentId ?? '');
-    if (!studentId) return;
+    if (!studentId) continue;
 
     const a = data as unknown as Assessment;
     const ms = timestampToMs(a.timestamp);
@@ -70,7 +65,7 @@ export async function buildGradebookRows(classLabel: string): Promise<GradebookR
           ? a.diagnosis.replace(/\s+/g, ' ').slice(0, 120) + (a.diagnosis.length > 120 ? '…' : '')
           : '',
     });
-  });
+  }
 
   rows.sort((r1, r2) => {
     const n = r1.studentName.localeCompare(r2.studentName);

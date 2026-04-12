@@ -1,5 +1,6 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { chunkIds, getStaffAccessScope } from './staffFirestoreScope';
 import type { SenWarningFlag } from './ai/aiPrompts/types';
 import type { Assessment } from '../types/domain';
 
@@ -201,17 +202,57 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
   }
 };
 
-/** Full collection read for exports and cross-student analytics (use sparingly). */
-export async function fetchAllAssessments(): Promise<Assessment[]> {
-  try {
-    const snap = await getDocs(collection(db, 'assessments'));
+/**
+ * Loads assessments visible to the current user (scoped — matches Firestore rules).
+ * Super admin: full collection; others: school / cohort / district filters.
+ */
+async function queryAssessmentsForCurrentStaff(): Promise<Assessment[]> {
+  const scope = await getStaffAccessScope();
+  if (scope.kind === 'none') {
+    return [];
+  }
+
+  const pushSnap = (snap: Awaited<ReturnType<typeof getDocs>>) => {
     const list: Assessment[] = [];
     snap.forEach((d) => list.push(assessmentFromFirestoreDoc(d.id, d.data() as Record<string, unknown>)));
     return list;
+  };
+
+  try {
+    if (scope.kind === 'full') {
+      const snap = await getDocs(collection(db, 'assessments'));
+      return pushSnap(snap);
+    }
+    if (scope.kind === 'school') {
+      const q = query(collection(db, 'assessments'), where('schoolId', '==', scope.schoolId));
+      return pushSnap(await getDocs(q));
+    }
+    if (scope.kind === 'cohorts') {
+      const list: Assessment[] = [];
+      for (const part of chunkIds(scope.cohortIds, 10)) {
+        const q = query(collection(db, 'assessments'), where('cohortId', 'in', part));
+        list.push(...pushSnap(await getDocs(q)));
+      }
+      return list;
+    }
+    if (scope.kind === 'schools') {
+      const list: Assessment[] = [];
+      for (const part of chunkIds(scope.schoolIds, 10)) {
+        const q = query(collection(db, 'assessments'), where('schoolId', 'in', part));
+        list.push(...pushSnap(await getDocs(q)));
+      }
+      return list;
+    }
+    return [];
   } catch (e) {
-    console.error('fetchAllAssessments', e);
+    console.error('queryAssessmentsForCurrentStaff', e);
     return [];
   }
+}
+
+/** Assessments visible to the current user (replaces unscoped full collection reads). */
+export async function fetchAllAssessments(): Promise<Assessment[]> {
+  return queryAssessmentsForCurrentStaff();
 }
 
 export interface AssessmentSummaryEntry {
@@ -226,19 +267,21 @@ export interface AssessmentSummaryEntry {
  */
 export const getAssessmentSummaryByStudent = async (): Promise<Map<string, AssessmentSummaryEntry>> => {
   try {
-    const querySnapshot = await getDocs(collection(db, 'assessments'));
+    const assessments = await queryAssessmentsForCurrentStaff();
     const map = new Map<string, AssessmentSummaryEntry>();
 
-    querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      const studentId = data.studentId as string;
-      const rawTs = data.timestamp;
-      const tsMs = typeof rawTs === 'number' ? rawTs : (rawTs && typeof (rawTs as { toMillis?: () => number }).toMillis === 'function')
-        ? (rawTs as { toMillis: () => number }).toMillis()
-        : typeof rawTs === 'object' && rawTs !== null && 'seconds' in rawTs
-          ? (rawTs as { seconds: number }).seconds * 1000
-          : 0;
-      const diagnosis = (data.diagnosis as string) ?? null;
+    for (const a of assessments) {
+      const studentId = a.studentId;
+      const rawTs = a.timestamp;
+      const tsMs =
+        typeof rawTs === 'number'
+          ? rawTs
+          : rawTs && typeof (rawTs as { toMillis?: () => number }).toMillis === 'function'
+            ? (rawTs as { toMillis: () => number }).toMillis()
+            : typeof rawTs === 'object' && rawTs !== null && 'seconds' in rawTs
+              ? (rawTs as { seconds: number }).seconds * 1000
+              : 0;
+      const diagnosis = typeof a.diagnosis === 'string' ? a.diagnosis : null;
       const existing = map.get(studentId);
       const count = (existing?.count ?? 0) + 1;
       if (!existing || tsMs > existing.lastDate) {
@@ -246,7 +289,7 @@ export const getAssessmentSummaryByStudent = async (): Promise<Map<string, Asses
       } else {
         map.set(studentId, { lastDate: existing.lastDate, count, lastDiagnosis: existing.lastDiagnosis });
       }
-    });
+    }
 
     return map;
   } catch (error) {

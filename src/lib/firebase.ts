@@ -9,6 +9,7 @@
  * VITE_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
  * VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
  * VITE_FIREBASE_APP_ID=your_app_id
+ * VITE_FIREBASE_MEASUREMENT_ID=G-...   (optional; Analytics id from Console web app config)
  */
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
@@ -23,6 +24,11 @@ const FUNCTIONS_REGION =
     : 'europe-west1';
 
 const env = import.meta.env;
+const measurementId =
+  typeof env.VITE_FIREBASE_MEASUREMENT_ID === 'string' && env.VITE_FIREBASE_MEASUREMENT_ID.trim().length > 0
+    ? env.VITE_FIREBASE_MEASUREMENT_ID.trim()
+    : undefined;
+
 const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY ?? '',
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
@@ -30,6 +36,7 @@ const firebaseConfig = {
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET ?? '',
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '',
   appId: env.VITE_FIREBASE_APP_ID ?? '',
+  ...(measurementId ? { measurementId } : {}),
 };
 
 const hasValidConfig =

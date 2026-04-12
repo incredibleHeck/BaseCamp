@@ -4,17 +4,21 @@ import { defaultViewForRole } from './auth/enterpriseAccess';
 import { Login } from './components/Login';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import { removeFromQueue } from './services/core/offlineQueueService';
 import { useSyncManager } from './hooks/useSyncManager';
 import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
 import { AssessmentProvider } from './context/AssessmentContext';
-import { DEFAULT_DISTRICT_ID } from './config/organizationDefaults';
+import { DEFAULT_DISTRICT_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
+import { isDemoHostedBuild } from './config/demoMode';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
 
-const demoSeedEnabled = import.meta.env.VITE_ENABLE_DEMO_SEED === 'true';
+const demoSeedEnabled = isDemoHostedBuild;
+
+/** Diagnostics demo: Auth user may exist without Firestore `users/{uid}`; bootstrap matches demo rules + seeder emails. */
+const DEMO_SUPER_ADMIN_BOOTSTRAP_EMAILS = new Set(['superadmin@basecamp.com', 'super_admin@basecamp.com']);
 
 const VALID_ROLES: UserData['role'][] = [
   'teacher',
@@ -41,6 +45,27 @@ export default function App() {
             for (let attempt = 0; attempt < 15 && !userDocSnap.exists(); attempt++) {
               await new Promise((r) => setTimeout(r, 120));
               userDocSnap = await getDoc(userDocRef);
+            }
+          }
+
+          if (!userDocSnap.exists() && demoSeedEnabled && !user.isAnonymous) {
+            const em = user.email?.trim().toLowerCase() ?? '';
+            if (em && DEMO_SUPER_ADMIN_BOOTSTRAP_EMAILS.has(em)) {
+              try {
+                await setDoc(
+                  userDocRef,
+                  {
+                    role: 'super_admin',
+                    name: 'Super Admin',
+                    email: user.email ?? '',
+                    districtId: DEFAULT_DISTRICT_ID,
+                  },
+                  { merge: true }
+                );
+                userDocSnap = await getDoc(userDocRef);
+              } catch (bootstrapErr) {
+                console.error('Failed to bootstrap super admin Firestore profile:', bootstrapErr);
+              }
             }
           }
 
@@ -71,7 +96,7 @@ export default function App() {
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
 
           if (demoSeedEnabled) {
-            if (role === 'headteacher' && !schoolId) schoolId = 'sch-mando';
+            if (role === 'headteacher' && !schoolId) schoolId = DEMO_SEED_PRIMARY_SCHOOL_ID;
             if (role === 'circuit_supervisor' && !circuitId) circuitId = 'circuit-north';
             if (
               (role === 'district' ||

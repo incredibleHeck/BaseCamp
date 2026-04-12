@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
+import { chunkIds, getStaffAccessScope } from './staffFirestoreScope';
 import { normalizePortalLookupKey } from '../utils/accessLookupKeys';
 import {
   DEFAULT_CIRCUIT_ID,
@@ -51,6 +52,20 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
       updatedAt: now,
     };
     if (studentData.cohortId !== undefined) payload.cohortId = studentData.cohortId;
+    const cid = typeof studentData.cohortId === 'string' ? studentData.cohortId.trim() : '';
+    if (cid) {
+      try {
+        const cohortSnap = await getDoc(doc(db, 'cohorts', cid));
+        const rawTid = cohortSnap.data()?.teacherId;
+        if (typeof rawTid === 'string' && rawTid.trim()) payload.cohortTeacherId = rawTid.trim();
+      } catch {
+        /* cohort read may fail offline; rules still allow via cohortId path when possible */
+      }
+    }
+    if (studentData.cohortTeacherId !== undefined && payload.cohortTeacherId === undefined) {
+      const t = studentData.cohortTeacherId.trim();
+      if (t) payload.cohortTeacherId = t;
+    }
     const ngl = studentData.numericGradeLevel;
     if (typeof ngl === 'number' && Number.isFinite(ngl) && ngl > 0) payload.numericGradeLevel = ngl;
     if (studentData.primaryLanguage !== undefined) payload.primaryLanguage = studentData.primaryLanguage;
@@ -71,17 +86,41 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
 };
 
 /**
- * Retrieves all students from the Firestore "students" collection.
- * @returns Student rows (may include `cohortId` when provisioned).
+ * Retrieves students visible to the current user (scoped queries — required by Firestore rules).
+ * Super admin uses a full collection read; teachers/headteachers use cohort/school filters.
  */
 export const getStudents = async (): Promise<Student[]> => {
   try {
-    const querySnapshot = await getDocs(collection(db, 'students'));
-    const students: Student[] = [];
-    querySnapshot.forEach((doc) => {
-      students.push({ id: doc.id, ...doc.data() } as Student);
-    });
-    return students;
+    const scope = await getStaffAccessScope();
+    if (scope.kind === 'none') {
+      return [];
+    }
+    if (scope.kind === 'full') {
+      const querySnapshot = await getDocs(collection(db, 'students'));
+      const students: Student[] = [];
+      querySnapshot.forEach((d) => {
+        students.push({ id: d.id, ...d.data() } as Student);
+      });
+      return students;
+    }
+    if (scope.kind === 'school') {
+      return getStudentsBySchool(scope.schoolId);
+    }
+    if (scope.kind === 'cohorts') {
+      return getStudentsByCohorts(scope.cohortIds);
+    }
+    if (scope.kind === 'schools') {
+      const students: Student[] = [];
+      for (const part of chunkIds(scope.schoolIds, 10)) {
+        const q = query(collection(db, 'students'), where('schoolId', 'in', part));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((d) => {
+          students.push({ id: d.id, ...d.data() } as Student);
+        });
+      }
+      return students;
+    }
+    return [];
   } catch (error) {
     console.error('Error fetching students: ', error);
     return [];

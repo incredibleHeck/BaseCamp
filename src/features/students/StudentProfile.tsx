@@ -4,6 +4,7 @@ import { updateAssessment, type Assessment } from '../../services/assessmentServ
 import {
   analyzeLongitudinalSEN,
   formatCurriculumAlignmentLabel,
+  generateGamifiedQuiz,
   generatePracticeWorksheet,
   generateSubjectRoutedLessonPlan,
   resolveAiCurriculumPromptType,
@@ -12,6 +13,7 @@ import {
   type WorksheetResult,
 } from '../../services/ai/aiPrompts';
 import { getCurriculumContext, type CurriculumFramework } from '../../services/ai/curriculumRagService';
+import { pushQuizToPortal } from '../../services/core/portalSessionService';
 import { getStudent } from '../../services/studentService';
 import type { UserData } from '../../components/layout/Header';
 import { resolveLessonTranslanguagingDialect } from '../../constants/studentLanguages';
@@ -73,6 +75,8 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
   const [isExporting, setIsExporting] = useState(false);
   const [regeneratingAssessmentId, setRegeneratingAssessmentId] = useState<string | null>(null);
   const [generatingSheetFor, setGeneratingSheetFor] = useState<string | null>(null);
+  const [pushingQuizFor, setPushingQuizFor] = useState<string | null>(null);
+  const [portalToast, setPortalToast] = useState<string | null>(null);
   const [activeWorksheet, setActiveWorksheet] = useState<{ gap: string; data: WorksheetResult } | null>(null);
   const [senReport, setSenReport] = useState<SenRiskReport | null>(null);
   const [isAnalyzingSEN, setIsAnalyzingSEN] = useState(false);
@@ -90,6 +94,12 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     setSenReport(null);
     setIsAnalyzingSEN(false);
   }, [selectedStudentId]);
+
+  useEffect(() => {
+    if (!portalToast) return;
+    const t = window.setTimeout(() => setPortalToast(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [portalToast]);
 
   const runDeepPatternAnalysis = async () => {
     if (isAnalyzingSEN) return;
@@ -217,6 +227,34 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     const stored = lastWorksheetByCard[cardKey];
     if (!stored) return;
     printWorksheetToWindow(stored);
+  };
+
+  const handlePushInteractiveQuiz = async (
+    gapsForCard: string[],
+    subject: string,
+    assessment: Assessment
+  ) => {
+    if (!selectedStudentId || !assessment.id || !studentInfo) return;
+    const key = `${gapsForCard.join('|')}-${subject}`;
+    setPushingQuizFor(key);
+    try {
+      const quiz = await generateGamifiedQuiz(
+        studentInfo.name,
+        assessment.diagnosis || '',
+        resolveAiCurriculumPromptType(
+          school?.curriculumType,
+          inferCurriculumFrameworkFromAssessment(assessment)
+        )
+      );
+      if (quiz) {
+        await pushQuizToPortal(selectedStudentId, quiz);
+        setPortalToast('Quiz pushed to portal successfully!');
+      }
+    } catch (error) {
+      console.error('Push interactive quiz failed', error);
+    } finally {
+      setPushingQuizFor(null);
+    }
   };
 
   if (studentsLoading) {
@@ -402,9 +440,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
           lastWorksheetByCard={lastWorksheetByCard}
           regeneratingAssessmentId={regeneratingAssessmentId}
           generatingSheetFor={generatingSheetFor}
+          pushingQuizFor={pushingQuizFor}
           onRegenerateLessonPlan={handleRegenerateLessonPlan}
           onPrintLessonPlan={printLessonPlanWindow}
           onGeneratePracticeSheet={handleGeneratePracticeSheet}
+          onPushInteractiveQuiz={handlePushInteractiveQuiz}
           onPrintWorksheet={handlePrintWorksheet}
           onOpenWorksheet={setActiveWorksheet}
         />
@@ -443,6 +483,15 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         onClose={() => setActiveWorksheet(null)}
         curriculumAlignmentLabel={curriculumAlignmentLabel}
       />
+
+      {portalToast ? (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 max-w-[min(90vw,24rem)] -translate-x-1/2 rounded-xl border border-emerald-200/80 bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-900 shadow-lg shadow-emerald-900/10"
+          role="status"
+        >
+          {portalToast}
+        </div>
+      ) : null}
     </div>
   );
 }

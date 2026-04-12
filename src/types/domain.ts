@@ -6,6 +6,19 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { SenWarningFlag } from '../services/ai/aiPrompts/types';
 
+/** Single multiple-choice item for AI-generated gamified practice quizzes. */
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface GamifiedQuiz {
+  title: string;
+  questions: QuizQuestion[];
+}
+
 /** First-class class/cohort for grouping students within a school (NoSQL-friendly). */
 export interface Cohort {
   id: string;
@@ -37,6 +50,8 @@ export interface Student {
   grade: string;
   /** Canonical class/cohort (preferred over inferring from grade or classLabel). */
   cohortId?: string;
+  /** Denormalized from cohort.teacherId for Firestore rules (linked teacher profile id). */
+  cohortTeacherId?: string;
   /** Denormalized from cohort at write time; preferred by AI over parsing {@link grade} free text. */
   numericGradeLevel?: number;
   /** Phase 3: stable IDs for B2G rollups */
@@ -55,6 +70,8 @@ export interface Student {
   portalAccessCode?: string;
   /** Server-side secret paired with {@link portalAccessCode} for portal session rules (not shown in UI). */
   portalSessionToken?: string;
+  /** AI-generated quiz pushed by staff for the learner’s portal session (read on next sync). */
+  activeQuiz?: GamifiedQuiz;
   /** Optional: include de-identified rows in fine-tuning pilot export */
   trainingDataOptIn?: boolean;
   /** Explicit denial blocks AI training / fine-tune exports regardless of {@link trainingDataOptIn}. */
@@ -90,6 +107,8 @@ export interface Assessment {
   classLabel?: string;
   /** Denormalized cohort for queries and rollups (mirrors student’s cohort at write time). */
   cohortId?: string;
+  /** Denormalized cohort.teacherId for staff list queries (avoids cohort get() in security rules). */
+  cohortTeacherId?: string;
   /** Denormalized school for school-scoped queries without student joins. */
   schoolId?: string;
   /** Actor who created the assessment (audit / rollups). */

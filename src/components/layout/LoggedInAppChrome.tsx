@@ -61,7 +61,7 @@ const DASHBOARD_CONFIG: Record<
   { title: string; welcome: string }
 > = {
   teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
-  headteacher: { title: 'School Leadership Dashboard', welcome: 'Here is your school performance overview.' },
+  headteacher: { title: 'Headmaster Dashboard', welcome: 'Here is your school-wide performance overview.' },
   district: { title: 'District Analytics Dashboard', welcome: 'Here is the district-wide performance overview.' },
   sen_coordinator: { title: 'SEN Coordination', welcome: 'Review screening signals and district context.' },
   circuit_supervisor: { title: 'Circuit Supervision', welcome: 'Target support using geographic risk bands.' },

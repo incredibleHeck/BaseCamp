@@ -1,5 +1,5 @@
-import { collection, doc, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, doc, setDoc, writeBatch, getDocs } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { normalizeAccessLookupKey } from './accessLookupKeys';
 
 const GHANAIAN_FIRST_NAMES = [
@@ -41,14 +41,21 @@ function getMasteryLevel(score: number): string {
   return 'intervention_needed';
 }
 
-async function clearCollection(collectionName: string) {
+/** @param preserveDocumentId When set (e.g. signed-in super admin UID), that document is not deleted. */
+async function clearCollection(collectionName: string, preserveDocumentId?: string) {
   const querySnapshot = await getDocs(collection(db, collectionName));
   if (querySnapshot.empty) return;
-  
+
   const batch = writeBatch(db);
+  let deletes = 0;
   querySnapshot.forEach((document) => {
+    if (preserveDocumentId && document.id === preserveDocumentId) {
+      return;
+    }
     batch.delete(document.ref);
+    deletes += 1;
   });
+  if (deletes === 0) return;
   await batch.commit();
 }
 
@@ -57,8 +64,10 @@ async function clearCollection(collectionName: string) {
  * Targets: 1 District, 3 Schools, 3 Headteachers, 9 Teachers, 9 Cohorts, 45 Students, ~135 Assessments.
  */
 export async function seedDemoEnvironment() {
+  const seedingUserUid = auth.currentUser?.uid;
+
   console.log('Purging existing demo data...');
-  await clearCollection('users');
+  await clearCollection('users', seedingUserUid);
   await clearCollection('accessLookups');
   await clearCollection('cohorts');
   await clearCollection('students');
@@ -153,6 +162,7 @@ export async function seedDemoEnvironment() {
           name: generateName(),
           grade: `Basic ${grade}`,
           cohortId: cohortId,
+          cohortTeacherId: teacherId,
           numericGradeLevel: grade,
           schoolId: schoolId,
           primaryLanguage: getRandomElement(PRIMARY_LANGUAGES),
@@ -168,6 +178,7 @@ export async function seedDemoEnvironment() {
             studentId,
             schoolId,
             cohortId,
+            cohortTeacherId: teacherId,
             status: 'open',
             riskLevel: 'high',
             condition: officialSenStatus,
@@ -192,6 +203,7 @@ export async function seedDemoEnvironment() {
             masteryLevel: getMasteryLevel(rawScore),
             schoolId: schoolId,
             cohortId: cohortId,
+            cohortTeacherId: teacherId,
             updatedAt: updatedAt,
             timestamp: updatedAt,
             status: 'Completed',
@@ -205,6 +217,20 @@ export async function seedDemoEnvironment() {
   // Execute Batch
   try {
     await batch.commit();
+    // Restore signed-in super admin profile (purge skipped this UID; merge ensures role + district after seed).
+    const user = auth.currentUser;
+    if (user?.uid) {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          role: 'super_admin',
+          name: 'Super Admin',
+          email: user.email ?? '',
+          districtId,
+        },
+        { merge: true }
+      );
+    }
     console.log('Demo Environment Seeded Successfully!');
   } catch (error) {
     console.error('❌ Failed to seed demo environment:', error);

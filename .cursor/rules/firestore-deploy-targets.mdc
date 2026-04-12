@@ -1,0 +1,38 @@
+---
+description: Deploy correct Firestore rules to pilot (strict) vs diagnostics (demo); never mix
+alwaysApply: true
+---
+
+# Firestore rules and Firebase projects
+
+Two rule files exist:
+
+| File | Firebase project | Purpose |
+|------|------------------|---------|
+| `firestore.rules` | **basecamp-pilot** (production) | Strict; no demo seed / no public `accessLookups` get |
+| `firestore.rules.demo` | **basecamp-diagnostics** (demo) | Demo seed, access-code staff login, demo helpers |
+
+## Vite env: pilot vs diagnostics
+
+- **Default production build** (`vite build`): loads **`.env.production`** → **basecamp-pilot**.
+- **Diagnostics hosting** (`npm run deploy:diagnostics`): runs **`vite build --mode diagnostics`**, which loads **`.env.diagnostics`** → **basecamp-diagnostics** (must match Hosting / Auth for `basecamp-diagnostics.web.app`). Do not ship a pilot bundle to diagnostics Hosting.
+- **`.env.example`** documents the **demo** (diagnostics) Firebase variables for local setup.
+
+## Safe deploy commands
+
+- **Pilot (production):** `npm run deploy:firestore:pilot`  
+  Uses root [`firebase.json`](firebase.json) → `firestore.rules` → `--project basecamp-pilot`.
+
+- **Diagnostics (demo only):** `npm run deploy:firestore:demo`  
+  Uses [`firebase.demo.json`](firebase.demo.json) → `firestore.rules.demo` → `--project basecamp-diagnostics`.
+
+- **Full stack to diagnostics (recommended):** `npm run deploy:diagnostics`  
+  Build + `firebase deploy` with [`firebase.demo.json`](firebase.demo.json) so hosting/functions/storage **and** Firestore use **`firestore.rules.demo`**. Demo access-code login requires public `accessLookups` reads; never use root `firebase.json` for a diagnostics-only deploy.
+
+## Do not
+
+- Deploy **`firestore.rules.demo`** to **basecamp-pilot** (would weaken production).
+- Run `firebase deploy --only firestore:rules --project basecamp-diagnostics` **without** `--config firebase.demo.json` — that would upload **`firestore.rules`** (strict) to diagnostics and break demo seed / access-code login.
+- Run `firebase deploy --project basecamp-diagnostics` **without** `--config firebase.demo.json` — same problem (strict rules on the demo project).
+
+Default `firebase deploy` (root config) applies **`firestore.rules`**; only use that for **pilot** when deploying rules, or use the npm scripts above.

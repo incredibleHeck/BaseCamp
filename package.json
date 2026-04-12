@@ -16,7 +16,10 @@
     "backfill:security-lookups": "tsx scripts/backfillSecurityLookups.ts",
     "backfill:security-lookups:dry": "tsx scripts/backfillSecurityLookups.ts --dry-run",
     "onboard-pilot": "tsx scripts/onboardPilot.ts",
-    "deploy:functions": "firebase deploy --only functions"
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:firestore:pilot": "firebase deploy --only firestore:rules --project basecamp-pilot",
+    "deploy:firestore:demo": "firebase deploy --only firestore:rules --project basecamp-diagnostics --config firebase.demo.json",
+    "deploy:diagnostics": "npm run build -- --mode diagnostics && firebase deploy --config firebase.demo.json --project basecamp-diagnostics"
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",
