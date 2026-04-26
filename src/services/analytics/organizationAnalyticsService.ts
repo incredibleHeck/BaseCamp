@@ -1,5 +1,5 @@
 import type { Assessment, Student } from '../../types/domain';
-import { AGGREGATION_MIN_N, DEFAULT_ORGANIZATION_ID, circuitName } from '../../config/organizationDefaults';
+import { AGGREGATION_MIN_N, DEFAULT_ORGANIZATION_ID, schoolById } from '../../config/organizationDefaults';
 import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { computeTopLearningGap, effectiveNumericScore } from '../../utils/analyticsUtils';
 import { fetchAllAssessments, getStudentHistory } from '../assessmentService';
@@ -239,7 +239,7 @@ export const generateJurisdictionAnalytics = getNetworkMetrics;
 /** @deprecated use getNetworkMetrics */
 export const generateDistrictAnalytics = getNetworkMetrics;
 
-/** Org / network scope for org-admin panels (heatmap, playbook lift) — not persisted. */
+/** Org / network scope for org-admin panels (campus gap analysis, playbook lift) — not persisted. */
 export interface OrganizationFeatureScope {
   organizationId?: string;
   circuitId?: string;
@@ -263,7 +263,7 @@ function studentInOrganizationScope(s: Student, scope: OrganizationFeatureScope)
 }
 
 /**
- * Students and their assessments for scoped organization analytics (circuit heatmap, playbook lift).
+ * Students and their assessments for scoped organization analytics (branch gap analysis, playbook lift).
  */
 export async function fetchScopedJurisdictionRollupInputs(
   scope: OrganizationFeatureScope
@@ -275,12 +275,17 @@ export async function fetchScopedJurisdictionRollupInputs(
   return { students: scopedStudents, assessments };
 }
 
-export interface CircuitSkillRollup {
-  circuitId: string;
-  circuitName: string;
+/** Min share of learners with support need (latest assessment) for "high" band, inclusive. Pedagogical, not medical risk. */
+const SUPPORT_BAND_HIGH_MIN_PCT = 45;
+/** Min share for "moderate" band; below this (after privacy rules) is "low". */
+const SUPPORT_BAND_MODERATE_MIN_PCT = 22;
+
+export interface BranchGapRollup {
+  schoolId: string;
+  branchName: string;
   studentCount: number;
-  /** Share of students in circuit with recent weakness on skill (0–100), or null if suppressed */
-  pctWeak: number | null;
+  /** Share of students in the branch with support need on the skill (0–100), or null if suppressed. */
+  pctSupportNeeded: number | null;
   band: 'low' | 'moderate' | 'high' | 'suppressed';
 }
 
@@ -306,7 +311,7 @@ function latestAssessmentByStudent(assessments: Assessment[], studentIds: Set<st
   return map;
 }
 
-function studentWeakOnSkill(a: Assessment | undefined, skillKeyword: string): boolean {
+function studentNeedsSupportOnSkill(a: Assessment | undefined, skillKeyword: string): boolean {
   if (!a) return false;
   const kw = skillKeyword.toLowerCase();
   const inTags = (a.gapTags ?? []).some((t) => t.toLowerCase().includes(kw));
@@ -314,67 +319,103 @@ function studentWeakOnSkill(a: Assessment | undefined, skillKeyword: string): bo
   return inTags || inDiag;
 }
 
-export function buildCircuitSkillRollups(
+function branchDisplayNameForGroup(schoolKey: string, cohort: Student[]): string {
+  if (schoolKey === UNKNOWN_SCHOOL_KEY) return UNKNOWN_SCHOOL_KEY;
+  const catalog = schoolById(schoolKey)?.name;
+  if (catalog) return catalog;
+  const denorm = cohort.find((s) => s.schoolName?.trim())?.schoolName?.trim();
+  if (denorm) return denorm;
+  return schoolKey;
+}
+
+export function buildBranchGapRollups(
   students: Student[],
   assessments: Assessment[],
   skillKeyword: string
-): CircuitSkillRollup[] {
-  const byCircuit = new Map<string, Student[]>();
+): BranchGapRollup[] {
+  const bySchool = new Map<string, Student[]>();
   for (const s of students) {
     if (!s.id) continue;
-    const cid = s.circuitId ?? 'unknown';
-    const list = byCircuit.get(cid) ?? [];
+    const sk = schoolGroupKey(s);
+    const list = bySchool.get(sk) ?? [];
     list.push(s);
-    byCircuit.set(cid, list);
+    bySchool.set(sk, list);
   }
 
   const idsAll = new Set(students.map((s) => s.id).filter(Boolean) as string[]);
   const latest = latestAssessmentByStudent(assessments, idsAll);
 
-  const result: CircuitSkillRollup[] = [];
-  for (const [circuitId, cohort] of byCircuit.entries()) {
+  const result: BranchGapRollup[] = [];
+  for (const [schoolId, cohort] of bySchool.entries()) {
+    const branchName = branchDisplayNameForGroup(schoolId, cohort);
     const n = cohort.length;
     if (n < AGGREGATION_MIN_N) {
       result.push({
-        circuitId,
-        circuitName: circuitName(circuitId === 'unknown' ? undefined : circuitId),
+        schoolId,
+        branchName,
         studentCount: n,
-        pctWeak: null,
+        pctSupportNeeded: null,
         band: 'suppressed',
       });
       continue;
     }
-    let weak = 0;
+    let supportNeededCount = 0;
     for (const s of cohort) {
       if (!s.id) continue;
       const a = latest.get(s.id);
-      if (studentWeakOnSkill(a, skillKeyword)) weak += 1;
+      if (studentNeedsSupportOnSkill(a, skillKeyword)) supportNeededCount += 1;
     }
-    const pct = Math.round((weak / n) * 100);
-    const band: CircuitSkillRollup['band'] = pct >= 45 ? 'high' : pct >= 22 ? 'moderate' : 'low';
+    const pct = Math.round((supportNeededCount / n) * 100);
+    const band: BranchGapRollup['band'] =
+      pct >= SUPPORT_BAND_HIGH_MIN_PCT
+        ? 'high'
+        : pct >= SUPPORT_BAND_MODERATE_MIN_PCT
+          ? 'moderate'
+          : 'low';
     result.push({
-      circuitId,
-      circuitName: circuitName(circuitId === 'unknown' ? undefined : circuitId),
+      schoolId,
+      branchName,
       studentCount: n,
-      pctWeak: pct,
+      pctSupportNeeded: pct,
       band,
     });
   }
 
-  return result.sort((a, b) => (b.pctWeak ?? -1) - (a.pctWeak ?? -1));
+  return result.sort((a, b) => (b.pctSupportNeeded ?? -1) - (a.pctSupportNeeded ?? -1));
 }
 
-export function heatmapRowsToCsv(rows: CircuitSkillRollup[], skillLabel: string): string {
-  const header = ['circuitId', 'circuitName', 'studentCount', 'pctWeak', 'band', 'skill'];
+function supportTierLabelForCsv(band: BranchGapRollup['band']): string {
+  switch (band) {
+    case 'low':
+      return 'Low';
+    case 'moderate':
+      return 'Moderate';
+    case 'high':
+      return 'High';
+    case 'suppressed':
+      return 'Suppressed';
+    default:
+      return String(band);
+  }
+}
+
+/** CSV columns align with the Campus Gap Analysis table: campus, learners, gap %, tier, skill focus. */
+export function branchGapRowsToCsv(rows: BranchGapRollup[], skillLabel: string): string {
+  const header = [
+    'Campus/Branch',
+    'Total Learners',
+    'Gap Prevalence (%)',
+    'Support Tier',
+    'Skill focus',
+  ];
   const lines = [
-    header.join(','),
+    header.map((h) => (h.includes(',') || h.includes('"') ? `"${h.replace(/"/g, '""')}"` : h)).join(','),
     ...rows.map((r) =>
       [
-        r.circuitId,
-        `"${r.circuitName.replace(/"/g, '""')}"`,
+        `"${r.branchName.replace(/"/g, '""')}"`,
         r.studentCount,
-        r.pctWeak === null ? '' : r.pctWeak,
-        r.band,
+        r.pctSupportNeeded === null ? '' : r.pctSupportNeeded,
+        supportTierLabelForCsv(r.band),
         `"${skillLabel.replace(/"/g, '""')}"`,
       ].join(',')
     ),

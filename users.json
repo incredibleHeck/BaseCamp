@@ -1,0 +1,12 @@
+{"users": [
+{
+  "localId": "ekaBOyY9DhP1siZtv45BIrSm0T53",
+  "email": "sadmin@basecamp.com",
+  "emailVerified": false,
+  "passwordHash": "xMQSM2jwDtRHRWw7Ur+vchkMOsih0NbBC03xTXhugz5tBlo8ev22U9aXH07owSgw3HnLosL8gQC+k029Wyjeeg==",
+  "salt": "qhAhaeFbYc2AKg==",
+  "createdAt": "1777205592448",
+  "disabled": false,
+  "customAttributes": "{\"role\":\"super_admin\"}",
+  "providerUserInfo": []
+}]}

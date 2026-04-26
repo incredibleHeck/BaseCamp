@@ -3,7 +3,7 @@ import type { UserData } from '../components/layout/Header';
 export type EnterpriseRole = UserData['role'];
 
 export interface EnterpriseNavFlags {
-  showHeatmap: boolean;
+  showCampusGapAnalysis: boolean;
   showPlaybooks: boolean;
   showSenInbox: boolean;
 }
@@ -12,37 +12,37 @@ export function enterpriseNavForRole(role: EnterpriseRole): EnterpriseNavFlags {
   switch (role) {
     case 'teacher':
       return {
-        showHeatmap: false,
+        showCampusGapAnalysis: false,
         showPlaybooks: false,
         showSenInbox: false,
       };
     case 'headteacher':
       return {
-        showHeatmap: false,
+        showCampusGapAnalysis: false,
         showPlaybooks: true,
         showSenInbox: false,
       };
     case 'org_admin':
       return {
-        showHeatmap: true,
+        showCampusGapAnalysis: true,
         showPlaybooks: true,
         showSenInbox: false,
       };
     case 'sen_coordinator':
       return {
-        showHeatmap: true,
+        showCampusGapAnalysis: true,
         showPlaybooks: false,
         showSenInbox: true,
       };
     case 'super_admin':
       return {
-        showHeatmap: true,
+        showCampusGapAnalysis: true,
         showPlaybooks: true,
         showSenInbox: true,
       };
     default:
       return {
-        showHeatmap: false,
+        showCampusGapAnalysis: false,
         showPlaybooks: false,
         showSenInbox: false,
       };

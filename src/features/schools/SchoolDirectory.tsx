@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building, Loader2, Mail, MapPin, User } from 'lucide-react';
+import { Building, Loader2, Mail, MapPin, Plus, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
 import { InviteTeacherDialog } from './InviteTeacherDialog';
-import { getSchoolsInOrganization } from '../../services/schoolService';
-import { getHeadteachersInOrganization } from '../../services/userService';
+import { CreateBranchDialog } from './CreateBranchDialog';
+import { getAllSchools, getSchoolsInOrganization } from '../../services/schoolService';
+import { getAllHeadteachers, getHeadteachersInOrganization } from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
 
 interface SchoolDirectoryProps {
@@ -26,23 +27,29 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
   const [error, setError] = useState<string | null>(null);
   const [circuitFilter, setCircuitFilter] = useState<string>('All');
   const [inviteSchoolId, setInviteSchoolId] = useState<string | null>(null);
+  const [createBranchOpen, setCreateBranchOpen] = useState(false);
 
   const organizationId = user.organizationId;
+  const isSuperAdmin = user.role === 'super_admin';
   const canInviteToSchools = user.role === 'org_admin' || user.role === 'super_admin';
 
   const loadData = useCallback(async () => {
-    if (!organizationId) {
+    if (!isSuperAdmin && !organizationId) {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     setError(null);
     try {
-      const [fetchedSchools, fetchedHeadteachers] = await Promise.all([
-        getSchoolsInOrganization(organizationId),
-        getHeadteachersInOrganization(organizationId)
-      ]);
+      const [fetchedSchools, fetchedHeadteachers] = await Promise.all(
+        isSuperAdmin
+          ? [getAllSchools(), getAllHeadteachers()]
+          : [
+              getSchoolsInOrganization(organizationId!),
+              getHeadteachersInOrganization(organizationId!),
+            ]
+      );
 
       // Map headteachers to schools
       const headteacherMap = new Map<string, string>();
@@ -66,13 +73,13 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [isSuperAdmin, organizationId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  if (!organizationId) {
+  if (!isSuperAdmin && !organizationId) {
     return (
       <div className="p-8 text-center text-zinc-500">
         You must be assigned an organization to view the branch directory.
@@ -97,10 +104,18 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
             Branch directory
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Branches and campuses in your school network, with lead contacts.
+            {isSuperAdmin
+              ? 'All branches and campuses on the platform, with lead contacts.'
+              : 'Branches and campuses in your school network, with lead contacts.'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isSuperAdmin && (
+            <Button type="button" size="sm" onClick={() => setCreateBranchOpen(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              Add new branch
+            </Button>
+          )}
           <select
             value={circuitFilter}
             onChange={(e) => setCircuitFilter(e.target.value)}
@@ -118,7 +133,9 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Network branches</CardTitle>
-          <CardDescription>Branches in your organization.</CardDescription>
+          <CardDescription>
+            {isSuperAdmin ? 'Every branch across all organizations.' : 'Branches in your organization.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -217,6 +234,12 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
           if (!o) setInviteSchoolId(null);
         }}
         targetSchoolId={inviteSchoolId ?? ''}
+      />
+
+      <CreateBranchDialog
+        open={createBranchOpen}
+        onOpenChange={setCreateBranchOpen}
+        onCreated={() => void loadData()}
       />
     </div>
   );

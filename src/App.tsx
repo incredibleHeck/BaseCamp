@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { type UserData } from './components/layout/Header';
 import { defaultViewForRole } from './auth/enterpriseAccess';
 import { Login } from './components/Login';
+import { OrganizationSignupWizard } from './features/auth/OrganizationSignupWizard';
 import { auth, db } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -70,6 +72,14 @@ export default function App() {
               } catch (bootstrapErr) {
                 console.error('Failed to bootstrap super admin Firestore profile:', bootstrapErr);
               }
+            }
+          }
+
+          // Self-serve org signup: registerOrganization may create users/{uid} shortly after createUser.
+          if (!user.isAnonymous && !userDocSnap.exists()) {
+            for (let attempt = 0; attempt < 20 && !userDocSnap.exists(); attempt++) {
+              await new Promise((r) => setTimeout(r, 150));
+              userDocSnap = await getDoc(userDocRef);
             }
           }
 
@@ -151,18 +161,62 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
-      {isAuthLoading ? (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <p className="text-gray-500">Loading BaseCamp...</p>
-        </div>
-      ) : !currentUser ? (
-        <Login />
-      ) : (
-        <ErrorBoundary>
-          <LoggedInApp user={currentUser} />
-        </ErrorBoundary>
-      )}
+      <Routes>
+        <Route
+          path="/register-network"
+          element={<RegisterNetworkScreen isAuthLoading={isAuthLoading} currentUser={currentUser} />}
+        />
+        <Route
+          path="*"
+          element={<AppShell isAuthLoading={isAuthLoading} currentUser={currentUser} />}
+        />
+      </Routes>
     </>
+  );
+}
+
+function RegisterNetworkScreen({
+  isAuthLoading,
+  currentUser,
+}: {
+  isAuthLoading: boolean;
+  currentUser: UserData | null;
+}) {
+  const navigate = useNavigate();
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading BaseCamp...</p>
+      </div>
+    );
+  }
+  if (currentUser) {
+    return <Navigate to="/" replace />;
+  }
+  return <OrganizationSignupWizard onBack={() => navigate('/')} />;
+}
+
+function AppShell({
+  isAuthLoading,
+  currentUser,
+}: {
+  isAuthLoading: boolean;
+  currentUser: UserData | null;
+}) {
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading BaseCamp...</p>
+      </div>
+    );
+  }
+  if (!currentUser) {
+    return <Login />;
+  }
+  return (
+    <ErrorBoundary>
+      <LoggedInApp user={currentUser} />
+    </ErrorBoundary>
   );
 }
 

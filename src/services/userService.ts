@@ -77,6 +77,33 @@ export async function getHeadteachersInOrganization(organizationId: string): Pro
   }
 }
 
+/**
+ * All headteacher profiles (`role == headteacher`). Intended for `super_admin` UI only — unscoped
+ * queries are not safe for `org_admin` because rules require org alignment per document.
+ */
+export async function getAllHeadteachers(): Promise<HeadteacherSummary[]> {
+  try {
+    const snap = await getDocs(
+      query(collection(db, USERS_COLLECTION), where('role', '==', 'headteacher'))
+    );
+    const map = new Map<string, HeadteacherSummary>();
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, unknown>;
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : undefined;
+      map.set(docSnap.id, {
+        id: docSnap.id,
+        name: name || docSnap.id,
+        schoolId,
+      });
+    });
+    return [...map.values()];
+  } catch (error) {
+    console.error('userService.getAllHeadteachers failed:', error);
+    return [];
+  }
+}
+
 /** @deprecated use getHeadteachersInOrganization */
 export const getHeadteachersInJurisdiction = getHeadteachersInOrganization;
 /** @deprecated */

@@ -307,3 +307,4 @@ export const deleteSchoolTeacher = onCall(
 );
 
 export { inviteStaffMember } from './users/inviteStaffMember.js';
+export { registerOrganization } from './organizations/registerOrganization.js';

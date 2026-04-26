@@ -1,5 +1,6 @@
 import {StrictMode, useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { LazyMotion } from 'motion/react';
 import App from './App.tsx';
 import {StudentPortalApp} from './features/students/StudentPortalApp.tsx';
@@ -26,7 +27,11 @@ function Root() {
     return <ParentDigestPortal />;
   }
 
-  return <App />;
+  return (
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

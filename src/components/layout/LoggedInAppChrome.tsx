@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { AnimatePresence, m } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import {
+  BarChart2,
   BarChart3,
   ClipboardList,
   FlaskConical,
   Home,
   LayoutGrid,
   Map,
-  MapPin,
   School,
   UserCircle,
   Users,
@@ -25,7 +25,7 @@ import { ClassRoster } from '../../features/students/ClassRoster';
 import { OrganizationDashboard } from '../../features/dashboards/OrganizationDashboard';
 import { HeadmasterDashboard } from '../../features/dashboards/HeadmasterDashboard';
 import { CohortManager } from '../../features/schools/CohortManager';
-import { CircuitHeatmapPanel } from '../../features/assessments/CircuitHeatmapPanel';
+import { CampusGapAnalysisPanel } from '../../features/assessments/CampusGapAnalysisPanel';
 import { SenDashboard } from '../../features/sen-coordinator/SenDashboard';
 import { PlaybookLiftLeaderboard } from '../../features/dashboards/PlaybookLiftLeaderboard';
 import { FineTunePilotPanel } from '../../features/ai-tools/FineTunePilotPanel';
@@ -56,7 +56,7 @@ export type View =
   | 'manage-classes'
   | 'staff-directory'
   | 'school-directory'
-  | 'org-admin-heatmap'
+  | 'org-admin-campus-gaps'
   | 'org-admin-playbooks'
   | 'sen-inbox'
   | 'fine-tune-pilot'
@@ -196,8 +196,8 @@ export function LoggedInAppChrome({
         );
       case 'manage-classes':
         return <CohortManager />;
-      case 'org-admin-heatmap':
-        return <CircuitHeatmapPanel user={user} />;
+      case 'org-admin-campus-gaps':
+        return <CampusGapAnalysisPanel user={user} />;
       case 'org-admin-playbooks':
         return <PlaybookLiftLeaderboard user={user} />;
       case 'sen-inbox':
@@ -289,12 +289,12 @@ export function LoggedInAppChrome({
         icon: Building,
       });
     }
-    if (enterpriseNav.showHeatmap) {
+    if (enterpriseNav.showCampusGapAnalysis) {
       secondary.push({
-        view: 'org-admin-heatmap',
-        label: showPremiumShell ? 'Support map' : 'Risk map',
-        shortLabel: showPremiumShell ? 'Support' : 'Risk',
-        icon: MapPin,
+        view: 'org-admin-campus-gaps',
+        label: 'Campus Gap Analysis',
+        shortLabel: 'Gaps',
+        icon: BarChart2,
       });
     }
     if (enterpriseNav.showPlaybooks) {
@@ -355,7 +355,7 @@ export function LoggedInAppChrome({
     }
 
     return { primarySidebarNav: primary, secondarySidebarNav: secondary };
-  }, [user.role, enterpriseNav.showHeatmap, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom, showPremiumShell]);
+  }, [user.role, enterpriseNav.showCampusGapAnalysis, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom]);
 
   const mobileNavItems = useMemo(
     () => [...primarySidebarNav, ...secondarySidebarNav],

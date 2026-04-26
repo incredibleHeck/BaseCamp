@@ -8,6 +8,7 @@ import { seedDemoEnvironment } from '../utils/demoSeeder';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { AnimatePresence, m } from 'motion/react';
+import { Link } from 'react-router-dom';
 import { isDemoHostedBuild } from '../config/demoMode';
 
 type Role = 'teacher' | 'headteacher' | 'org_admin' | 'sen_coordinator' | 'super_admin';
@@ -305,6 +306,17 @@ export function Login() {
                   Super Admin login
                 </button>
 
+                <p className="mt-4 text-center text-xs text-zinc-500 leading-relaxed">
+                  Are you a school network administrator?{' '}
+                  <Link
+                    to="/register-network"
+                    className="font-medium text-indigo-600 hover:text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
+                  >
+                    Register your organization here
+                  </Link>
+                  .
+                </p>
+
               </m.div>
             ) : (
               <m.div
@@ -502,6 +514,15 @@ export function Login() {
                         )}
                       </Button>
                     </form>
+                    <p className="mt-4 text-center text-xs text-zinc-500">
+                      Are you a school network administrator?{' '}
+                      <Link
+                        to="/register-network"
+                        className="font-medium text-indigo-600 hover:text-indigo-700 underline-offset-2 hover:underline"
+                      >
+                        Register your organization here
+                      </Link>
+                    </p>
                   </div>
                 )}
               </m.div>
@@ -510,6 +531,15 @@ export function Login() {
         </div>
 
         <div className="bg-gray-50 px-8 py-4 border-t border-gray-100">
+          <p className="text-center text-xs text-zinc-500 mb-3">
+            Are you a school network administrator?{' '}
+            <Link
+              to="/register-network"
+              className="font-medium text-indigo-600 hover:text-indigo-700 underline-offset-2 hover:underline"
+            >
+              Register your organization here
+            </Link>
+          </p>
           <p className="flex items-center justify-center gap-1.5 text-xs text-gray-400 font-medium mb-1 text-center">
             <Lock size={12} /> Secure Demo Access · HecTech
           </p>
