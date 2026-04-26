@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Loader2, Radio } from 'lucide-react';
 import { rtdb } from '../../lib/firebase';
 import { useStudentLiveSession } from '../../hooks/useStudentLiveSession';
@@ -20,6 +20,24 @@ export function StudentFollowMeSession({ sessionId, displayName, firestoreStuden
     displayName,
     firestoreStudentId
   );
+
+  const sawNonNullState = useRef(false);
+  const autoLeftRef = useRef(false);
+
+  useEffect(() => {
+    sawNonNullState.current = false;
+    autoLeftRef.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (state != null) sawNonNullState.current = true;
+  }, [state]);
+
+  useEffect(() => {
+    if (!authReady || state !== null || !sawNonNullState.current || autoLeftRef.current) return;
+    autoLeftRef.current = true;
+    onLeave();
+  }, [authReady, state, onLeave]);
 
   if (!rtdb) {
     return (

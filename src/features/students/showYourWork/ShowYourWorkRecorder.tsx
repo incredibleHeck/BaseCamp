@@ -14,12 +14,6 @@ export interface ShowYourWorkRecorderProps {
   onRecordingComplete?: (blob: Blob, meta: ShowYourWorkMeta) => void | Promise<void>;
 }
 
-function formatTime(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 export function ShowYourWorkRecorder({
   studentId,
   learnerLabel,
@@ -28,48 +22,61 @@ export function ShowYourWorkRecorder({
   onRecordingComplete,
 }: ShowYourWorkRecorderProps) {
   const [recording, setRecording] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [seconds, setSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const streamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Browser timer handles (`number`); avoid `NodeJS.Timeout` from Node typings. */
+  const tickRef = useRef<number | null>(null);
+  const hardCapRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number>(0);
+
+  const clearHardCap = useCallback(() => {
+    const id = hardCapRef.current;
+    if (id !== null) {
+      window.clearTimeout(id);
+      hardCapRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (tickRef.current) clearInterval(tickRef.current);
+      const tickId = tickRef.current;
+      if (tickId !== null) window.clearInterval(tickId);
+      clearHardCap();
       abortRef.current?.abort();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (previewRef.current) previewRef.current.srcObject = null;
     };
-  }, []);
+  }, [clearHardCap]);
 
   const stopTicks = useCallback(() => {
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
+    const id = tickRef.current;
+    if (id !== null) {
+      window.clearInterval(id);
       tickRef.current = null;
     }
   }, []);
 
   const cleanupStream = useCallback(() => {
     stopTicks();
+    clearHardCap();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (previewRef.current) previewRef.current.srcObject = null;
     abortRef.current = null;
     setRecording(false);
-    setSeconds(0);
-  }, [stopTicks]);
+    setRemainingSeconds(0);
+  }, [stopTicks, clearHardCap]);
 
   const startRecording = useCallback(async () => {
-    if (recording || disabled) return;
+    if (recording || preparing || disabled) return;
     onRecordingStart?.();
     setError(null);
-    setRecording(true);
-    setSeconds(0);
-    stopTicks();
-    tickRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    setPreparing(true);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -91,6 +98,23 @@ export function ShowYourWorkRecorder({
 
       const ac = new AbortController();
       abortRef.current = ac;
+
+      recordingStartedAtRef.current = performance.now();
+      setPreparing(false);
+      setRecording(true);
+      setRemainingSeconds(Math.ceil(SHOW_YOUR_WORK_MAX_MS / 1000));
+
+      stopTicks();
+      tickRef.current = window.setInterval(() => {
+        const elapsed = performance.now() - recordingStartedAtRef.current;
+        const rem = Math.max(0, SHOW_YOUR_WORK_MAX_MS - elapsed);
+        setRemainingSeconds(Math.max(0, Math.ceil(rem / 1000)));
+      }, 100);
+
+      hardCapRef.current = window.setTimeout(() => {
+        hardCapRef.current = null;
+        abortRef.current?.abort();
+      }, SHOW_YOUR_WORK_MAX_MS);
 
       const run = async (): Promise<{ blob: Blob; meta: ShowYourWorkMeta }> => {
         const useWeb = await canUseWebCodecsRecording();
@@ -132,14 +156,25 @@ export function ShowYourWorkRecorder({
         });
     } catch (e) {
       stopTicks();
+      clearHardCap();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (previewRef.current) previewRef.current.srcObject = null;
+      setPreparing(false);
       setRecording(false);
-      setSeconds(0);
+      setRemainingSeconds(0);
       setError(e instanceof Error ? e.message : 'Camera or microphone unavailable');
     }
-  }, [recording, disabled, onRecordingStart, onRecordingComplete, cleanupStream, stopTicks]);
+  }, [
+    recording,
+    preparing,
+    disabled,
+    onRecordingStart,
+    onRecordingComplete,
+    cleanupStream,
+    stopTicks,
+    clearHardCap,
+  ]);
 
   const stopRecording = useCallback(() => {
     abortRef.current?.abort();
@@ -169,7 +204,7 @@ export function ShowYourWorkRecorder({
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {!recording ? (
+        {!recording && !preparing ? (
           <button
             type="button"
             disabled={disabled}
@@ -179,15 +214,28 @@ export function ShowYourWorkRecorder({
             <Clapperboard className="h-4 w-4" />
             Record
           </button>
-        ) : (
+        ) : preparing ? (
           <button
             type="button"
-            onClick={stopRecording}
-            className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-rose-700"
+            disabled
+            className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-xl bg-violet-400 px-4 py-3 text-sm font-semibold text-white shadow opacity-90"
           >
-            <Square className="h-4 w-4 fill-current" />
-            Stop ({formatTime(seconds)})
+            Starting camera…
           </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="inline-flex min-w-[140px] items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white shadow hover:bg-rose-700"
+            >
+              <Square className="h-4 w-4 fill-current" />
+              Stop
+            </button>
+            <p className="text-center text-xs font-medium text-violet-800" aria-live="polite">
+              {remainingSeconds}s remaining
+            </p>
+          </div>
         )}
       </div>
       <p className="mt-2 text-[11px] text-gray-500">

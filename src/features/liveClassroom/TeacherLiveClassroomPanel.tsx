@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { auth, rtdb } from '../../lib/firebase';
 import { usePremiumTier } from '../../context/PremiumTierContext';
 import { useLiveClassroomSession } from '../../context/LiveClassroomSessionContext';
 import { useTeacherLiveSession } from '../../hooks/useTeacherLiveSession';
-import { setSessionStateInitial, updateSessionState } from '../../services/liveClassroom/liveSessionRtdbService';
+import {
+  attachTeacherLiveSessionDisconnectHandler,
+  setSessionStateInitial,
+  updateSessionState,
+} from '../../services/liveClassroom/liveSessionRtdbService';
 import type { LiveSessionQuestion, LiveSessionState } from '../../types/liveSessionRtdb';
 import { buildStudentFollowMePortalUrl } from '../../utils/studentPortalLiveLink';
 
@@ -32,6 +36,7 @@ export function TeacherLiveClassroomPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
+  const disconnectCancelRef = useRef<(() => Promise<void>) | null>(null);
 
   const canUse = isPremiumTier && rtdb && rtdbReady;
 
@@ -48,6 +53,13 @@ export function TeacherLiveClassroomPanel() {
     }
     setBusy(true);
     try {
+      try {
+        await disconnectCancelRef.current?.();
+      } catch {
+        /* ignore cancel errors */
+      }
+      disconnectCancelRef.current = null;
+
       const id = beginLiveSession();
       const first = DEMO_ROUNDS.questions[0];
       const st: LiveSessionState = {
@@ -59,6 +71,7 @@ export function TeacherLiveClassroomPanel() {
         startedAtMs: Date.now(),
       };
       await setSessionStateInitial(id, st);
+      disconnectCancelRef.current = await attachTeacherLiveSessionDisconnectHandler(id);
     } catch (e) {
       console.error(e);
       setErr('Could not start session. Check Realtime Database rules and URL.');
@@ -85,6 +98,12 @@ export function TeacherLiveClassroomPanel() {
     if (!activeSessionId) return;
     setBusy(true);
     try {
+      try {
+        await disconnectCancelRef.current?.();
+      } catch {
+        /* ignore */
+      }
+      disconnectCancelRef.current = null;
       await updateSessionState(activeSessionId, { status: 'concluded', endedAtMs: Date.now() });
       endLiveSession();
     } catch (e) {

@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
 import {
@@ -19,28 +19,67 @@ export type ProcessShowYourWorkInput = {
   encoder?: string;
 };
 
+/** Skip duplicate Gemini work if another invocation claimed this object recently. */
+const PROCESSING_LEASE_MS = 180_000;
+
 function dedupeDocId(bucket: string, objectName: string, generation: string | number): string {
   const h = createHash('sha256').update(`${bucket}\0${objectName}\0${String(generation)}`).digest('hex');
   return h.slice(0, 40);
 }
 
+type ClaimResult = 'proceed' | 'skip_completed' | 'skip_in_flight';
+
 /**
- * Download portal MP4, run Gemini, write `showYourWorkInsights/{dedupeId}` (idempotent when already completed).
+ * Download portal MP4, run Gemini, write `showYourWorkInsights/{dedupeId}`.
+ * Skips when already `completed`, or when a fresh `processing` lease is held (retries after lease expiry).
  */
 export async function processShowYourWorkVideo(input: ProcessShowYourWorkInput): Promise<void> {
   const db = getFirestore();
   const docId = dedupeDocId(input.bucket, input.objectName, input.storageGeneration);
   const ref = db.collection('showYourWorkInsights').doc(docId);
-  const existing = await ref.get();
-  if (existing.exists) {
-    const st = existing.data()?.status;
-    if (st === 'completed') {
-      logger.info('processShowYourWorkVideo: skip duplicate (already completed)', {
-        docId,
-        objectName: input.objectName,
-      });
-      return;
+
+  const claim = await db.runTransaction(async (tx): Promise<ClaimResult> => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      const d = snap.data() as Record<string, unknown>;
+      if (d.status === 'completed') return 'skip_completed';
+      if (d.status === 'processing') {
+        const started = d.processingStartedAt;
+        if (started instanceof Timestamp) {
+          if (Date.now() - started.toMillis() < PROCESSING_LEASE_MS) return 'skip_in_flight';
+        }
+      }
     }
+    tx.set(
+      ref,
+      {
+        status: 'processing',
+        processingStartedAt: FieldValue.serverTimestamp(),
+        studentId: input.studentId,
+        storagePath: input.objectName,
+        storageGeneration: String(input.storageGeneration),
+        sizeBytes: input.sizeBytes,
+        encoder: input.encoder ?? null,
+        contentType: input.contentType ?? 'video/mp4',
+      },
+      { merge: true },
+    );
+    return 'proceed';
+  });
+
+  if (claim === 'skip_completed') {
+    logger.info('processShowYourWorkVideo: skip duplicate (already completed)', {
+      docId,
+      objectName: input.objectName,
+    });
+    return;
+  }
+  if (claim === 'skip_in_flight') {
+    logger.info('processShowYourWorkVideo: skip duplicate (processing lease active)', {
+      docId,
+      objectName: input.objectName,
+    });
+    return;
   }
 
   const studentSnap = await db.collection('students').doc(input.studentId).get();

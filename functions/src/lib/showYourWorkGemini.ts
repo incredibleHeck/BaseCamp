@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { cleanJsonResponse } from './cleanJsonResponse.js';
 
 /** Default aligned with weekly parent digest (`weeklyParentDigest.ts`). Override with `GEMINI_MODEL` in Functions runtime. */
-export const DEFAULT_SHOW_YOUR_WORK_MODEL = 'gemini-3-flash-preview';
+export const DEFAULT_SHOW_YOUR_WORK_MODEL = 'gemini-3-flash';
 
 /**
  * Inline video payloads above this size may exceed Gemini request limits (base64 expands ~4/3).

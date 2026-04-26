@@ -62,6 +62,29 @@ export async function setSessionStateInitial(sessionId: string, state: LiveSessi
 }
 
 /**
+ * When the teacher's client disconnects unexpectedly, mark the session concluded so
+ * `onLiveSessionConcluded` can persist and RTDB can be removed. We use `update` (not `remove()`):
+ * rules only allow `state` writes for the owner, and deletion of the session root is not permitted
+ * from the client.
+ *
+ * Call the returned cancel function before a normal "End session" so the server does not queue a duplicate concluded write.
+ */
+export async function attachTeacherLiveSessionDisconnectHandler(
+  sessionId: string
+): Promise<() => Promise<void>> {
+  const db = requireRtdb();
+  const r = ref(db, liveSessionStatePath(sessionId));
+  const od = onDisconnect(r);
+  /** Server timestamp at disconnect time (Firebase RTDB sentinel; not in TS typings as `ServerValue`). */
+  const endedAtMs = { '.sv': 'timestamp' } as unknown as number;
+  await od.update({
+    status: 'concluded',
+    endedAtMs,
+  });
+  return () => od.cancel();
+}
+
+/**
  * Full snapshot of `answers` (sufficient for in-memory leaderboard at class scale).
  * For a pure delta stream, use `subscribeAnswersDeltas` instead.
  */

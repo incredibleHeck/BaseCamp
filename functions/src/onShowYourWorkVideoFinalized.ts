@@ -26,10 +26,10 @@ export function createOnShowYourWorkVideoFinalized(region: RegionOption, opts: C
   return onObjectFinalized(
     {
       region,
-      memory: '4GiB',
-      timeoutSeconds: 540,
-      cpu: 2,
-      concurrency: 80,
+      memory: '1GiB',
+      timeoutSeconds: 120,
+      cpu: 1,
+      concurrency: 2,
       secrets: [opts.geminiApiKey],
       ...(opts.bucket ? { bucket: opts.bucket } : {}),
     },
