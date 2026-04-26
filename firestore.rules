@@ -7,6 +7,35 @@ service cloud.firestore {
 
     // --- Helpers ---
 
+    // Custom-claims vault: `schoolId` is stamped on the ID token (inviteStaffMember, etc.).
+    function isUserInSchool(schoolId) {
+      return request.auth != null && request.auth.token.schoolId == schoolId;
+    }
+
+    // Same tenant when token is missing (legacy / before token refresh): Firestore `users/{uid}.schoolId`.
+    function isOrgAdminRole() {
+      return ud().role == 'org_admin' || ud().role == 'school_admin';
+    }
+
+    function isStaffUserDocInSchool(schoolId) {
+      return schoolId is string && userExists() && ud().schoolId == schoolId &&
+        (ud().role == 'teacher' || ud().role == 'headteacher' || isOrgAdminRole());
+    }
+
+    function orgIdFromSchoolData(d) {
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+    }
+
+    function orgIdForSchoolId(sid) {
+      return orgIdFromSchoolData(get(/databases/$(database)/documents/schools/$(sid)).data);
+    }
+
+    // Org admin + SEN: read all branches (`schools`) in the same organization (uses profile `organizationId` with legacy `districtId`).
+    function isOrgAdminForSchoolId(sid) {
+      return isJurisdictionOversight() && sid is string &&
+        orgIdForSchoolId(sid) == getUserOrgId();
+    }
+
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -35,9 +64,9 @@ service cloud.firestore {
       return isAuthenticated() && userExists() && ud().role == 'headteacher';
     }
 
-    function isDistrictScoped() {
+    function isJurisdictionOversight() {
       return isAuthenticated() && userExists() &&
-        (ud().role == 'district' || ud().role == 'sen_coordinator');
+        (isOrgAdminRole() || ud().role == 'sen_coordinator');
     }
 
     function isStudentPortal() {
@@ -48,8 +77,13 @@ service cloud.firestore {
       return ud().schoolId;
     }
 
-    function getUserDistrictId() {
-      return ud().districtId;
+    function getUserOrgId() {
+      let u = ud();
+      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : u.districtId;
+    }
+
+    function userDocOrgId(d) {
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
     }
 
     function teacherIdMatchesStaffLinks(tid) {
@@ -97,8 +131,14 @@ service cloud.firestore {
 
     function canStaffManageStudent(studentId) {
       let st = get(/databases/$(database)/documents/students/$(studentId)).data;
-      return isTeacherOfCohort(st.cohortId) ||
-        (isHeadteacher() && st.schoolId == getUserSchoolId());
+      return isAdmin() || (
+        st.schoolId is string && (
+          isOrgAdminForSchoolId(st.schoolId) ||
+          ((isUserInSchool(st.schoolId) || isStaffUserDocInSchool(st.schoolId)) &&
+            (isTeacherOfCohort(st.cohortId) || isHeadteacher())
+          )
+        )
+      );
     }
 
     // --- Lookups ---
@@ -123,9 +163,19 @@ service cloud.firestore {
     match /districts/{districtId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (isDistrictScoped() && districtId == getUserDistrictId()) ||
-        (isHeadteacher() && getUserDistrictId() == districtId) ||
-        (isTeacher() && getUserDistrictId() == districtId)
+        (isJurisdictionOversight() && districtId == getUserOrgId()) ||
+        (isHeadteacher() && getUserOrgId() == districtId) ||
+        (isTeacher() && getUserOrgId() == districtId)
+      );
+      allow write: if isAdmin();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (isJurisdictionOversight() && orgId == getUserOrgId()) ||
+        (isHeadteacher() && getUserOrgId() == orgId) ||
+        (isTeacher() && getUserOrgId() == orgId)
       );
       allow write: if isAdmin();
     }
@@ -133,8 +183,8 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(schoolId)).data.districtId == getUserDistrictId()) ||
+        (isJurisdictionOversight() &&
+          orgIdForSchoolId(schoolId) == getUserOrgId()) ||
         (isHeadteacher() && schoolId == getUserSchoolId()) ||
         (isTeacher() && schoolId == getUserSchoolId()) ||
         (isStudentPortal() &&
@@ -154,7 +204,7 @@ service cloud.firestore {
         request.auth.uid == userId ||
         (userExists() && ud().linkedProfileId == userId) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.districtId == getUserDistrictId())
+        (isJurisdictionOversight() && userDocOrgId(resource.data) == getUserOrgId())
       );
 
       // Self-serve onboarding: first-time create of own `users/{uid}` only (Admin SDK bypasses rules for admin tools).
@@ -173,58 +223,89 @@ service cloud.firestore {
     // --- Instructional data ---
 
     match /cohorts/{cohortId} {
+      // Documents must store `schoolId` (see cohortService) for claim-based tenant checks.
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        isTeacherOfCohortData(resource.data) ||
-        (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId())
+        (resource.data.schoolId is string && (
+          isUserInSchool(resource.data.schoolId) ||
+          isStaffUserDocInSchool(resource.data.schoolId) ||
+          isOrgAdminForSchoolId(resource.data.schoolId) ||
+          (isTeacher() && isTeacherOfCohortData(resource.data) &&
+            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))
+          )
+        ))
       );
-      allow write: if isAdmin() || isHeadteacher();
+      allow create, update, delete: if isAdmin() || (
+        request.resource.data.schoolId is string &&
+        (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
+         isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
+        (isHeadteacher() || (isJurisdictionOversight() && isOrgAdminForSchoolId(request.resource.data.schoolId)))
+      );
     }
 
     match /students/{studentId} {
+      // `students` documents must include `schoolId` (see studentService) for `isUserInSchool` to apply.
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        teacherReadsDenormCohortTeacherData(resource.data) ||
-        (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
-        (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.schoolId != null &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId()) ||
+        (resource.data.schoolId is string && (
+          isUserInSchool(resource.data.schoolId) ||
+          isStaffUserDocInSchool(resource.data.schoolId) ||
+          isOrgAdminForSchoolId(resource.data.schoolId) ||
+          (isHeadteacher() && (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))) ||
+          (isTeacher() && (teacherReadsDenormCohortTeacherData(resource.data) ||
+            (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId))) &&
+            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId)))
+        )) ||
         studentPortalReadsStudent(studentId)
       );
 
       allow write: if isAdmin() ||
-        (isTeacher() &&
-          (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
-          (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
-        (isHeadteacher() &&
-          (request.resource == null || isHeadteacherOfCohortSchool(request.resource.data.cohortId)) &&
-          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId))) ||
-        studentPortalClearsActiveQuiz(studentId);
+        studentPortalClearsActiveQuiz(studentId) ||
+        (request.resource != null && request.resource.data.schoolId is string &&
+          (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
+            isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
+          (resource == null || resource.data.schoolId == request.resource.data.schoolId) &&
+          (
+            (isTeacher() &&
+              isTeacherOfCohort(request.resource.data.cohortId) &&
+              (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
+            (isHeadteacher() &&
+              isHeadteacherOfCohortSchool(request.resource.data.cohortId) &&
+              (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)))
+          )
+        );
     }
 
     match /assessments/{assessmentId} {
+      // `assessments` documents should store `schoolId` (assessmentService) for tenant scoping.
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        teacherReadsDenormCohortTeacherData(resource.data) ||
-        (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
-        (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.schoolId != null &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId()) ||
+        (resource.data.schoolId is string && (
+          isUserInSchool(resource.data.schoolId) ||
+          isStaffUserDocInSchool(resource.data.schoolId) ||
+          isOrgAdminForSchoolId(resource.data.schoolId) ||
+          (isHeadteacher() && (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))) ||
+          (isTeacher() && (teacherReadsDenormCohortTeacherData(resource.data) ||
+            (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId))) &&
+            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId)))
+        )) ||
         (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
       );
 
       allow write: if isAdmin() ||
-        (isTeacher() &&
-          (request.resource == null || isTeacherOfCohort(request.resource.data.cohortId)) &&
-          (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
-        (isHeadteacher() &&
-          (request.resource == null || isHeadteacherOfCohortSchool(request.resource.data.cohortId)) &&
-          (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)));
+        (request.resource != null && request.resource.data.schoolId is string &&
+          (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
+            isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
+          (resource == null || resource.data.schoolId == request.resource.data.schoolId) &&
+          (
+            (isTeacher() &&
+              isTeacherOfCohort(request.resource.data.cohortId) &&
+              (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
+            (isHeadteacher() &&
+              isHeadteacherOfCohortSchool(request.resource.data.cohortId) &&
+              (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)))
+          )
+        );
     }
 
     match /senAlerts/{senAlertId} {
@@ -233,9 +314,8 @@ service cloud.firestore {
         teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId())
+        (isJurisdictionOversight() &&
+          orgIdForSchoolId(resource.data.schoolId) == getUserOrgId())
       );
       allow write: if isAdmin() || isHeadteacher();
     }
@@ -253,11 +333,10 @@ service cloud.firestore {
           get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
             == getUserSchoolId()) ||
         (resource.data.studentId != null &&
-          isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId()) ||
+          isJurisdictionOversight() &&
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          ) == getUserOrgId()) ||
         (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
       );
 
@@ -286,11 +365,10 @@ service cloud.firestore {
           get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
           == getUserSchoolId()) ||
         (resource.data.studentId != null &&
-          isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId())
+          isJurisdictionOversight() &&
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          ) == getUserOrgId())
       );
       allow write: if false;
     }
@@ -327,26 +405,25 @@ service cloud.firestore {
           isTeacherOfCohort(get(/databases/$(database)/documents/students/$(studentId)).data.cohortId)) ||
         (isHeadteacher() && exists(/databases/$(database)/documents/students/$(studentId)) &&
           get(/databases/$(database)/documents/students/$(studentId)).data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+        (isJurisdictionOversight() && exists(/databases/$(database)/documents/students/$(studentId)) &&
           get(/databases/$(database)/documents/students/$(studentId)).data.schoolId is string &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId())
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
+          ) == getUserOrgId())
       );
       allow write: if false;
     }
 
     // --- Precomputed analytics (written by Cloud Functions Admin SDK only) ---
-    // summaryId is the school id. District read uses schools/{summaryId}.districtId (see Pillar 3).
+    // summaryId is the branch `schools` doc id. Org admin read: school must be in the same organization.
 
     match /aggregations/{summaryId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         (isHeadteacher() && summaryId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
+        (isJurisdictionOversight() &&
           exists(/databases/$(database)/documents/schools/$(summaryId)) &&
-          get(/databases/$(database)/documents/schools/$(summaryId)).data.districtId == getUserDistrictId())
+          orgIdForSchoolId(summaryId) == getUserOrgId())
       );
       allow write: if false;
     }

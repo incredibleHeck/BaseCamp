@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
 import type { UserData } from '../../components/layout/Header';
 import {
-  fetchScopedDistrictRollupInputs,
-  type DistrictFeatureScope,
-} from '../../services/analytics/districtAnalyticsService';
+  fetchScopedJurisdictionRollupInputs,
+  type OrganizationFeatureScope,
+} from '../../services/analytics/organizationAnalyticsService';
 import { computePlaybookLiftLeaderboard, type PlaybookLiftRow } from '../../services/analytics/playbookAnalyticsService';
-import { DEFAULT_DISTRICT_ID } from '../../config/organizationDefaults';
+import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 
 interface PlaybookLiftLeaderboardProps {
   user: UserData;
@@ -16,13 +17,14 @@ export function PlaybookLiftLeaderboard({ user }: PlaybookLiftLeaderboardProps) 
   const [rows, setRows] = useState<PlaybookLiftRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const scope: DistrictFeatureScope = useMemo(
+  const orgScope = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
+  const scope: OrganizationFeatureScope = useMemo(
     () => ({
-      districtId: user.districtId ?? DEFAULT_DISTRICT_ID,
+      organizationId: orgScope,
       schoolId: user.role === 'headteacher' ? user.schoolId : undefined,
       circuitId: undefined,
     }),
-    [user.role, user.districtId, user.schoolId]
+    [orgScope, user.role, user.schoolId]
   );
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export function PlaybookLiftLeaderboard({ user }: PlaybookLiftLeaderboardProps) 
     (async () => {
       setLoading(true);
       try {
-        const dash = await fetchScopedDistrictRollupInputs(scope);
+        const dash = await fetchScopedJurisdictionRollupInputs(scope);
         if (cancelled) return;
         setRows(computePlaybookLiftLeaderboard(dash.assessments));
       } finally {

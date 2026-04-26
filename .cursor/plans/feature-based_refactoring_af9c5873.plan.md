@@ -50,7 +50,7 @@ Create the following directories under `src/features/`:
 
 Move components from `src/components/` to their respective feature directories:
 
-- **dashboards**: `DistrictDashboard.tsx`, `HeadmasterDashboard.tsx`, `PlaybookLiftLeaderboard.tsx`
+- **dashboards**: `OrganizationDashboard.tsx`, `NetworkBranchKPIs.tsx`, `HeadmasterDashboard.tsx`, `PlaybookLiftLeaderboard.tsx`
 - **students**: `StudentProfile.tsx`, `AddStudentForm.tsx`, `StudentRecordCard.tsx`, `ClassRoster.tsx`, `StudentPortalApp.tsx`
 - **assessments**: `AssessmentSetup.tsx`, `DiagnosticReportCard.tsx`, `CircuitHeatmapPanel.tsx`, `WorksheetModal.tsx`, `PendingAnalyses.tsx`
 - **schools**: `SchoolDirectory.tsx`, `StaffDirectory.tsx`, `TeacherDirectory.tsx`, `CohortManager.tsx`, `CreateCohortDialog.tsx`
@@ -65,7 +65,7 @@ Move components from `src/components/` to their respective feature directories:
 
 Create subdirectories in `src/services/` and move related services:
 
-- **analytics/**: `districtAnalyticsService.ts`, `schoolAnalyticsService.ts`, `playbookAnalyticsService.ts`
+- **analytics/**: `organizationAnalyticsService.ts`, `schoolAnalyticsService.ts`, `playbookAnalyticsService.ts`
 - **ai/**: Move `aiPrompts/` directory here, along with `fineTunePilotService.ts`, `curriculumRagService.ts`
 - **core/**: `offlineQueueService.ts`, `portalSessionService.ts`, `whatsappConnectService.ts`
 

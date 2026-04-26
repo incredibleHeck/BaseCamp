@@ -76,12 +76,18 @@ export async function seedDemoEnvironment() {
 
   console.log('Seeding new demo environment...');
   const batch = writeBatch(db);
-  const districtId = 'dist-demo-1';
-  
-  // 1. Create District
-  const districtRef = doc(db, 'districts', districtId);
+  const organizationId = 'dist-demo-1';
+
+  // 1. Create organization (B2B network) + legacy `districts` row for the same id during migration
+  const orgRef = doc(db, 'organizations', organizationId);
+  batch.set(orgRef, {
+    name: 'Demo private school network',
+    region: 'Greater Accra',
+    createdAt: Date.now(),
+  });
+  const districtRef = doc(db, 'districts', organizationId);
   batch.set(districtRef, {
-    name: 'Greater Accra Demo District',
+    name: 'Demo private school network (legacy path)',
     region: 'Greater Accra',
     createdAt: Date.now(),
   });
@@ -94,8 +100,9 @@ export async function seedDemoEnvironment() {
     const schoolId = `school${s}`;
     
     batch.set(doc(db, 'schools', schoolId), {
-      name: `Demo School ${s}`,
-      districtId: districtId,
+      name: `Demo Branch ${s}`,
+      organizationId,
+      districtId: organizationId,
       location: 'Greater Accra',
     });
 
@@ -107,14 +114,16 @@ export async function seedDemoEnvironment() {
       email: headEmail,
       username: headEmail,
       schoolId: schoolId,
-      districtId: districtId,
+      organizationId,
+      districtId: organizationId,
     });
     batch.set(doc(db, 'accessLookups', normalizeAccessLookupKey(headEmail)), {
       profileUserId: headteacherId,
       role: 'headteacher',
       name: `Headteacher ${s}`,
       schoolId,
-      districtId,
+      organizationId,
+      districtId: organizationId,
       email: headEmail,
       username: headEmail,
     });
@@ -129,14 +138,16 @@ export async function seedDemoEnvironment() {
         email: teacherUsername,
         username: teacherUsername,
         schoolId: schoolId,
-        districtId: districtId,
+        organizationId,
+        districtId: organizationId,
       });
       batch.set(doc(db, 'accessLookups', normalizeAccessLookupKey(teacherUsername)), {
         profileUserId: teacherId,
         role: 'teacher',
         name: `Teacher ${t}`,
         schoolId,
-        districtId,
+        organizationId,
+        districtId: organizationId,
         email: teacherUsername,
         username: teacherUsername,
       });
@@ -165,6 +176,8 @@ export async function seedDemoEnvironment() {
           cohortTeacherId: teacherId,
           numericGradeLevel: grade,
           schoolId: schoolId,
+          organizationId,
+          districtId: organizationId,
           primaryLanguage: getRandomElement(PRIMARY_LANGUAGES),
           dataProcessingConsent: true,
           createdAt: now - Math.floor(Math.random() * threeMonthsMs),
@@ -177,6 +190,8 @@ export async function seedDemoEnvironment() {
           batch.set(doc(db, 'senAlerts', senAlertId), {
             studentId,
             schoolId,
+            organizationId,
+            districtId: organizationId,
             cohortId,
             cohortTeacherId: teacherId,
             status: 'open',
@@ -217,7 +232,7 @@ export async function seedDemoEnvironment() {
   // Execute Batch
   try {
     await batch.commit();
-    // Restore signed-in super admin profile (purge skipped this UID; merge ensures role + district after seed).
+    // Restore signed-in super admin profile (purge skipped this UID; merge ensures role + jurisdiction after seed).
     const user = auth.currentUser;
     if (user?.uid) {
       await setDoc(
@@ -226,7 +241,8 @@ export async function seedDemoEnvironment() {
           role: 'super_admin',
           name: 'Super Admin',
           email: user.email ?? '',
-          districtId,
+          organizationId,
+          districtId: organizationId,
         },
         { merge: true }
       );

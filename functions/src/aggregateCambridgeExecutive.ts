@@ -28,6 +28,8 @@ export type CambridgeExecutiveSummaryDoc = {
   summaryKind: typeof SUMMARY_KIND;
   schemaVersion: typeof SCHEMA_VERSION;
   schoolId: string;
+  organizationId?: string;
+  /** @deprecated Prefer organizationId; dual-written during B2B migration. */
   districtId?: string;
   windowStartMs: number;
   windowEndMs: number;
@@ -105,8 +107,10 @@ export async function runAggregateCambridgeExecutive(
 
   for (const schoolDoc of schoolsSnap.docs) {
     const schoolId = schoolDoc.id;
-    const schoolData = schoolDoc.data() as { districtId?: string };
-    const districtId = typeof schoolData.districtId === 'string' ? schoolData.districtId : undefined;
+    const schoolData = schoolDoc.data() as { organizationId?: string; districtId?: string };
+    const organizationIdFromSchool =
+      (typeof schoolData.organizationId === 'string' ? schoolData.organizationId : undefined) ||
+      (typeof schoolData.districtId === 'string' ? schoolData.districtId : undefined);
 
     try {
       const assessmentsSnap = await db
@@ -152,7 +156,9 @@ export async function runAggregateCambridgeExecutive(
         summaryKind: SUMMARY_KIND,
         schemaVersion: SCHEMA_VERSION,
         schoolId,
-        ...(districtId ? { districtId } : {}),
+        ...(organizationIdFromSchool
+          ? { organizationId: organizationIdFromSchool, districtId: organizationIdFromSchool }
+          : {}),
         windowStartMs,
         windowEndMs,
         generatedAt: FieldValue.serverTimestamp(),

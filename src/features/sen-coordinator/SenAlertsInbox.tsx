@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import type { UserData } from '../../components/layout/Header';
 import {
-  listSenAlertsForDistrict,
+  listSenAlertsInJurisdiction,
   updateSenAlertStatus,
   type SenAlert,
 } from '../../services/senAlertService';
-import { DEFAULT_DISTRICT_ID } from '../../config/organizationDefaults';
+import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { SenAlertCard } from './SenAlertCard';
 
 interface SenAlertsInboxProps {
@@ -15,16 +16,16 @@ interface SenAlertsInboxProps {
 }
 
 export function SenAlertsInbox({ user, onAlertClick }: SenAlertsInboxProps) {
-  const districtId = user.districtId ?? DEFAULT_DISTRICT_ID;
+  const organizationId = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
   const [alerts, setAlerts] = useState<SenAlert[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const list = await listSenAlertsForDistrict(districtId);
+    const list = await listSenAlertsInJurisdiction(organizationId);
     setAlerts(list);
     setLoading(false);
-  }, [districtId]);
+  }, [organizationId]);
 
   useEffect(() => {
     void load();
@@ -50,7 +51,7 @@ export function SenAlertsInbox({ user, onAlertClick }: SenAlertsInboxProps) {
             Automated <strong>educational screening signals</strong> from longitudinal numeracy patterns. Not a medical
             diagnosis—coordinators should review, dismiss, snooze, or escalate with a reason (audit trail).
           </p>
-          <p className="text-xs text-gray-500 mt-2">District: {districtId}</p>
+          <p className="text-xs text-gray-500 mt-2">Organization: {organizationId}</p>
         </div>
       </div>
 

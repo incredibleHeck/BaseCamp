@@ -1,5 +1,8 @@
-import React from 'react';
-import { Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mail, Users } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Button } from '../../components/ui/button';
+import { InviteTeacherDialog } from './InviteTeacherDialog';
 
 export interface TeacherEntry {
   id: string;
@@ -24,12 +27,29 @@ export function TeacherDirectory({
   schoolName = "Mando Basic School",
   teachers = defaultTeachers,
 }: TeacherDirectoryProps) {
+  const { user, tokenClaims } = useAuth();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const targetSchool = tokenClaims.schoolId ?? user.schoolId ?? '';
+  const showInvite =
+    Boolean(targetSchool) &&
+    (user.role === 'headteacher' || user.role === 'org_admin' || user.role === 'super_admin');
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8 w-full animate-in fade-in duration-500">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Teacher Directory — {schoolName}</h2>
-        <p className="text-gray-600 mt-1 text-sm">Contact and class assignment for school staff.</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Teacher Directory — {schoolName}</h2>
+          <p className="text-gray-600 mt-1 text-sm">Contact and class assignment for school staff.</p>
+        </div>
+        {showInvite && (
+          <Button type="button" variant="outline" className="shrink-0" onClick={() => setInviteOpen(true)}>
+            <Mail className="mr-2 h-4 w-4" aria-hidden />
+            Invite teacher
+          </Button>
+        )}
       </div>
+
+      <InviteTeacherDialog open={inviteOpen} onOpenChange={setInviteOpen} targetSchoolId={targetSchool} />
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">

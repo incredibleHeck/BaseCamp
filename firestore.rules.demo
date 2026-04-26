@@ -47,9 +47,13 @@ service cloud.firestore {
       return isAuthenticated() && userExists() && ud().role == 'headteacher';
     }
 
-    function isDistrictScoped() {
+    function isOrgAdminRole() {
+      return ud().role == 'org_admin' || ud().role == 'school_admin' || ud().role == 'district';
+    }
+
+    function isJurisdictionOversight() {
       return isAuthenticated() && userExists() &&
-        (ud().role == 'district' || ud().role == 'sen_coordinator');
+        (isOrgAdminRole() || ud().role == 'sen_coordinator');
     }
 
     function isStudentPortal() {
@@ -60,8 +64,21 @@ service cloud.firestore {
       return ud().schoolId;
     }
 
-    function getUserDistrictId() {
-      return ud().districtId;
+    function getUserOrganizationId() {
+      let u = ud();
+      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : u.districtId;
+    }
+
+    function orgIdFromSchoolData(d) {
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+    }
+
+    function orgIdForSchoolId(sid) {
+      return orgIdFromSchoolData(get(/databases/$(database)/documents/schools/$(sid)).data);
+    }
+
+    function userDocOrgId(d) {
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
     }
 
     /**
@@ -144,9 +161,19 @@ service cloud.firestore {
     match /districts/{districtId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (isDistrictScoped() && districtId == getUserDistrictId()) ||
-        (isHeadteacher() && getUserDistrictId() == districtId) ||
-        (isTeacher() && getUserDistrictId() == districtId)
+        (isJurisdictionOversight() && districtId == getUserOrganizationId()) ||
+        (isHeadteacher() && getUserOrganizationId() == districtId) ||
+        (isTeacher() && getUserOrganizationId() == districtId)
+      );
+      allow write: if isAdmin() || isDemoSeedSuperAdminAuth();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (isJurisdictionOversight() && orgId == getUserOrganizationId()) ||
+        (isHeadteacher() && getUserOrganizationId() == orgId) ||
+        (isTeacher() && getUserOrganizationId() == orgId)
       );
       allow write: if isAdmin() || isDemoSeedSuperAdminAuth();
     }
@@ -154,8 +181,8 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(schoolId)).data.districtId == getUserDistrictId()) ||
+        (isJurisdictionOversight() &&
+          orgIdForSchoolId(schoolId) == getUserOrganizationId()) ||
         (isHeadteacher() && schoolId == getUserSchoolId()) ||
         (isTeacher() && schoolId == getUserSchoolId()) ||
         (isStudentPortal() &&
@@ -176,7 +203,7 @@ service cloud.firestore {
         request.auth.uid == userId ||
         (userExists() && ud().linkedProfileId == userId) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.districtId == getUserDistrictId())
+        (isJurisdictionOversight() && userDocOrgId(resource.data) == getUserOrganizationId())
       );
 
       // Self-create, or super admin / demo seed creating staff profile docs (non-Auth UIDs).
@@ -201,9 +228,9 @@ service cloud.firestore {
         isDemoSeedSuperAdminAuth() ||
         isTeacherOfCohortData(resource.data) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId())
+        (isJurisdictionOversight() &&
+          orgIdForSchoolId(resource.data.schoolId)
+            == getUserOrganizationId())
       );
       allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher();
     }
@@ -215,9 +242,9 @@ service cloud.firestore {
         teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.schoolId != null &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId()) ||
+        (isJurisdictionOversight() && resource.data.schoolId != null &&
+          orgIdForSchoolId(resource.data.schoolId)
+            == getUserOrganizationId()) ||
         studentPortalReadsStudent(studentId)
       );
 
@@ -238,9 +265,9 @@ service cloud.firestore {
         teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && resource.data.schoolId != null &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId()) ||
+        (isJurisdictionOversight() && resource.data.schoolId != null &&
+          orgIdForSchoolId(resource.data.schoolId)
+            == getUserOrganizationId()) ||
         (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
       );
 
@@ -260,9 +287,9 @@ service cloud.firestore {
         teacherReadsDenormCohortTeacherData(resource.data) ||
         (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId)) ||
         (isHeadteacher() && resource.data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(resource.data.schoolId)).data.districtId
-            == getUserDistrictId())
+        (isJurisdictionOversight() &&
+          orgIdForSchoolId(resource.data.schoolId)
+            == getUserOrganizationId())
       );
       allow write: if isAdmin() || isDemoSeedSuperAdminAuth() || isHeadteacher();
     }
@@ -280,11 +307,10 @@ service cloud.firestore {
           get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
             == getUserSchoolId()) ||
         (resource.data.studentId != null &&
-          isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId()) ||
+          isJurisdictionOversight() &&
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          ) == getUserOrganizationId()) ||
         (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
       );
 
@@ -313,11 +339,10 @@ service cloud.firestore {
           get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
           == getUserSchoolId()) ||
         (resource.data.studentId != null &&
-          isDistrictScoped() &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId())
+          isJurisdictionOversight() &&
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          ) == getUserOrganizationId())
       );
       allow write: if false;
     }
@@ -347,9 +372,9 @@ service cloud.firestore {
         isAdmin() ||
         isDemoSeedSuperAdminAuth() ||
         (isHeadteacher() && summaryId == getUserSchoolId()) ||
-        (isDistrictScoped() &&
+        (isJurisdictionOversight() &&
           exists(/databases/$(database)/documents/schools/$(summaryId)) &&
-          get(/databases/$(database)/documents/schools/$(summaryId)).data.districtId == getUserDistrictId())
+          orgIdForSchoolId(summaryId) == getUserOrganizationId())
       );
       allow write: if false;
     }
@@ -360,12 +385,11 @@ service cloud.firestore {
         isDemoSeedSuperAdminAuth() ||
         (isHeadteacher() && exists(/databases/$(database)/documents/students/$(studentId)) &&
           get(/databases/$(database)/documents/students/$(studentId)).data.schoolId == getUserSchoolId()) ||
-        (isDistrictScoped() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+        (isJurisdictionOversight() && exists(/databases/$(database)/documents/students/$(studentId)) &&
           get(/databases/$(database)/documents/students/$(studentId)).data.schoolId is string &&
-          get(/databases/$(database)/documents/schools/$(
-              get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
-            )).data.districtId
-            == getUserDistrictId())
+          orgIdForSchoolId(
+            get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
+          ) == getUserOrganizationId())
       );
       allow write: if false;
     }

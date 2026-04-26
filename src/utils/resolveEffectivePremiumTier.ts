@@ -5,7 +5,7 @@ export type ResolvePremiumArgs = {
   premiumClaim: boolean;
   /** Only defined when the user has a school; used with school doc. */
   curriculumType: School['curriculumType'];
-  /** Users without a school (e.g. district, super admin) are never premium in this sprint. */
+  /** Users without a school (e.g. school administrator, super admin) are never premium in this sprint. */
   hasSchoolId: boolean;
 };
 

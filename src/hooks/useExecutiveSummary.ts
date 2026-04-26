@@ -21,6 +21,9 @@ export interface ExecutiveSummaryDoc {
   summaryKind: string;
   schemaVersion: number;
   schoolId: string;
+  /** Canonical org scope in newer aggregation docs. */
+  organizationId?: string;
+  /** @deprecated Prefer organizationId; still present in some written bundles. */
   districtId?: string;
   windowStartMs: number;
   windowEndMs: number;

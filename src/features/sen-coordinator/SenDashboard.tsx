@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Users, FileText, CheckCircle } from 'lucide-react';
 import type { UserData } from '../../components/layout/Header';
 import { SenAlertsInbox } from './SenAlertsInbox';
-import { listSenAlertsForDistrict } from '../../services/senAlertService';
-import { DEFAULT_DISTRICT_ID } from '../../config/organizationDefaults';
+import { listSenAlertsInJurisdiction } from '../../services/senAlertService';
+import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 
 interface SenDashboardProps {
@@ -12,7 +13,7 @@ interface SenDashboardProps {
 }
 
 export function SenDashboard({ user, onAlertClick }: SenDashboardProps) {
-  const districtId = user.districtId ?? DEFAULT_DISTRICT_ID;
+  const organizationId = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
   const [stats, setStats] = useState({
     openAlerts: 0,
     escalatedAlerts: 0,
@@ -21,7 +22,7 @@ export function SenDashboard({ user, onAlertClick }: SenDashboardProps) {
 
   useEffect(() => {
     async function loadStats() {
-      const list = await listSenAlertsForDistrict(districtId);
+      const list = await listSenAlertsInJurisdiction(organizationId);
       setStats({
         openAlerts: list.filter((a) => a.status === 'open').length,
         escalatedAlerts: list.filter((a) => a.status === 'escalated').length,
@@ -29,7 +30,7 @@ export function SenDashboard({ user, onAlertClick }: SenDashboardProps) {
       });
     }
     void loadStats();
-  }, [districtId]);
+  }, [organizationId]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">

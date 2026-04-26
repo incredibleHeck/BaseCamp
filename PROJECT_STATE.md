@@ -7,7 +7,7 @@ Generated as documentation; update this file when major structure or features ch
 
 ## Overview
 
-**BaseCamp Diagnostics** is a React + Vite + TypeScript application for Ghana GES–aligned classroom diagnostics: AI-assisted worksheet analysis, learner profiles, offline queuing, voice observations, and role-based dashboards (teacher through district / SEN / enterprise views).  
+**BaseCamp Diagnostics** is a React + Vite + TypeScript application for Ghana GES–aligned classroom diagnostics: AI-assisted worksheet analysis, learner profiles, offline queuing, voice observations, and role-based dashboards (teacher through school administrator / SEN / enterprise views).  
 
 - **UI:** React 19, Tailwind (via Vite), Lucide icons  
 - **Backend / data:** Firebase (Auth + Firestore per [`src/lib/firebase.ts`](src/lib/firebase.ts))  
@@ -21,15 +21,16 @@ Entry: [`src/main.tsx`](src/main.tsx) → [`src/App.tsx`](src/App.tsx).
 
 ## User roles and navigation (high level)
 
-Roles are defined on user profile / header ([`src/components/Header.tsx`](src/components/Header.tsx)); nav visibility is gated by [`src/auth/enterpriseAccess.ts`](src/auth/enterpriseAccess.ts).
+Roles are defined on user profile / header ([`src/components/layout/Header.tsx`](src/components/layout/Header.tsx)); nav visibility is gated by [`src/auth/enterpriseAccess.ts`](src/auth/enterpriseAccess.ts).
 
 | Role | Typical focus |
 |------|----------------|
 | `teacher` | Class roster, new assessment (photo / manual / voice), pending analyses, student profiles |
 | `headteacher` | School overview, teacher directory, playbook lift (if enabled) |
-| `district` | District overview, risk map, playbooks |
+| `org_admin` | Organization / multi-branch admin: network dashboard, risk map, playbooks |
+| `school_admin` | Legacy role normalized to `org_admin` in app on read (Firestore may still store `school_admin`) |
 | `circuit_supervisor` | Risk map–centric default view |
-| `sen_coordinator` | SEN inbox, district context, risk map |
+| `sen_coordinator` | SEN inbox, regional context, risk map |
 | `super_admin` | Full enterprise tools + pilot export |
 
 Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN inbox**.
@@ -41,64 +42,67 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 ### Authentication and shell
 
 - Login ([`Login.tsx`](src/components/Login.tsx)), header, role-aware dashboard title  
-- [`ErrorBoundary.tsx`](src/components/ErrorBoundary.tsx) wraps the main app layout  
+- [`ErrorBoundary.tsx`](src/components/layout/ErrorBoundary.tsx) wraps the main app layout  
 
 ### Teacher — assessment workflow
 
-- **[`AssessmentSetup.tsx`](src/components/AssessmentSetup.tsx):** Student, assessment type (numeracy / literacy), dialect context; input modes:
+- **[`AssessmentSetup.tsx`](src/features/assessments/AssessmentSetup.tsx):** Student, assessment type (numeracy / literacy), dialect context; input modes:
   - **Photo upload** — multi-page images → AI worksheet analysis  
   - **Manual entry** — rubric + observations → AI analysis  
-  - **Voice** — [`VoiceObservationRecorder.tsx`](src/components/VoiceObservationRecorder.tsx) queues audio; sync via [`useVoiceObservationSync`](src/hooks/useVoiceObservationSync.ts); post–voice flow continues to photo upload for worksheet AI when applicable  
-- **[`AnalysisResults.tsx`](src/components/AnalysisResults.tsx)** + **[`useAnalysisFlow.ts`](src/hooks/useAnalysisFlow.ts):** Runs `analyzeWorksheet` / `analyzeWorksheetMultiple` / `analyzeManualEntry`, lesson regeneration, save to Firestore, SEN alert evaluation  
+  - **Voice** — [`VoiceObservationRecorder.tsx`](src/features/ai-tools/VoiceObservationRecorder.tsx) queues audio; sync via [`useVoiceObservationSync`](src/hooks/useVoiceObservationSync.ts); post–voice flow continues to photo upload for worksheet AI when applicable  
+- **[`AnalysisResults.tsx`](src/features/assessments/AnalysisResults.tsx)** + **[`useAnalysisFlow.ts`](src/hooks/useAnalysisFlow.ts):** Runs `analyzeWorksheet` / `analyzeWorksheetMultiple` / `analyzeManualEntry`, lesson regeneration, save to Firestore, SEN alert evaluation  
 - **[`assessmentPipelineService.ts`](src/services/assessmentPipelineService.ts):** Core pipeline for processing and persisting assessments  
-- **[`DiagnosticReportCard.tsx`](src/components/DiagnosticReportCard.tsx):** Report UI, lesson plan, SMS draft, save to profile  
+- **[`DiagnosticReportCard.tsx`](src/features/assessments/DiagnosticReportCard.tsx):** Report UI, lesson plan, SMS draft, save to profile  
 - **[`FileUploadZone.tsx`](src/components/FileUploadZone.tsx):** File pick / camera path with [`imageCompression.ts`](src/utils/imageCompression.ts) where used  
 
 ### Offline diagnosis queue
 
 - **[`offlineQueueService.ts`](src/services/offlineQueueService.ts)** + **[`useSyncManager.ts`](src/hooks/useSyncManager.ts):** Queue manual/upload assessments when offline; sync when online  
-- **[`PendingAnalyses.tsx`](src/components/PendingAnalyses.tsx)**, **[`OfflineQueuedModal.tsx`](src/components/OfflineQueuedModal.tsx)**  
+- **[`PendingAnalyses.tsx`](src/features/assessments/PendingAnalyses.tsx)**, **[`OfflineQueuedModal.tsx`](src/components/OfflineQueuedModal.tsx)**  
 
 ### Voice observations
 
 - Queue: [`voiceObservationQueueService.ts`](src/services/voiceObservationQueueService.ts)  
 - Persist / read: [`observationService.ts`](src/services/observationService.ts)  
-- Transcription + analysis prompt: [`aiPrompts/voiceObservation.ts`](src/services/aiPrompts/voiceObservation.ts)  
+- Transcription + analysis prompt: [`voiceObservation.ts`](src/services/ai/aiPrompts/voiceObservation.ts)  
 
 ### Class roster and students
 
-- **[`ClassRoster.tsx`](src/components/ClassRoster.tsx)**, **[`AddStudentForm.tsx`](src/components/AddStudentForm.tsx)**, **[`CohortManager.tsx`](src/components/CohortManager.tsx)**  
+- **[`ClassRoster.tsx`](src/features/students/ClassRoster.tsx)**, **[`AddStudentForm.tsx`](src/features/students/AddStudentForm.tsx)**, **[`CohortManager.tsx`](src/features/schools/CohortManager.tsx)**  
 - **[`studentService.ts`](src/services/studentService.ts)**, **[`cohortService.ts`](src/services/cohortService.ts)**  
 
 ### Student profile
 
-- **[`StudentProfile.tsx`](src/components/StudentProfile.tsx):** Data vs **Action plan** toggle; analytical view + action plan (lesson / worksheet regeneration); PDF export; Phase 4 family card for teachers  
-- **[`StudentProfileAnalyticalView.tsx`](src/components/StudentProfileAnalyticalView.tsx):** Longitudinal history, JHS readiness, neurodevelopment / SEN screening, mastery / gaps  
-- **[`StudentProfileActionPlanView.tsx`](src/components/StudentProfileActionPlanView.tsx):** Gap-based interventions, worksheets  
-- **[`StudentRecordCard.tsx`](src/components/StudentRecordCard.tsx):** Editable student record (cohort, language, SEN, consent)  
-- **[`WorksheetModal.tsx`](src/components/WorksheetModal.tsx):** Practice worksheet preview / print with markdown + math  
+- **[`StudentProfile.tsx`](src/features/students/StudentProfile.tsx):** Data vs **Action plan** toggle; analytical view + action plan (lesson / worksheet regeneration); PDF export; Phase 4 family card for teachers  
+- **[`StudentProfileAnalyticalView.tsx`](src/features/students/StudentProfileAnalyticalView.tsx):** Longitudinal history, JHS readiness, neurodevelopment / SEN screening, mastery / gaps  
+- **[`StudentProfileActionPlanView.tsx`](src/features/students/StudentProfileActionPlanView.tsx):** Gap-based interventions, worksheets  
+- **[`StudentRecordCard.tsx`](src/features/students/StudentRecordCard.tsx):** Editable student record (cohort, language, SEN, consent)  
+- **[`WorksheetModal.tsx`](src/features/assessments/WorksheetModal.tsx):** Practice worksheet preview / print with markdown + math  
 - **[`useStudentProfileData.ts`](src/hooks/useStudentProfileData.ts):** Aggregates history, gaps, worksheet cache keys, etc.  
 - **[`Phase4FamilyConnectCard.tsx`](src/components/Phase4FamilyConnectCard.tsx):** Family / WhatsApp–style engagement (Phase 4)  
+
 - **[`pdfExport.ts`](src/utils/pdfExport.ts)**, **[`printUtils.tsx`](src/utils/printUtils.tsx)**  
 
 ### Enterprise / analytics
 
-- **[`DistrictDashboard.tsx`](src/components/DistrictDashboard.tsx)**, **[`HeadmasterDashboard.tsx`](src/components/HeadmasterDashboard.tsx)**  
-- **[`CircuitHeatmapPanel.tsx`](src/components/CircuitHeatmapPanel.tsx):** Geographic / circuit risk visualization  
-- **[`PlaybookLiftLeaderboard.tsx`](src/components/PlaybookLiftLeaderboard.tsx)**, **[`SenAlertsInbox.tsx`](src/components/SenAlertsInbox.tsx)**  
-- **[`districtAnalyticsService.ts`](src/services/districtAnalyticsService.ts)**, **[`schoolAnalyticsService.ts`](src/services/schoolAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
-- **[`StaffDirectory.tsx`](src/components/StaffDirectory.tsx)** (headteacher)  
-- **[`FineTunePilotPanel.tsx`](src/components/FineTunePilotPanel.tsx)** + **[`fineTunePilotService.ts`](src/services/fineTunePilotService.ts)** (super_admin)  
+- **[`OrganizationDashboard.tsx`](src/features/dashboards/OrganizationDashboard.tsx)** (school network overview), **[`NetworkBranchKPIs.tsx`](src/features/dashboards/NetworkBranchKPIs.tsx)**, **[`HeadmasterDashboard.tsx`](src/features/dashboards/HeadmasterDashboard.tsx)**  
+- **[`CircuitHeatmapPanel.tsx`](src/features/assessments/CircuitHeatmapPanel.tsx):** Geographic / circuit risk visualization  
+- **[`PlaybookLiftLeaderboard.tsx`](src/features/dashboards/PlaybookLiftLeaderboard.tsx)**, **[`SenAlertsInbox.tsx`](src/features/sen-coordinator/SenAlertsInbox.tsx)**  
+- **[`organizationAnalyticsService.ts`](src/services/analytics/organizationAnalyticsService.ts)** (`getNetworkMetrics`, org-scoped rollups), **[`schoolAnalyticsService.ts`](src/services/schoolAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
+- **[`StaffDirectory.tsx`](src/features/schools/StaffDirectory.tsx)** (headteacher)  
+- **[`FineTunePilotPanel.tsx`](src/features/ai-tools/FineTunePilotPanel.tsx)** + **[`fineTunePilotService.ts`](src/services/fineTunePilotService.ts)** (super_admin)  
+
+Canonical org identifiers: **`organizationId`** on users, students, and schools (see [`types/domain.ts`](src/types/domain.ts), [`AuthContext.tsx`](src/context/AuthContext.tsx) for JWT `organizationId` with legacy `districtId` claim fallback).  
 
 ### Student portal / parent ecosystem (supporting services)
 
-- **[`StudentPortalApp.tsx`](src/components/StudentPortalApp.tsx)** (entry for portal UX when routed)  
+- **[`StudentPortalApp.tsx`](src/features/students/StudentPortalApp.tsx)** (entry for portal UX when routed)  
 - **[`portalSessionService.ts`](src/services/portalSessionService.ts)**, **[`parentDigestService.ts`](src/services/parentDigestService.ts)**, **[`whatsappConnectService.ts`](src/services/whatsappConnectService.ts)**  
-- AI helpers in **[`aiPrompts/phase4Ecosystem.ts`](src/services/aiPrompts/phase4Ecosystem.ts)**  
+- AI helpers under **[`services/ai/aiPrompts/`](src/services/ai/aiPrompts/)** (e.g. phase 4 ecosystem prompts)  
 
 ### Curriculum / RAG
 
-- **[`curriculumRagService.ts`](src/services/curriculumRagService.ts):** GES + Cambridge curriculum context retrieval for analysis prompts  
+- **[`curriculumRagService.ts`](src/services/ai/curriculumRagService.ts):** GES + Cambridge curriculum context retrieval for analysis prompts  
 - Pilot / demo data: **[`data/gesCurriculumPilot.ts`](src/data/gesCurriculumPilot.ts)**, **[`data/demoCircuitMap.ts`](src/data/demoCircuitMap.ts)**  
 
 ### Config and utilities
@@ -111,103 +115,40 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 
 ## `src/` directory structure
 
+High-level layout (see repo for full file lists):
+
 ```
 src/
-├── main.tsx                 # React root
-├── App.tsx                  # Routes/views, auth, teacher tabs, assessment layout
-├── index.css                # Global styles (Tailwind)
-├── vite-env.d.ts
-│
-├── auth/
-│   └── enterpriseAccess.ts  # Role-based nav flags and default views
-│
-├── components/              # UI components (screens, cards, modals)
-│   ├── AddStudentForm.tsx
-│   ├── AnalysisResults.tsx
-│   ├── AssessmentSetup.tsx
-│   ├── CircuitHeatmapPanel.tsx
-│   ├── ClassRoster.tsx
-│   ├── CohortManager.tsx
-│   ├── DiagnosticReportCard.tsx
-│   ├── DistrictDashboard.tsx
-│   ├── ErrorBoundary.tsx
-│   ├── FileUploadZone.tsx
-│   ├── FineTunePilotPanel.tsx
-│   ├── Header.tsx
-│   ├── HeadmasterDashboard.tsx
-│   ├── Login.tsx
-│   ├── OfflineQueuedModal.tsx
-│   ├── PendingAnalyses.tsx
-│   ├── Phase4FamilyConnectCard.tsx
-│   ├── PlaybookLiftLeaderboard.tsx
-│   ├── SenAlertsInbox.tsx
-│   ├── StaffDirectory.tsx
-│   ├── StudentPortalApp.tsx
-│   ├── StudentProfile.tsx
-│   ├── StudentProfileActionPlanView.tsx
-│   ├── StudentProfileAnalyticalView.tsx
-│   ├── StudentRecordCard.tsx
-│   ├── VoiceObservationRecorder.tsx
-│   ├── WorksheetModal.tsx
+├── main.tsx, App.tsx, index.css, vite-env.d.ts
+├── auth/                    # enterpriseAccess.ts — RBAC / nav flags
+├── components/              # Shared layout, UI primitives, Login, modals used across features
+│   ├── layout/              # Header, LoggedInAppChrome, ErrorBoundary, …
+│   ├── ui/                  # shadcn-style primitives
 │   └── …
-│
-├── config/
-│   ├── academicContext.ts
-│   ├── featureFlags.ts
-│   └── organizationDefaults.ts
-│
-├── data/
-│   ├── demoCircuitMap.ts
-│   └── gesCurriculumPilot.ts
-│
+├── context/                 # e.g. AuthContext (token claims include organizationId)
+├── features/                # Domain screens (primary location for dashboards & workflows)
+│   ├── assessments/         # AssessmentSetup, AnalysisResults, CircuitHeatmapPanel, …
+│   ├── dashboards/          # OrganizationDashboard, NetworkBranchKPIs, HeadmasterDashboard, PlaybookLiftLeaderboard, …
+│   ├── schools/             # StaffDirectory, cohort/school directory, invites
+│   ├── students/            # Class roster, StudentProfile, portal app, …
+│   ├── sen-coordinator/     # SenAlertsInbox, SenDashboard
+│   ├── ai-tools/            # FineTunePilotPanel, VoiceObservationRecorder
+│   ├── liveClassroom/       # Premium live session UI
+│   └── parent/              # Parent digest portal
+├── config/                  # academicContext, organizationDefaults, featureFlags
+├── data/                    # demoCircuitMap, curriculum pilots
 ├── hooks/
-│   ├── useAnalysisFlow.ts
-│   ├── useStudentProfileData.ts
-│   ├── useSyncManager.ts
-│   └── useVoiceObservationSync.ts
-│
-├── lib/
-│   └── firebase.ts          # Firebase app + exports
-│
-├── services/                # API, Firestore, AI, queues
-│   ├── assessmentPipelineService.ts
-│   ├── assessmentService.ts
-│   ├── aiPrompts/           # Gemini prompts & analysis (modular)
-│   │   ├── index.ts
-│   │   ├── geminiClient.ts
-│   │   ├── types.ts
-│   │   ├── utils.ts
-│   │   ├── worksheetAnalysis.ts
-│   │   ├── worksheetGeneration.ts
-│   │   ├── subjectRoutedLessonPlan.ts
-│   │   ├── voiceObservation.ts
-│   │   ├── senAnalysis.ts
-│   │   └── phase4Ecosystem.ts
-│   ├── cohortService.ts
-│   ├── curriculumRagService.ts
-│   ├── districtAnalyticsService.ts
-│   ├── fineTunePilotService.ts
-│   ├── gradebookExport.ts
-│   ├── observationService.ts
-│   ├── offlineQueueService.ts
-│   ├── parentDigestService.ts
-│   ├── playbookAnalyticsService.ts
-│   ├── portalSessionService.ts
-│   ├── schoolAnalyticsService.ts
-│   ├── schoolService.ts
-│   ├── senAlertService.ts
-│   ├── studentService.ts
-│   ├── userService.ts
-│   ├── voiceObservationQueueService.ts
-│   └── whatsappConnectService.ts
-│
-└── utils/
-    ├── imageCompression.ts
-    ├── pdfExport.ts
-    ├── playbookKey.ts
-    ├── printUtils.tsx
-    ├── studentProfileHelpers.tsx
-    └── workflowLog.ts
+├── lib/                     # firebase.ts
+├── services/
+│   ├── analytics/
+│   │   ├── organizationAnalyticsService.ts  # Network metrics (org-scoped; getNetworkMetrics)
+│   │   ├── schoolAnalyticsService.ts
+│   │   └── playbookAnalyticsService.ts
+│   ├── ai/ / aiPrompts/     # Gemini clients & prompts (paths vary by module)
+│   ├── assessmentService.ts, studentService.ts, schoolService.ts, …
+│   └── …
+├── types/                   # domain.ts — School, Student, AuthCustomClaims, …
+└── utils/                   # organizationScope, pdfExport, …
 ```
 
 ### Note on generated / optional paths
@@ -234,4 +175,4 @@ src/
 
 ---
 
-*Last documented from repository layout and source scan; adjust manually after large refactors.*
+*Last updated: organization-scoped analytics (`organizationAnalyticsService`), `src/features/` layout, and doc links aligned with repo.*

@@ -110,7 +110,7 @@ async function assertSuperAdmin(uid: string): Promise<void> {
   }
 }
 
-async function assertHeadteacher(uid: string): Promise<{ schoolId: string; districtId: string }> {
+async function assertHeadteacher(uid: string): Promise<{ schoolId: string; organizationId: string }> {
   const snap = await db.collection('users').doc(uid).get();
   if (!snap.exists) {
     throw new HttpsError('permission-denied', 'No user profile.');
@@ -120,11 +120,13 @@ async function assertHeadteacher(uid: string): Promise<{ schoolId: string; distr
     throw new HttpsError('permission-denied', 'Only headteachers can manage school staff.');
   }
   const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : '';
-  const districtId = typeof data.districtId === 'string' ? data.districtId.trim() : '';
+  const organizationId =
+    (typeof data.organizationId === 'string' ? data.organizationId.trim() : '') ||
+    (typeof data.districtId === 'string' ? data.districtId.trim() : '');
   if (!schoolId) {
     throw new HttpsError('failed-precondition', 'Headteacher has no school assigned.');
   }
-  return { schoolId, districtId };
+  return { schoolId, organizationId };
 }
 
 export const createSchoolTeacher = onCall(
@@ -140,7 +142,7 @@ export const createSchoolTeacher = onCall(
       throw new HttpsError('invalid-argument', 'Teacher name is required.');
     }
 
-    const { schoolId: headSchoolId, districtId } = await assertHeadteacher(request.auth.uid);
+    const { schoolId: headSchoolId, organizationId: headOrganizationId } = await assertHeadteacher(request.auth.uid);
 
     let username = '';
     let email = '';
@@ -186,7 +188,10 @@ export const createSchoolTeacher = onCall(
       createdAt: FieldValue.serverTimestamp(),
       location: 'School Campus',
     };
-    if (districtId) userPayload.districtId = districtId;
+    if (headOrganizationId) {
+      userPayload.organizationId = headOrganizationId;
+      userPayload.districtId = headOrganizationId;
+    }
 
     try {
       await db.collection('users').doc(createdUid).set(userPayload);
@@ -300,3 +305,5 @@ export const deleteSchoolTeacher = onCall(
     return { ok: true };
   }
 );
+
+export { inviteStaffMember } from './users/inviteStaffMember.js';

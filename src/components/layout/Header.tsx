@@ -4,10 +4,15 @@ import { BookOpen, LogOut, Wifi, WifiOff } from 'lucide-react';
 // 1. Define a scalable user object instead of loose strings
 export interface UserData {
   id: string;
-  role: 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'super_admin';
+  role: 'teacher' | 'headteacher' | 'org_admin' | 'sen_coordinator' | 'super_admin';
   name: string;
   location: string;
-  /** Scoped org ids (Phase 3 enterprise); optional on older user docs. */
+  /**
+   * B2B network / organization; umbrella scope for `org_admin` (multi-campus).
+   * Backed by `organizationId` in Firestore; older docs use `districtId` only and are merged on load.
+   */
+  organizationId?: string;
+  /** @deprecated use organizationId */
   districtId?: string;
   circuitId?: string;
   schoolId?: string;
@@ -29,7 +34,7 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
     const titles = {
       teacher: 'Teacher Portal',
       headteacher: 'Headteacher Portal',
-      district: 'School Admin',
+      org_admin: 'Organization admin',
       sen_coordinator: 'SEN Coordinator',
       super_admin: 'MoE / Super Admin',
     };

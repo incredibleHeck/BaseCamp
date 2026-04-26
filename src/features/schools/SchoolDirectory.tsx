@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building, Loader2, MapPin, User } from 'lucide-react';
+import { Building, Loader2, Mail, MapPin, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
-import { getSchoolsByDistrict } from '../../services/schoolService';
-import { getHeadteachersByDistrict } from '../../services/userService';
+import { Button } from '../../components/ui/button';
+import { InviteTeacherDialog } from './InviteTeacherDialog';
+import { getSchoolsInOrganization } from '../../services/schoolService';
+import { getHeadteachersInOrganization } from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
 
 interface SchoolDirectoryProps {
@@ -23,11 +25,13 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [circuitFilter, setCircuitFilter] = useState<string>('All');
+  const [inviteSchoolId, setInviteSchoolId] = useState<string | null>(null);
 
-  const districtId = user.districtId;
+  const organizationId = user.organizationId;
+  const canInviteToSchools = user.role === 'org_admin' || user.role === 'super_admin';
 
   const loadData = useCallback(async () => {
-    if (!districtId) {
+    if (!organizationId) {
       setLoading(false);
       return;
     }
@@ -36,8 +40,8 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     setError(null);
     try {
       const [fetchedSchools, fetchedHeadteachers] = await Promise.all([
-        getSchoolsByDistrict(districtId),
-        getHeadteachersByDistrict(districtId)
+        getSchoolsInOrganization(organizationId),
+        getHeadteachersInOrganization(organizationId)
       ]);
 
       // Map headteachers to schools
@@ -62,16 +66,16 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     } finally {
       setLoading(false);
     }
-  }, [districtId]);
+  }, [organizationId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  if (!districtId) {
+  if (!organizationId) {
     return (
       <div className="p-8 text-center text-zinc-500">
-        You must be assigned to a district to view the School Directory.
+        You must be assigned an organization to view the branch directory.
       </div>
     );
   }
@@ -90,10 +94,10 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-            School Directory
+            Branch directory
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Overview of all schools and assigned headteachers in your district.
+            Branches and campuses in your school network, with lead contacts.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -113,8 +117,8 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">District Schools</CardTitle>
-          <CardDescription>Directory of schools in your jurisdiction.</CardDescription>
+          <CardTitle className="text-base">Network branches</CardTitle>
+          <CardDescription>Branches in your organization.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -137,9 +141,10 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>School Name</TableHead>
+                  <TableHead>Branch / campus</TableHead>
                   <TableHead>Circuit</TableHead>
                   <TableHead>Headteacher</TableHead>
+                  {canInviteToSchools && <TableHead className="w-[1%] text-right">Invite</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -179,6 +184,25 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
                         </span>
                       )}
                     </TableCell>
+                    {canInviteToSchools && (
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-right"
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInviteSchoolId(school.id);
+                          }}
+                        >
+                          <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                          Invite
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -186,6 +210,14 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
           )}
         </CardContent>
       </Card>
+
+      <InviteTeacherDialog
+        open={inviteSchoolId !== null}
+        onOpenChange={(o) => {
+          if (!o) setInviteSchoolId(null);
+        }}
+        targetSchoolId={inviteSchoolId ?? ''}
+      />
     </div>
   );
 }

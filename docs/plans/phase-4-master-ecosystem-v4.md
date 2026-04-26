@@ -117,7 +117,7 @@ Reliance on **large enterprise APIs** is costly at scale and limits customizatio
 
 ## Cross-cutting themes (complete loop)
 
-- **Unified identity**: student ↔ guardian ↔ teacher ↔ school ↔ district (with strict data minimization).
+- **Unified identity**: student ↔ guardian ↔ teacher ↔ school ↔ organization / network (with strict data minimization).
 - **One loop**: diagnose → remediate → practice (portal) → report home (WhatsApp) → measure improvement.
 - **Phase alignment**: Phases 2–3 feed **content** (RAG, playbooks) and **scale** (aggregates); Phase 4 completes **distribution** to families and learners.
 

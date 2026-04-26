@@ -1,36 +1,37 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  generateDistrictAnalytics,
-  type DistrictAnalyticsPayload,
-} from '../../services/analytics/districtAnalyticsService';
+  getNetworkMetrics,
+  type NetworkAnalyticsPayload,
+} from '../../services/analytics/organizationAnalyticsService';
 import { useAuth } from '../../context/AuthContext';
-import { DistrictKPIs } from './DistrictKPIs';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
+import { NetworkBranchKPIs } from './NetworkBranchKPIs';
 import { SchoolComparisonCharts } from './SchoolComparisonCharts';
 
-export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId: string) => void }) {
+export function OrganizationDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId: string) => void }) {
   const { user } = useAuth();
-  const districtId = user.districtId?.trim() || undefined;
+  const organizationId = effectiveOrganizationId(user)?.trim() || undefined;
 
-  const [data, setData] = useState<DistrictAnalyticsPayload | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(districtId));
+  const [data, setData] = useState<NetworkAnalyticsPayload | null>(null);
+  const [loading, setLoading] = useState(() => Boolean(organizationId));
   const [error, setError] = useState<string | null>(null);
 
   const [subjectFilter, setSubjectFilter] = useState<'All' | 'Literacy' | 'Numeracy'>('All');
   const [termFilter, setTermFilter] = useState<string>('All');
 
   const load = useCallback(async () => {
-    if (!districtId) return;
+    if (!organizationId) return;
     setLoading(true);
     setError(null);
     try {
-      const payload = await generateDistrictAnalytics({
-        districtId,
+      const payload = await getNetworkMetrics({
+        organizationId,
         subject: subjectFilter,
         term: termFilter,
       });
       if (payload === null) {
         setData(null);
-        setError('Could not load district analytics. Please try again.');
+        setError('Could not load school network analytics. Please try again.');
         return;
       }
       setData(payload);
@@ -40,19 +41,19 @@ export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId
     } finally {
       setLoading(false);
     }
-  }, [districtId, subjectFilter, termFilter]);
+  }, [organizationId, subjectFilter, termFilter]);
 
   useEffect(() => {
-    if (!districtId) {
+    if (!organizationId) {
       setData(null);
       setError(null);
       setLoading(false);
       return;
     }
     void load();
-  }, [districtId, load]);
+  }, [organizationId, load]);
 
-  const scopeMissing = !districtId;
+  const scopeMissing = !organizationId;
   const showSkeleton = loading || scopeMissing;
 
   return (
@@ -61,16 +62,16 @@ export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              District dashboard
+              School network overview
             </h1>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              District-wide schools, enrollment, assessments, and average performance.
+              Organization-wide view: branches, enrollment, assessments, and performance across campuses.
             </p>
           </div>
           <div className="flex items-center gap-3">
             <select
               value={subjectFilter}
-              onChange={(e) => setSubjectFilter(e.target.value as any)}
+              onChange={(e) => setSubjectFilter(e.target.value as 'All' | 'Literacy' | 'Numeracy')}
               className="h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
             >
               <option value="All">All Subjects</option>
@@ -96,8 +97,8 @@ export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId
           role="status"
           className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400"
         >
-          Your profile does not include a district ID yet. District analytics will appear once your account is assigned a{' '}
-          <span className="font-mono text-slate-800 dark:text-slate-200">districtId</span>.
+          Your profile does not include an organization scope yet. Analytics will appear once your account is assigned an{' '}
+          <span className="font-mono text-slate-800 dark:text-slate-200">organizationId</span> in your user profile.
         </p>
       )}
 
@@ -134,7 +135,7 @@ export function DistrictDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId
 
       {!showSkeleton && !error && data && (
         <>
-          <DistrictKPIs overview={data.overview} />
+          <NetworkBranchKPIs overview={data.overview} branches={data.schools} />
           <SchoolComparisonCharts schools={data.schools} onSchoolClick={onSchoolClick} />
         </>
       )}

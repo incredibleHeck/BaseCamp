@@ -18,11 +18,12 @@ import { chunkIds, getStaffAccessScope } from './staffFirestoreScope';
 import { normalizePortalLookupKey } from '../utils/accessLookupKeys';
 import {
   DEFAULT_CIRCUIT_ID,
-  DEFAULT_DISTRICT_ID,
+  DEFAULT_ORGANIZATION_ID,
   DEFAULT_SCHOOL_ID,
   DEFAULT_SCHOOL_NAME,
   schoolById,
 } from '../config/organizationDefaults';
+import { effectiveOrganizationId } from '../utils/organizationScope';
 import type { Student } from '../types/domain';
 
 export type { Student };
@@ -41,10 +42,12 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
     const meta = schoolById(schoolId);
     const now = Date.now();
     const enrollmentStatus = studentData.enrollmentStatus ?? 'active';
+    const org =
+      effectiveOrganizationId(studentData) ?? DEFAULT_ORGANIZATION_ID;
     const payload: Record<string, unknown> = {
       name: studentData.name,
       grade: studentData.grade,
-      districtId: studentData.districtId ?? DEFAULT_DISTRICT_ID,
+      organizationId: org,
       schoolId,
       schoolName: studentData.schoolName ?? meta?.name ?? DEFAULT_SCHOOL_NAME,
       circuitId: studentData.circuitId ?? meta?.circuitId ?? DEFAULT_CIRCUIT_ID,

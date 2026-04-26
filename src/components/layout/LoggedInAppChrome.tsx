@@ -6,7 +6,6 @@ import {
   ClipboardList,
   FlaskConical,
   Home,
-  Inbox,
   LayoutGrid,
   Map,
   MapPin,
@@ -23,14 +22,13 @@ import { AssessmentSetup } from '../../features/assessments/AssessmentSetup';
 import { AnalysisResults } from '../../features/assessments/AnalysisResults';
 import { StudentProfile } from '../../features/students/StudentProfile';
 import { ClassRoster } from '../../features/students/ClassRoster';
-import { DistrictDashboard } from '../../features/dashboards/DistrictDashboard';
+import { OrganizationDashboard } from '../../features/dashboards/OrganizationDashboard';
 import { HeadmasterDashboard } from '../../features/dashboards/HeadmasterDashboard';
 import { CohortManager } from '../../features/schools/CohortManager';
 import { CircuitHeatmapPanel } from '../../features/assessments/CircuitHeatmapPanel';
 import { SenDashboard } from '../../features/sen-coordinator/SenDashboard';
 import { PlaybookLiftLeaderboard } from '../../features/dashboards/PlaybookLiftLeaderboard';
 import { FineTunePilotPanel } from '../../features/ai-tools/FineTunePilotPanel';
-import { TeacherDirectory } from '../../features/schools/TeacherDirectory';
 import { StaffDirectory } from '../../features/schools/StaffDirectory';
 import { SchoolDirectory } from '../../features/schools/SchoolDirectory';
 import { enterpriseNavForRole } from '../../auth/enterpriseAccess';
@@ -53,13 +51,13 @@ export type View =
   | 'new-assessment'
   | 'student-profile'
   | 'pending-analyses'
-  | 'district-overview'
+  | 'org-admin-overview'
   | 'school-overview'
   | 'manage-classes'
   | 'staff-directory'
   | 'school-directory'
-  | 'district-heatmap'
-  | 'district-playbooks'
+  | 'org-admin-heatmap'
+  | 'org-admin-playbooks'
   | 'sen-inbox'
   | 'fine-tune-pilot'
   | 'live-classroom';
@@ -70,15 +68,15 @@ const DASHBOARD_CONFIG: Record<
 > = {
   teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
   headteacher: { title: 'Headmaster Dashboard', welcome: 'Here is your school-wide performance overview.' },
-  district: { 
-    title: 'District Analytics Dashboard', 
-    welcome: 'Here is the district-wide performance overview.',
-    premiumTitle: 'School Admin Dashboard',
-    premiumWelcome: 'Here is the school-wide administrative overview.'
+  org_admin: { 
+    title: 'School network overview', 
+    welcome: "Performance and enrollment across your organization's branches.",
+    premiumTitle: 'School network',
+    premiumWelcome: 'Administrative overview across campuses and branches.'
   },
   sen_coordinator: { 
     title: 'SEN Coordination', 
-    welcome: 'Review screening signals and district context.',
+    welcome: 'Review screening signals in regional context.',
     premiumTitle: 'Special Needs Coordination',
     premiumWelcome: 'Review screening signals and support context.'
   },
@@ -184,23 +182,23 @@ export function LoggedInAppChrome({
             onStartNewAssessment={() => setCurrentView('new-assessment')}
           />
         );
-      case 'district-overview':
-        return <DistrictDashboard onSchoolClick={handleSchoolClick} />;
+      case 'org-admin-overview':
+        return <OrganizationDashboard onSchoolClick={handleSchoolClick} />;
       case 'school-overview':
         return (
           <HeadmasterDashboard 
             overrideSchoolId={selectedSchoolForOverviewId || undefined} 
             onBack={selectedSchoolForOverviewId ? () => {
               setSelectedSchoolForOverviewId(null);
-              setCurrentView('district-overview');
+              setCurrentView(user.role === 'org_admin' ? 'org-admin-overview' : 'school-directory');
             } : undefined}
           />
         );
       case 'manage-classes':
         return <CohortManager />;
-      case 'district-heatmap':
+      case 'org-admin-heatmap':
         return <CircuitHeatmapPanel user={user} />;
-      case 'district-playbooks':
+      case 'org-admin-playbooks':
         return <PlaybookLiftLeaderboard user={user} />;
       case 'sen-inbox':
         return <SenDashboard user={user} onAlertClick={handleViewProfile} />;
@@ -257,27 +255,43 @@ export function LoggedInAppChrome({
         icon: Zap,
       });
     }
-    if (role === 'district' || role === 'sen_coordinator' || role === 'super_admin') {
+    if (role === 'org_admin') {
       primary.push({
-        view: 'district-overview',
-        label: showPremiumShell ? 'School View' : 'District View',
-        shortLabel: showPremiumShell ? 'School' : 'District',
+        view: 'org-admin-overview',
+        label: 'Network Overview',
+        shortLabel: 'Network',
         icon: Map,
+      });
+    }
+    if (role === 'sen_coordinator') {
+      primary.push({
+        view: 'sen-inbox',
+        label: 'SEN inbox',
+        shortLabel: 'SEN',
+        icon: HeartHandshake,
+      });
+    }
+    if (role === 'super_admin') {
+      primary.push({
+        view: 'school-directory',
+        label: 'Branch directory',
+        shortLabel: 'Branches',
+        icon: Building,
       });
     }
 
     const secondary: NavDef[] = [];
-    if (role === 'district' || role === 'super_admin') {
+    if (role === 'org_admin') {
       secondary.push({
         view: 'school-directory',
-        label: 'School Directory',
-        shortLabel: 'Schools',
+        label: 'Branch directory',
+        shortLabel: 'Branches',
         icon: Building,
       });
     }
     if (enterpriseNav.showHeatmap) {
       secondary.push({
-        view: 'district-heatmap',
+        view: 'org-admin-heatmap',
         label: showPremiumShell ? 'Support map' : 'Risk map',
         shortLabel: showPremiumShell ? 'Support' : 'Risk',
         icon: MapPin,
@@ -285,13 +299,13 @@ export function LoggedInAppChrome({
     }
     if (enterpriseNav.showPlaybooks) {
       secondary.push({
-        view: 'district-playbooks',
+        view: 'org-admin-playbooks',
         label: 'Playbook lift',
         shortLabel: 'Lift',
         icon: BarChart3,
       });
     }
-    if (enterpriseNav.showSenInbox) {
+    if (enterpriseNav.showSenInbox && role !== 'sen_coordinator') {
       secondary.push({
         view: 'sen-inbox',
         label: 'SEN inbox',
@@ -341,7 +355,7 @@ export function LoggedInAppChrome({
     }
 
     return { primarySidebarNav: primary, secondarySidebarNav: secondary };
-  }, [user.role, enterpriseNav.showHeatmap, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom]);
+  }, [user.role, enterpriseNav.showHeatmap, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom, showPremiumShell]);
 
   const mobileNavItems = useMemo(
     () => [...primarySidebarNav, ...secondarySidebarNav],

@@ -35,10 +35,10 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 
 ### Phase 3 checklist (MVP in repo)
 
-- [x] **Foundations** – `districtId` / `circuitId` / `schoolId` on students (defaults in `addStudent`); demo schools/circuits in [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts); Firestore rollups in [`districtAnalyticsService.ts`](../../src/services/districtAnalyticsService.ts) and [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts); roles `sen_coordinator`, `circuit_supervisor`, `super_admin` + nav in [`App.tsx`](../../src/App.tsx).
-- [x] **SEN alert MVP** – Rule v1 + `senAlerts` + audit via `arrayUnion`; inbox [`SenAlertsInbox.tsx`](../../src/components/SenAlertsInbox.tsx); runs after save ([`senAlertService.ts`](../../src/services/senAlertService.ts)).
-- [x] **Heatmap MVP** – Schematic SVG choropleth + suppression (`AGGREGATION_MIN_N`); CSV export; [`CircuitHeatmapPanel.tsx`](../../src/components/CircuitHeatmapPanel.tsx).
-- [x] **Playbook analytics MVP** – `playbookKey` / `playbookTitle` on assessments; observational lift leaderboard [`PlaybookLiftLeaderboard.tsx`](../../src/components/PlaybookLiftLeaderboard.tsx).
+- [x] **Foundations** – `organizationId` / `circuitId` / `schoolId` on students (defaults in `addStudent`; legacy Firestore may still carry `districtId` for reads); demo schools/circuits in [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts); network rollups in [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts) (`getNetworkMetrics`) and [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts); roles `org_admin`, `sen_coordinator`, `circuit_supervisor`, `super_admin` + nav in [`App.tsx`](../../src/App.tsx).
+- [x] **SEN alert MVP** – Rule v1 + `senAlerts` + audit via `arrayUnion`; inbox [`SenAlertsInbox.tsx`](../../src/features/sen-coordinator/SenAlertsInbox.tsx); runs after save ([`senAlertService.ts`](../../src/services/senAlertService.ts)).
+- [x] **Heatmap MVP** – Schematic SVG choropleth + suppression (`AGGREGATION_MIN_N`); CSV export; [`CircuitHeatmapPanel.tsx`](../../src/features/assessments/CircuitHeatmapPanel.tsx).
+- [x] **Playbook analytics MVP** – `playbookKey` / `playbookTitle` on assessments; observational lift leaderboard [`PlaybookLiftLeaderboard.tsx`](../../src/features/dashboards/PlaybookLiftLeaderboard.tsx).
 
 ### Phase 4 checklist (MVP in repo)
 

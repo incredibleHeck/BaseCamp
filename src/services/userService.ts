@@ -1,5 +1,7 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 
+import { effectiveOrganizationId } from '../utils/organizationScope';
+
 import { httpsCallable } from 'firebase/functions';
 
 import { auth, db, functions } from '../lib/firebase';
@@ -29,38 +31,56 @@ export type CreateTeacherResult = {
 };
 
 /**
- * Users in `users` with matching `districtId` and role `headteacher` (for district school directory).
+ * Headteachers in `users` under an `organizationId` (and legacy `districtId`), for org admin branch directory.
  */
-export async function getHeadteachersByDistrict(districtId: string): Promise<HeadteacherSummary[]> {
-  const trimmed = districtId?.trim();
+export async function getHeadteachersInOrganization(organizationId: string): Promise<HeadteacherSummary[]> {
+  const trimmed = organizationId?.trim();
   if (!trimmed) return [];
 
   try {
-    const q = query(
-      collection(db, USERS_COLLECTION),
-      where('districtId', '==', trimmed),
-      where('role', '==', 'headteacher')
-    );
-    const snap = await getDocs(q);
-    const out: HeadteacherSummary[] = [];
-
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as Record<string, unknown>;
-      const name = typeof data.name === 'string' ? data.name.trim() : '';
-      const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : undefined;
-      out.push({
-        id: docSnap.id,
-        name: name || docSnap.id,
-        schoolId,
+    const [byOrg, byLegacy] = await Promise.all([
+      getDocs(
+        query(
+          collection(db, USERS_COLLECTION),
+          where('organizationId', '==', trimmed),
+          where('role', '==', 'headteacher')
+        )
+      ),
+      getDocs(
+        query(
+          collection(db, USERS_COLLECTION),
+          where('districtId', '==', trimmed),
+          where('role', '==', 'headteacher')
+        )
+      ),
+    ]);
+    const map = new Map<string, HeadteacherSummary>();
+    for (const snap of [byOrg, byLegacy]) {
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        if (effectiveOrganizationId(data as { organizationId?: string; districtId?: string }) !== trimmed) {
+          return;
+        }
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : undefined;
+        map.set(docSnap.id, {
+          id: docSnap.id,
+          name: name || docSnap.id,
+          schoolId,
+        });
       });
-    });
-
-    return out;
+    }
+    return [...map.values()];
   } catch (error) {
-    console.error('userService.getHeadteachersByDistrict failed:', error);
+    console.error('userService.getHeadteachersInOrganization failed:', error);
     return [];
   }
 }
+
+/** @deprecated use getHeadteachersInOrganization */
+export const getHeadteachersInJurisdiction = getHeadteachersInOrganization;
+/** @deprecated */
+export const getHeadteachersByDistrict = getHeadteachersInOrganization;
 
 /**
  * Users in `users` with matching `schoolId` and role `teacher` (for headteacher assignment UI).

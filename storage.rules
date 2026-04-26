@@ -23,21 +23,22 @@ service firebase.storage {
       return userExists() && userData().role == 'super_admin';
     }
 
-    function isDistrictScoped() {
+    function isJurisdictionOversight() {
       return userExists() &&
-        userData().role in ['district', 'sen_coordinator'];
+        (userData().role == 'org_admin' || userData().role == 'school_admin' || userData().role == 'district' || userData().role == 'sen_coordinator');
     }
 
     function userSchoolId() {
       return userData().schoolId;
     }
 
-    function userDistrictId() {
-      return userData().districtId;
+    function userOrganizationId() {
+      return (userData().organizationId is string && userData().organizationId != '') ? userData().organizationId : userData().districtId;
     }
 
-    function schoolDistrictId(schoolId) {
-      return firestore.get(/databases/(default)/documents/schools/$(schoolId)).data.districtId;
+    function schoolOrganizationId(schoolId) {
+      let d = firestore.get(/databases/(default)/documents/schools/$(schoolId)).data;
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
     }
 
     // Personal scratch / uploads keyed by Auth uid (mirrors Firestore `users/{uid}` ownership).
@@ -45,14 +46,14 @@ service firebase.storage {
       allow read, write: if userExists() && request.auth.uid == userId;
     }
 
-    // Shared school assets (worksheets, exports, etc.) — same school or district oversight / admin.
+    // Shared school assets (worksheets, exports, etc.) — same school or school-admin / SEN jurisdiction.
     match /schools/{schoolId}/{allPaths=**} {
       allow read, write: if userExists() && (
         isSuperAdmin() ||
         (userSchoolId() == schoolId) ||
-        (isDistrictScoped() &&
+        (isJurisdictionOversight() &&
           firestore.exists(/databases/(default)/documents/schools/$(schoolId)) &&
-          schoolDistrictId(schoolId) == userDistrictId())
+          schoolOrganizationId(schoolId) == userOrganizationId())
       );
     }
 

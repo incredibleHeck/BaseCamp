@@ -59,7 +59,7 @@ sequenceDiagram
 
 | Action | File | Details |
 |--------|------|--------|
-| **Modify** | [firestore.rules](c:\Users\me\BaseCamp\firestore.rules) | Add **`match /showYourWorkInsights/{insightId}`**. **`allow write: if false`** (Admin SDK only). **`allow read`:** mirror [voiceObservations](c:\Users\me\BaseCamp\firestore.rules) pattern — `isAdmin()`, teacher via **`isTeacherOfCohort`** on `students/{studentId}.cohortId`, headteacher **`schoolId`**, district scoped via **`schools/{schoolId}.districtId`**, using **`resource.data.studentId`**. Requires **`studentId`** on every doc (processor must set it). |
+| **Modify** | [firestore.rules](c:\Users\me\BaseCamp\firestore.rules) | Add **`match /showYourWorkInsights/{insightId}`**. **`allow write: if false`** (Admin SDK only). **`allow read`:** mirror [voiceObservations](c:\Users\me\BaseCamp\firestore.rules) pattern — `isAdmin()`, teacher via **`isTeacherOfCohort`** on `students/{studentId}.cohortId`, headteacher **`schoolId`**, jurisdiction / org oversight via **`orgIdForSchoolId`** and **`getUserOrgId()`**, using **`resource.data.studentId`**. Requires **`studentId`** on every doc (processor must set it). |
 | **Modify** | [firestore.indexes.json](c:\Users\me\BaseCamp\firestore.indexes.json) | Composite index: collection **`showYourWorkInsights`**, fields **`studentId` ASC**, **`createdAt` DESC** (for “latest first” list). |
 
 Deploy order reminder: **`firestore:indexes`** before relying on the client query in prod.

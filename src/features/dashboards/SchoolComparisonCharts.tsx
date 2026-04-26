@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import type { SchoolMetrics } from '../../services/analytics/districtAnalyticsService';
+import type { SchoolMetrics } from '../../services/analytics/organizationAnalyticsService';
 
 const BAR_FILL = '#0f172a';
 
@@ -22,12 +22,12 @@ export function SchoolComparisonCharts({ schools, onSchoolClick }: SchoolCompari
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Average score by school</CardTitle>
+        <CardTitle className="text-base">Average score by branch</CardTitle>
       </CardHeader>
       <CardContent>
         {schools.length === 0 ? (
           <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-            No school data yet. Students grouped by school will appear here.
+            No branch data yet. Students grouped by campus will appear here.
           </p>
         ) : (
           <div className="h-[350px] w-full">

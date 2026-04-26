@@ -4,6 +4,8 @@
 
 **Positioning:** This tier is where **B2G (business-to-government)** and **large NGO** contracts typically land: aggregated analytics, compliance-friendly reporting, and operational tooling for directors and coordinators—not individual lesson planning alone.
 
+**Implementation (current repo):** Multi-branch / “network” scope is modeled with **`organizationId`** in Firestore and JWT claims (`AuthContext` maps legacy `districtId` claims to `organizationId`). Network rollups use [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts) (`getNetworkMetrics`).
+
 ---
 
 ## Pillar 1: Geospatial risk heatmaps
@@ -116,7 +118,7 @@ Many remedial activities are proposed; few are measured **at scale** across teac
 
 ## Suggested implementation order
 
-1. **Foundations** – consistent identifiers (school, circuit, district), assessment history API, RBAC for district roles.
+1. **Foundations** – consistent identifiers (school, circuit, **organization** / network id), assessment history API, RBAC for org-level roles (`org_admin`, coordinators, super admin).
 2. **SEN alert MVP** – rule engine + coordinator inbox + audit log (highest direct impact on safeguarding narrative).
 3. **Heatmap MVP** – circuit-level choropleth for 1–2 key skills; suppression rules; export bundle.
 4. **Playbook analytics MVP** – log playbook usage + outcomes; simple leaderboard; then ML/ranking.
@@ -127,7 +129,7 @@ Many remedial activities are proposed; few are measured **at scale** across teac
 
 ## Related documents
 
-- [Phase 2 – Pro Teacher Tools (V2.0)](phase-2-pro-teacher-tools-v2.md) – teacher-scale workflow that feeds the data needed for district aggregates and playbook outcomes.
+- [Phase 2 – Pro Teacher Tools (V2.0)](phase-2-pro-teacher-tools-v2.md) – teacher-scale workflow that feeds the data needed for organization-level aggregates and playbook outcomes.
 
 ---
 
@@ -137,10 +139,10 @@ Aligned with **suggested implementation order** in this doc: foundations → SEN
 
 | Track | What shipped | Key files |
 | ----- | ------------- | --------- |
-| **Foundations** | Student org fields + defaults; `users` doc may include `districtId`, `circuitId`, `schoolId`; dashboard rollups from Firestore; RBAC-driven tabs. | [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts), [`districtAnalyticsService.ts`](../../src/services/districtAnalyticsService.ts), [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts), [`enterpriseAccess.ts`](../../src/auth/enterpriseAccess.ts), [`App.tsx`](../../src/App.tsx) |
-| **SEN alerts** | Rule pack v1: 3 consecutive numeracy assessments matching text + low score → `senAlerts` document; dismiss / snooze / escalate + audit log entries. | [`senAlertService.ts`](../../src/services/senAlertService.ts), [`SenAlertsInbox.tsx`](../../src/components/SenAlertsInbox.tsx) |
-| **Heatmap** | Schematic **circuit** SVG map (not official boundaries); **minimum-n suppression**; skill filter; **CSV** export of table. | [`demoCircuitMap.ts`](../../src/data/demoCircuitMap.ts), [`CircuitHeatmapPanel.tsx`](../../src/components/CircuitHeatmapPanel.tsx) |
-| **Playbook analytics** | `playbookKey` from remedial activity title on save; **mean score delta** on next same-subject assessment; evidence strength by *n*. | [`playbookKey.ts`](../../src/utils/playbookKey.ts), [`playbookAnalyticsService.ts`](../../src/services/playbookAnalyticsService.ts), [`PlaybookLiftLeaderboard.tsx`](../../src/components/PlaybookLiftLeaderboard.tsx) |
+| **Foundations** | Student org fields + defaults; `users` docs use **`organizationId`** (legacy `districtId` still merged on read); optional `circuitId`, `schoolId`; network dashboard rollups from Firestore; RBAC-driven tabs. | [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts), [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts), [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts), [`enterpriseAccess.ts`](../../src/auth/enterpriseAccess.ts), [`App.tsx`](../../src/App.tsx) |
+| **SEN alerts** | Rule pack v1: 3 consecutive numeracy assessments matching text + low score → `senAlerts` document; dismiss / snooze / escalate + audit log entries. | [`senAlertService.ts`](../../src/services/senAlertService.ts), [`SenAlertsInbox.tsx`](../../src/features/sen-coordinator/SenAlertsInbox.tsx) |
+| **Heatmap** | Schematic **circuit** SVG map (not official boundaries); **minimum-n suppression**; skill filter; **CSV** export of table. | [`demoCircuitMap.ts`](../../src/data/demoCircuitMap.ts), [`CircuitHeatmapPanel.tsx`](../../src/features/assessments/CircuitHeatmapPanel.tsx) |
+| **Playbook analytics** | `playbookKey` from remedial activity title on save; **mean score delta** on next same-subject assessment; evidence strength by *n*. | [`playbookKey.ts`](../../src/utils/playbookKey.ts), [`playbookAnalyticsService.ts`](../../src/services/playbookAnalyticsService.ts), [`PlaybookLiftLeaderboard.tsx`](../../src/features/dashboards/PlaybookLiftLeaderboard.tsx) |
 
 **Demo login:** Extra tiles for SEN Coordinator, Circuit Supervisor, MoE/Super Admin (`*@basecamp.com` — create users + `users/{uid}.role` in Firebase). Optional **seed** path in [`Login.tsx`](../../src/components/Login.tsx) wipes `senAlerts` and seeds org-tagged students + one SEN workflow row.
 

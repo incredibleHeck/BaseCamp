@@ -6,6 +6,26 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { SenWarningFlag, WorksheetResult } from '../services/ai/aiPrompts/types';
 
+/**
+ * Staff-facing roles in Auth custom claims and Firestore `users` (private networks use `org_admin`, not `district`).
+ */
+export type StaffAuthRole =
+  | 'teacher'
+  | 'headteacher'
+  | 'org_admin'
+  | 'school_admin'
+  | 'sen_coordinator'
+  | 'super_admin'
+  | 'student_portal';
+
+/** Firebase Auth custom claims (Cloud Functions). Legacy JWTs may still carry `districtId`; map it to `organizationId` when parsing in AuthContext. */
+export interface AuthCustomClaims {
+  schoolId?: string;
+  role?: StaffAuthRole | string;
+  organizationId?: string;
+  premiumTier?: boolean;
+}
+
 /** Single multiple-choice item for AI-generated gamified practice quizzes. */
 export interface QuizQuestion {
   question: string;
@@ -28,10 +48,12 @@ export interface Cohort {
   teacherId?: string;
 }
 
-/** Firestore `schools` collection — canonical org metadata for district rollups (source of truth for display names). */
+/**
+ * Firestore `schools` — branch/campus under a B2B organization (treated as a “Branch” in UI).
+ */
 export interface School {
   id: string;
-  districtId: string;
+  organizationId: string;
   circuitId?: string;
   name: string;
   region?: string;
@@ -54,8 +76,8 @@ export interface Student {
   cohortTeacherId?: string;
   /** Denormalized from cohort at write time; preferred by AI over parsing {@link grade} free text. */
   numericGradeLevel?: number;
-  /** Phase 3: stable IDs for B2G rollups */
-  districtId?: string;
+  /** Org / network (B2B). */
+  organizationId?: string;
   circuitId?: string;
   schoolId?: string;
   schoolName?: string;

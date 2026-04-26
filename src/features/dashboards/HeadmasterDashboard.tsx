@@ -110,7 +110,7 @@ export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideScho
           className="flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
         >
           <ArrowLeft className="mr-1.5 h-4 w-4" />
-          Back to District
+          Back to organization
         </button>
       )}
       <header className="space-y-1">

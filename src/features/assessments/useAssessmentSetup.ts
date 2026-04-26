@@ -72,7 +72,7 @@ export function useAssessmentSetup(initialStudentId: string) {
           fetchedCohorts = await getCohortsBySchool(schoolId);
           fetchedStudents = await getStudentsBySchool(schoolId);
         } else {
-          // Fallback for district/admin without schoolId
+          // Fallback for school admin / super admin without schoolId
           fetchedStudents = await getStudents();
         }
 

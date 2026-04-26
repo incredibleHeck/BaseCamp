@@ -11,11 +11,13 @@ import { useSyncManager } from './hooks/useSyncManager';
 import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
 import { AssessmentProvider } from './context/AssessmentContext';
-import { DEFAULT_DISTRICT_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
+import { DEFAULT_ORGANIZATION_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
+import { effectiveOrganizationId } from './utils/organizationScope';
 import { isDemoHostedBuild } from './config/demoMode';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
 import { PremiumTierProvider } from './context/PremiumTierContext';
 import { LiveClassroomSessionProvider } from './context/LiveClassroomSessionContext';
+import { Toaster } from 'sonner';
 
 const demoSeedEnabled = isDemoHostedBuild;
 
@@ -25,7 +27,7 @@ const DEMO_SUPER_ADMIN_BOOTSTRAP_EMAILS = new Set(['superadmin@basecamp.com', 's
 const VALID_ROLES: UserData['role'][] = [
   'teacher',
   'headteacher',
-  'district',
+  'org_admin',
   'sen_coordinator',
   'super_admin',
 ];
@@ -59,7 +61,8 @@ export default function App() {
                     role: 'super_admin',
                     name: 'Super Admin',
                     email: user.email ?? '',
-                    districtId: DEFAULT_DISTRICT_ID,
+                    organizationId: DEFAULT_ORGANIZATION_ID,
+                    districtId: DEFAULT_ORGANIZATION_ID,
                   },
                   { merge: true }
                 );
@@ -83,28 +86,30 @@ export default function App() {
             return;
           }
 
-          const data = userDocSnap.data();
-          const r = data.role as string;
+          const data = userDocSnap.data() as Record<string, unknown>;
+          const rawRole = data.role as string;
+          const r =
+            rawRole === 'district' || rawRole === 'school_admin' ? 'org_admin' : rawRole;
           const role = VALID_ROLES.includes(r as UserData['role']) ? (r as UserData['role']) : 'teacher';
-          let name = data.name || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
+          let name = (typeof data.name === 'string' && data.name) || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
           let location =
-            data.location ||
-            (role === 'district' || role === 'sen_coordinator' || role === 'super_admin'
+            (typeof data.location === 'string' && data.location) ||
+            (role === 'org_admin' || role === 'sen_coordinator' || role === 'super_admin'
               ? 'Greater Accra'
               : 'Mando Basic School');
-          let districtId = typeof data.districtId === 'string' ? data.districtId : undefined;
+          let organizationId = effectiveOrganizationId(data as { organizationId?: string; districtId?: string });
           let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
 
           if (demoSeedEnabled) {
             if (role === 'headteacher' && !schoolId) schoolId = DEMO_SEED_PRIMARY_SCHOOL_ID;
             if (
-              (role === 'district' ||
+              (role === 'org_admin' ||
                 role === 'sen_coordinator' ||
                 role === 'super_admin') &&
-              !districtId
+              !organizationId
             ) {
-              districtId = DEFAULT_DISTRICT_ID;
+              organizationId = DEFAULT_ORGANIZATION_ID;
             }
           }
 
@@ -121,7 +126,7 @@ export default function App() {
             role,
             name,
             location,
-            districtId,
+            organizationId,
             circuitId,
             schoolId,
           };
@@ -143,20 +148,21 @@ export default function App() {
     };
   }, []);
 
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading BaseCamp...</p>
-      </div>
-    );
-  }
-
-  if (!currentUser) return <Login />;
-
   return (
-    <ErrorBoundary>
-      <LoggedInApp user={currentUser} />
-    </ErrorBoundary>
+    <>
+      <Toaster position="top-right" richColors closeButton />
+      {isAuthLoading ? (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <p className="text-gray-500">Loading BaseCamp...</p>
+        </div>
+      ) : !currentUser ? (
+        <Login />
+      ) : (
+        <ErrorBoundary>
+          <LoggedInApp user={currentUser} />
+        </ErrorBoundary>
+      )}
+    </>
   );
 }
 

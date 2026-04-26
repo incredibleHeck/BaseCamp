@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Plus, Loader2, Trash2 } from 'lucide-react';
+import { Users, Plus, Loader2, Trash2, Mail } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
@@ -19,18 +19,22 @@ import {
   type SchoolTeacherSummary,
 } from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
+import { useAuth } from '../../context/AuthContext';
+import { InviteTeacherDialog } from './InviteTeacherDialog';
 
 interface StaffDirectoryProps {
   user: UserData;
 }
 
 export function StaffDirectory({ user }: StaffDirectoryProps) {
+  const { tokenClaims } = useAuth();
   const [teachers, setTeachers] = useState<SchoolTeacherSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // Add dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [newTeacherName, setNewTeacherName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdTeacher, setCreatedTeacher] = useState<CreateTeacherResult | null>(null);
@@ -40,6 +44,10 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const schoolId = user.schoolId;
+  const effectiveSchoolId = tokenClaims.schoolId ?? user.schoolId ?? '';
+  const canInviteByEmail =
+    Boolean(effectiveSchoolId) &&
+    (user.role === 'headteacher' || user.role === 'org_admin' || user.role === 'super_admin');
 
   const loadTeachers = useCallback(async () => {
     if (!schoolId) {
@@ -127,10 +135,25 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setIsDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" aria-hidden />
-          Add Teacher
-        </Button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {canInviteByEmail && (
+            <Button type="button" variant="outline" onClick={() => setInviteOpen(true)}>
+              <Mail className="mr-2 h-4 w-4" aria-hidden />
+              Invite by email
+            </Button>
+          )}
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden />
+            Add Teacher
+          </Button>
+        </div>
+
+        <InviteTeacherDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          targetSchoolId={effectiveSchoolId}
+          onInvited={() => void loadTeachers()}
+        />
 
         <Dialog isOpen={isDialogOpen} onClose={resetDialog}>
           <DialogContent className="sm:max-w-[425px]">

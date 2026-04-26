@@ -25,7 +25,7 @@ export function PremiumHeaderChrome({
     const titles = {
       teacher: 'Teacher Portal',
       headteacher: 'Headteacher Portal',
-      district: 'School Admin',
+      org_admin: 'Organization admin',
       sen_coordinator: 'SEN Coordinator',
       super_admin: 'MoE / Super Admin',
     };

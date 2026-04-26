@@ -221,7 +221,7 @@ export const getStudentHistory = async (studentId: string): Promise<Assessment[]
 
 /**
  * Loads assessments visible to the current user (scoped — matches Firestore rules).
- * Super admin: full collection; others: school / cohort / district filters.
+ * Super admin: full collection; others: school / cohort / jurisdiction filters.
  */
 async function queryAssessmentsForCurrentStaff(): Promise<Assessment[]> {
   const scope = await getStaffAccessScope();

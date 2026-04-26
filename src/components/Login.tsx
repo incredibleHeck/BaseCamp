@@ -5,13 +5,12 @@ import { signInWithEmailAndPassword, signInAnonymously, signOut } from 'firebase
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { normalizeAccessLookupKey } from '../utils/accessLookupKeys';
 import { seedDemoEnvironment } from '../utils/demoSeeder';
-import { buildManagedStaffEmail } from '../utils/managedCredentials';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { AnimatePresence, m } from 'motion/react';
 import { isDemoHostedBuild } from '../config/demoMode';
 
-type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'super_admin';
+type Role = 'teacher' | 'headteacher' | 'org_admin' | 'sen_coordinator' | 'super_admin';
 
 /** Placeholder only — not a guaranteed password. Super admin must exist in Firebase Auth for this project. */
 const ADMIN_PASSWORD_PLACEHOLDER = 'Your Firebase Auth password';
@@ -43,8 +42,8 @@ function authErrorMessage(error: unknown): string {
 
 function defaultEmailForAdminRole(role: Role): string {
   switch (role) {
-    case 'district':
-      return 'district@basecamp.com';
+    case 'org_admin':
+      return 'orgadmin@basecamp.com';
     case 'sen_coordinator':
       return 'sen_coordinator@basecamp.com';
     case 'super_admin':
@@ -72,29 +71,24 @@ export function Login() {
     return null;
   });
 
-  // Demo: access code (lookup) login. Pilot: school + username + PIN (managed pseudo-email).
+  // Demo: access code (lookup) login. Pilot & non-demo: email + password (Firebase).
   const [accessCode, setAccessCode] = useState('');
-  const [schoolIdField, setSchoolIdField] = useState('');
-  const [staffUsername, setStaffUsername] = useState('');
-  const [staffPin, setStaffPin] = useState('');
   const [isCodeLoggingIn, setIsCodeLoggingIn] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
 
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
-
-  /** Pilot headteacher: PIN (managed account) vs email/password (registered headteacher). Default to admin for clarity. */
-  const [headteacherLoginMode, setHeadteacherLoginMode] = useState<'pin' | 'admin'>('admin');
-  const [headteacherAdminEmail, setHeadteacherAdminEmail] = useState('');
-  const [headteacherAdminPassword, setHeadteacherAdminPassword] = useState('');
 
   const [seedEmail, setSeedEmail] = useState('superadmin@basecamp.com');
   const [seedPassword, setSeedPassword] = useState('');
 
   useEffect(() => {
     if (
-      selectedRole === 'district' ||
+      selectedRole === 'org_admin' ||
       selectedRole === 'sen_coordinator' ||
       selectedRole === 'super_admin'
     ) {
@@ -148,6 +142,12 @@ export function Login() {
         name: typeof profile.name === 'string' ? profile.name : '',
         schoolId: typeof profile.schoolId === 'string' ? profile.schoolId : '',
         districtId: typeof profile.districtId === 'string' ? profile.districtId : '',
+        organizationId:
+          typeof profile.organizationId === 'string'
+            ? profile.organizationId
+            : typeof profile.districtId === 'string'
+              ? profile.districtId
+              : '',
         email: typeof profile.email === 'string' ? profile.email : '',
         username: typeof profile.username === 'string' ? profile.username : '',
         linkedProfileId: profileUserId,
@@ -164,10 +164,10 @@ export function Login() {
     }
   };
 
-  const handleHeadteacherAdminLogin = async (e: React.FormEvent) => {
+  const handleStaffEmailPasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const em = headteacherAdminEmail.trim();
-    const pw = headteacherAdminPassword;
+    const em = staffEmail.trim();
+    const pw = staffPassword;
     if (!em || !pw) {
       setCodeError('Enter your email and password.');
       return;
@@ -178,32 +178,8 @@ export function Login() {
       localStorage.removeItem('accessCodeUserId');
       await signInWithEmailAndPassword(auth, em, pw);
     } catch (error) {
-      console.error('Headteacher admin login failed:', error);
-      setCodeError('Login failed. Check your email and password.');
-    } finally {
-      setIsCodeLoggingIn(false);
-    }
-  };
-
-  const handlePilotStaffLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const sid = schoolIdField.trim();
-    const uname = staffUsername.trim();
-    const pin = staffPin;
-    if (!sid || !uname || !pin) {
-      setCodeError('Enter school ID, username, and PIN.');
-      return;
-    }
-
-    setIsCodeLoggingIn(true);
-    setCodeError(null);
-
-    try {
-      const email = buildManagedStaffEmail(uname, sid);
-      await signInWithEmailAndPassword(auth, email, pin);
-    } catch (error) {
-      console.error('Staff login failed:', error);
-      setCodeError('Login failed. Check school ID, username, and PIN, or contact your headteacher.');
+      console.error('Staff email login failed:', error);
+      setCodeError('Login failed. Check your email and password, or ask your school administrator if your account is ready.');
     } finally {
       setIsCodeLoggingIn(false);
     }
@@ -213,7 +189,7 @@ export function Login() {
     e.preventDefault();
     if (
       !selectedRole ||
-      (selectedRole !== 'district' &&
+      (selectedRole !== 'org_admin' &&
         selectedRole !== 'sen_coordinator' &&
         selectedRole !== 'super_admin')
     ) {
@@ -310,8 +286,8 @@ export function Login() {
                   />
                   <PortalSelectCard
                     icon={<Building />}
-                    title="School Administrator"
-                    onClick={() => setSelectedRole('district')}
+                    title="Organization admin"
+                    onClick={() => setSelectedRole('org_admin')}
                   />
                   <PortalSelectCard
                     icon={<HeartHandshake />}
@@ -328,23 +304,6 @@ export function Login() {
                   <Lock className="w-4 h-4 shrink-0 opacity-70" aria-hidden />
                   Super Admin login
                 </button>
-
-                {!demoSeedEnabled && (
-                  <div className="mt-3 rounded-xl border border-indigo-200/70 bg-indigo-50/60 px-4 py-3 text-center shadow-sm">
-                    <p className="text-sm text-zinc-800">
-                      Are you a School Administrator?{' '}
-                      <a
-                        href="#/headteacher-signup"
-                        className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline"
-                      >
-                        Register your school here
-                      </a>
-                    </p>
-                    <p className="text-xs text-zinc-500 mt-1.5">
-                      For headteachers setting up a new school — not for classroom teachers.
-                    </p>
-                  </div>
-                )}
 
               </m.div>
             ) : (
@@ -364,13 +323,9 @@ export function Login() {
                       setSelectedRole(null);
                       setCodeError(null);
                       setAccessCode('');
-                      setSchoolIdField('');
-                      setStaffUsername('');
-                      setStaffPin('');
+                      setStaffEmail('');
+                      setStaffPassword('');
                       setAdminLoginError(null);
-                      setHeadteacherLoginMode('pin');
-                      setHeadteacherAdminEmail('');
-                      setHeadteacherAdminPassword('');
                     }}
                     className="text-zinc-500 hover:text-zinc-900 -ml-2"
                   >
@@ -390,21 +345,28 @@ export function Login() {
                       {selectedRole === 'teacher' ? 'Teacher Access' : 'Headteacher Access'}
                     </h2>
 
-                    {demoSeedEnabled && selectedRole === 'teacher' ? (
+                    {demoSeedEnabled && (selectedRole === 'teacher' || selectedRole === 'headteacher') ? (
                       <>
                         <p className="text-sm text-zinc-500 mb-2">
-                          Enter the access code provided by your Headteacher.
+                          {selectedRole === 'teacher'
+                            ? 'Enter the access code provided by your headteacher.'
+                            : 'Enter your school-assigned email (as access code) for this demo.'}
                         </p>
                         <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-lg px-3 py-2 mb-6 leading-relaxed">
-                          <span className="font-semibold text-amber-900">Hosted demo:</span> Logins below only work after a one-time{' '}
-                          <strong>Seed Demo Data</strong> (footer). Then use School&nbsp;1:{' '}
-                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">teacher1@school1.com</code>.
+                          <span className="font-semibold text-amber-900">Hosted demo:</span> Run <strong>Seed Demo Data</strong> once
+                          (footer). School&nbsp;1: teacher{' '}
+                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">teacher1@school1.com</code>
+                          , headteacher{' '}
+                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">headteacher@school1.com</code>
+                          .
                         </p>
                         <form onSubmit={handleDemoAccessCodeLogin} className="space-y-4">
                           <div>
                             <Input
                               type="text"
-                              placeholder="e.g. teacher1@school1.com"
+                              placeholder={
+                                selectedRole === 'teacher' ? 'e.g. teacher1@school1.com' : 'e.g. headteacher@school1.com'
+                              }
                               value={accessCode}
                               onChange={(e) => setAccessCode(e.target.value)}
                               disabled={isCodeLoggingIn}
@@ -428,174 +390,66 @@ export function Login() {
                       </>
                     ) : (
                       <>
-                        {selectedRole === 'headteacher' ? (
-                          <div className="mb-4 flex rounded-lg border border-zinc-200 bg-white p-0.5 shadow-sm">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setHeadteacherLoginMode('pin');
-                                setCodeError(null);
-                              }}
-                              className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                                headteacherLoginMode === 'pin'
-                                  ? 'bg-indigo-600 text-white shadow-sm'
-                                  : 'text-zinc-600 hover:text-zinc-900'
-                              }`}
-                            >
-                              PIN login
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setHeadteacherLoginMode('admin');
-                                setCodeError(null);
-                              }}
-                              className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                                headteacherLoginMode === 'admin'
-                                  ? 'bg-indigo-600 text-white shadow-sm'
-                                  : 'text-zinc-600 hover:text-zinc-900'
-                              }`}
-                            >
-                              Admin login
-                            </button>
+                        <p className="text-sm text-zinc-500 mb-4">
+                          {selectedRole === 'teacher'
+                            ? 'Sign in with the work email and password your school gave you (Firebase account).'
+                            : 'Sign in with the work email and password for your headteacher account.'}
+                        </p>
+                        <form onSubmit={(e) => void handleStaffEmailPasswordLogin(e)} className="space-y-3">
+                          <div>
+                            <label htmlFor="staff-login-email" className="text-xs font-medium text-zinc-600 block mb-1">
+                              Email
+                            </label>
+                            <Input
+                              id="staff-login-email"
+                              type="email"
+                              autoComplete="username"
+                              value={staffEmail}
+                              onChange={(e) => setStaffEmail(e.target.value)}
+                              disabled={isCodeLoggingIn}
+                              className="bg-white"
+                              placeholder="you@yourschool.edu.gh"
+                              autoFocus
+                            />
                           </div>
-                        ) : null}
-
-                        {selectedRole === 'headteacher' && headteacherLoginMode === 'admin' ? (
-                          <>
-                            <p className="text-sm text-zinc-500 mb-4">
-                              Sign in with the email and password you used when you registered your school.
-                            </p>
-                            <form onSubmit={(e) => void handleHeadteacherAdminLogin(e)} className="space-y-3">
-                              <div>
-                                <label htmlFor="ht-admin-email" className="text-xs font-medium text-zinc-600 block mb-1">
-                                  Email
-                                </label>
-                                <Input
-                                  id="ht-admin-email"
-                                  type="email"
-                                  autoComplete="username"
-                                  value={headteacherAdminEmail}
-                                  onChange={(e) => setHeadteacherAdminEmail(e.target.value)}
-                                  disabled={isCodeLoggingIn}
-                                  className="bg-white"
-                                  placeholder="you@example.com"
-                                  autoFocus
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="ht-admin-password" className="text-xs font-medium text-zinc-600 block mb-1">
-                                  Password
-                                </label>
-                                <Input
-                                  id="ht-admin-password"
-                                  type="password"
-                                  autoComplete="current-password"
-                                  value={headteacherAdminPassword}
-                                  onChange={(e) => setHeadteacherAdminPassword(e.target.value)}
-                                  disabled={isCodeLoggingIn}
-                                  className="bg-white"
-                                  placeholder={ADMIN_PASSWORD_PLACEHOLDER}
-                                />
-                              </div>
-                              {codeError && <p className="text-sm text-red-600 font-medium">{codeError}</p>}
-                              <Button
-                                type="submit"
-                                className="w-full"
-                                disabled={
-                                  !headteacherAdminEmail.trim() || !headteacherAdminPassword || isCodeLoggingIn
-                                }
-                              >
-                                {isCodeLoggingIn ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Logging in...
-                                  </>
-                                ) : (
-                                  'Log in'
-                                )}
-                              </Button>
-                            </form>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm text-zinc-500 mb-4">
-                              {selectedRole === 'teacher'
-                                ? 'Enter your school ID, username, and PIN from your headteacher. This signs you in securely (managed account).'
-                                : 'Enter your school ID, username, and PIN (managed account), or use Admin login if you registered with email and password.'}
-                            </p>
-                            <form onSubmit={handlePilotStaffLogin} className="space-y-3">
-                              <div>
-                                <label htmlFor="school-id" className="text-xs font-medium text-zinc-600 block mb-1">
-                                  School ID
-                                </label>
-                                <Input
-                                  id="school-id"
-                                  type="text"
-                                  placeholder="e.g. school1"
-                                  value={schoolIdField}
-                                  onChange={(e) => setSchoolIdField(e.target.value)}
-                                  disabled={isCodeLoggingIn}
-                                  className="bg-white"
-                                  autoComplete="off"
-                                  autoFocus
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="staff-username" className="text-xs font-medium text-zinc-600 block mb-1">
-                                  Username
-                                </label>
-                                <Input
-                                  id="staff-username"
-                                  type="text"
-                                  placeholder="Your assigned username"
-                                  value={staffUsername}
-                                  onChange={(e) => setStaffUsername(e.target.value)}
-                                  disabled={isCodeLoggingIn}
-                                  className="bg-white"
-                                  autoComplete="username"
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="staff-pin" className="text-xs font-medium text-zinc-600 block mb-1">
-                                  PIN / password
-                                </label>
-                                <Input
-                                  id="staff-pin"
-                                  type="password"
-                                  autoComplete="current-password"
-                                  placeholder="PIN or password"
-                                  value={staffPin}
-                                  onChange={(e) => setStaffPin(e.target.value)}
-                                  disabled={isCodeLoggingIn}
-                                  className="bg-white"
-                                />
-                              </div>
-                              {codeError && <p className="text-sm text-red-600 font-medium">{codeError}</p>}
-                              <Button
-                                type="submit"
-                                className="w-full"
-                                disabled={!schoolIdField.trim() || !staffUsername.trim() || !staffPin || isCodeLoggingIn}
-                              >
-                                {isCodeLoggingIn ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Logging in...
-                                  </>
-                                ) : (
-                                  'Log In'
-                                )}
-                              </Button>
-                            </form>
-                          </>
-                        )}
+                          <div>
+                            <label htmlFor="staff-login-password" className="text-xs font-medium text-zinc-600 block mb-1">
+                              Password
+                            </label>
+                            <Input
+                              id="staff-login-password"
+                              type="password"
+                              autoComplete="current-password"
+                              value={staffPassword}
+                              onChange={(e) => setStaffPassword(e.target.value)}
+                              disabled={isCodeLoggingIn}
+                              className="bg-white"
+                              placeholder={ADMIN_PASSWORD_PLACEHOLDER}
+                            />
+                          </div>
+                          {codeError && <p className="text-sm text-red-600 font-medium">{codeError}</p>}
+                          <Button
+                            type="submit"
+                            className="w-full"
+                            disabled={!staffEmail.trim() || !staffPassword || isCodeLoggingIn}
+                          >
+                            {isCodeLoggingIn ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Logging in...
+                              </>
+                            ) : (
+                              'Log in'
+                            )}
+                          </Button>
+                        </form>
                       </>
                     )}
                   </div>
                 ) : (
                   <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100 shadow-soft text-left">
                     <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-zinc-100 text-indigo-600">
-                      {selectedRole === 'district' && <Building className="w-6 h-6" />}
+                      {selectedRole === 'org_admin' && <Building className="w-6 h-6" />}
                       {selectedRole === 'sen_coordinator' && <HeartHandshake className="w-6 h-6" />}
                       {selectedRole === 'super_admin' && <Lock className="w-6 h-6" />}
                     </div>

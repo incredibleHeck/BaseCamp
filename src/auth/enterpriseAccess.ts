@@ -22,7 +22,7 @@ export function enterpriseNavForRole(role: EnterpriseRole): EnterpriseNavFlags {
         showPlaybooks: true,
         showSenInbox: false,
       };
-    case 'district':
+    case 'org_admin':
       return {
         showHeatmap: true,
         showPlaybooks: true,
@@ -55,12 +55,12 @@ export function defaultViewForRole(role: EnterpriseRole): string {
       return 'class-roster';
     case 'headteacher':
       return 'school-overview';
-    case 'district':
-      return 'district-overview';
+    case 'org_admin':
+      return 'org-admin-overview';
     case 'sen_coordinator':
       return 'sen-inbox';
     case 'super_admin':
-      return 'district-overview';
+      return 'school-directory';
     default:
       return 'class-roster';
   }

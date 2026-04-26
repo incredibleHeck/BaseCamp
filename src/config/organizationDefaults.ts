@@ -1,9 +1,18 @@
 /**
- * Demo / pilot administrative identifiers (Phase 3).
- * Align with MoE/GES codes in production; these are stable strings for rollups & heatmaps.
+ * Demo / pilot administrative identifiers (B2B: school networks / orgs; legacy public-sector `district` strings).
+ * Stable string ids for rollups, heatmaps, and multi-campus networks.
  */
-export const DEFAULT_DISTRICT_ID = 'ga-central-demo';
-export const DEFAULT_DISTRICT_NAME = 'Greater Accra (demo)';
+/** Default `organizationId` for demo users, schools, and students. */
+export const DEFAULT_ORGANIZATION_ID = 'ga-central-demo';
+/** @deprecated use DEFAULT_ORGANIZATION_ID */
+export const DEFAULT_JURISDICTION_ID = DEFAULT_ORGANIZATION_ID;
+/** @deprecated */
+export const DEFAULT_DISTRICT_ID = DEFAULT_ORGANIZATION_ID;
+export const ORGANIZATION_DISPLAY_NAME = 'Greater Accra (demo)';
+/** @deprecated */
+export const JURISDICTION_DISPLAY_NAME = ORGANIZATION_DISPLAY_NAME;
+/** @deprecated */
+export const DEFAULT_DISTRICT_NAME = ORGANIZATION_DISPLAY_NAME;
 
 export const DEMO_SCHOOLS = [
   { id: 'sch-mando', name: 'Mando Basic School', circuitId: 'circuit-north' },

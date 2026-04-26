@@ -111,7 +111,7 @@ The nightly aggregation function writes precomputed data to `aggregations/{schoo
 The architecture (lines 157-161) describes a "Parent Login" where parents authenticate and subscribe to `parent_digests/{studentId}`. The Cloud Function writes the data, Firestore rules exist for the collection, but:
 - No parent authentication flow exists
 - No parent-facing UI/route to read digests
-- `parent_digests` rules only allow admin/headteacher/district reads -- no parent-scoped read path
+- `parent_digests` rules only allow admin/headteacher/jurisdiction-oversight reads -- no parent-scoped read path
 - The `Phase4FamilyConnectCard` generates digests client-side (separate from the server pipeline) and queues them to WhatsApp -- this is a workaround, not the architecture's intended flow
 
 ### DEBT-7: `onLiveSessionConcluded` Missing Error Handling (MEDIUM)
@@ -161,7 +161,7 @@ In [offlineQueueService.ts](src/services/core/offlineQueueService.ts), the `WORK
 - **Parent Digest**: Weekly Gemini-powered digest (Friday 4 PM), concurrency-limited, retry logic
 - **Obsidian and Gold UI**: Full premium dark theme with conditional rendering -- GES users see the standard light UI
 - **LazyMotion**: Properly implemented with `strict` mode, async `domAnimation` import, all components using `m` not `motion`
-- **Security Rules**: Comprehensive Firestore rules with role-based access, teacher-cohort scoping, district scoping, student portal token validation; RTDB rules enforce teacher-owns-state and student-writes-own-uid
+- **Security Rules**: Comprehensive Firestore rules with role-based access, teacher-cohort scoping, organization / branch scoping (`organizationId`, `getUserOrgId`, `isOrgAdminForSchoolId`), student portal token validation; RTDB rules enforce teacher-owns-state and student-writes-own-uid
 - **Cloud Functions**: All Gen2 with appropriate resource profiles (4GiB/2vCPU for video, 512MiB-1GiB for aggregation/digest, 540s timeouts)
 
 ### What needs work before pilot (AMBER)

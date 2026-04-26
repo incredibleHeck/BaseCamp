@@ -1,5 +1,5 @@
 /**
- * Simplified schematic “district” map for heatmap MVP (not official boundaries).
+ * Simplified schematic region map for heatmap MVP (not official boundaries).
  * viewBox coordinates are arbitrary; choropleth fills circuits by risk band.
  */
 export const CIRCUIT_MAP_VIEWBOX = '0 0 400 280';

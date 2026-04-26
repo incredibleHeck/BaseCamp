@@ -1,12 +1,9 @@
 import type { Assessment, Student } from '../../types/domain';
-import {
-  AGGREGATION_MIN_N,
-  DEFAULT_DISTRICT_ID,
-  circuitName,
-} from '../../config/organizationDefaults';
+import { AGGREGATION_MIN_N, DEFAULT_ORGANIZATION_ID, circuitName } from '../../config/organizationDefaults';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { computeTopLearningGap, effectiveNumericScore } from '../../utils/analyticsUtils';
 import { fetchAllAssessments, getStudentHistory } from '../assessmentService';
-import { getSchoolsByDistrict } from '../schoolService';
+import { getSchoolsInOrganization } from '../schoolService';
 import { getStudents } from '../studentService';
 
 function round1(n: number): number {
@@ -30,20 +27,20 @@ function schoolGroupKey(student: Student): string {
  * TODO: After `schools` is fully seeded and IDs on students are stable, drop the student `schoolName` fallback.
  */
 async function schoolCatalogNameById(
-  districtIdParam: string | undefined,
+  organizationIdParam: string | undefined,
   scopedStudents: Student[]
 ): Promise<Map<string, string>> {
-  const districtIds = districtIdParam?.trim()
-    ? [districtIdParam.trim()]
+  const organizationIds = organizationIdParam?.trim()
+    ? [organizationIdParam.trim()]
     : [
         ...new Set(
           scopedStudents
-            .map((s) => s.districtId?.trim())
+            .map((s) => effectiveOrganizationId(s))
             .filter((d): d is string => Boolean(d))
         ),
       ];
-  const toQuery = districtIds.length > 0 ? districtIds : [DEFAULT_DISTRICT_ID];
-  const lists = await Promise.all(toQuery.map((d) => getSchoolsByDistrict(d)));
+  const toQuery = organizationIds.length > 0 ? organizationIds : [DEFAULT_ORGANIZATION_ID];
+  const lists = await Promise.all(toQuery.map((d) => getSchoolsInOrganization(d)));
   const map = new Map<string, string>();
   for (const list of lists) {
     for (const sch of list) {
@@ -82,12 +79,12 @@ function buildSchoolMetrics(schoolId: string, bucket: SchoolBucket): SchoolMetri
   };
 }
 
-export interface DistrictOverviewMetrics {
+export interface NetworkOverviewMetrics {
   totalSchools: number;
   totalStudents: number;
   totalAssessments: number;
   activeSenFlags: number;
-  districtAverageScore: number;
+  networkAverageScore: number;
 }
 
 export interface SchoolMetrics {
@@ -99,51 +96,56 @@ export interface SchoolMetrics {
   topLearningGap: string | null;
 }
 
-export interface DistrictAnalyticsPayload {
-  overview: DistrictOverviewMetrics;
+export interface NetworkAnalyticsPayload {
+  overview: NetworkOverviewMetrics;
   schools: SchoolMetrics[];
 }
 
-function emptyDistrictOverview(): DistrictOverviewMetrics {
+function emptyNetworkOverview(): NetworkOverviewMetrics {
   return {
     totalSchools: 0,
     totalStudents: 0,
     totalAssessments: 0,
     activeSenFlags: 0,
-    districtAverageScore: 0,
+    networkAverageScore: 0,
   };
 }
 
 /**
- * Placeholder bundle for upcoming district rollups (keeps domain types wired into this module).
+ * Placeholder bundle for upcoming school-administrator rollups (keeps domain types wired into this module).
  */
-export type DistrictAnalyticsJoinPreview = {
+export type NetworkAnalyticsJoinPreview = {
   students: Student[];
   assessments: Assessment[];
 };
 
-export interface DistrictAnalyticsOptions {
-  districtId?: string;
+export interface NetworkAnalyticsOptions {
+  /** B2B organization / school-network scope. */
+  organizationId?: string;
   subject?: 'Literacy' | 'Numeracy' | 'All';
   term?: string;
 }
 
-export async function generateDistrictAnalytics(options: DistrictAnalyticsOptions = {}): Promise<DistrictAnalyticsPayload | null> {
+export async function getNetworkMetrics(
+  options: NetworkAnalyticsOptions = {}
+): Promise<NetworkAnalyticsPayload | null> {
   try {
-    const { districtId, subject, term } = options;
+    const { subject, term } = options;
+    const organizationId = options.organizationId;
     const students = await getStudents();
-    const scopedStudents = districtId ? students.filter((s) => s.districtId === districtId) : students;
+    const scopedStudents = organizationId
+      ? students.filter((s) => effectiveOrganizationId(s) === organizationId)
+      : students;
     if (scopedStudents.length === 0) {
-      return { overview: emptyDistrictOverview(), schools: [] };
+      return { overview: emptyNetworkOverview(), schools: [] };
     }
 
     const histories = await Promise.all(
       scopedStudents.map((s) => (s.id?.trim() ? getStudentHistory(s.id) : Promise.resolve([] as Assessment[])))
     );
 
-    // Apply filters to histories
-    const filteredHistories = histories.map(history => {
-      return history.filter(a => {
+    const filteredHistories = histories.map((history) => {
+      return history.filter((a) => {
         if (subject && subject !== 'All' && a.type !== subject) return false;
         if (term && term !== 'All' && a.term !== term) return false;
         return true;
@@ -151,14 +153,14 @@ export async function generateDistrictAnalytics(options: DistrictAnalyticsOption
     });
 
     let totalAssessments = 0;
-    const districtScores: number[] = [];
+    const scopeScores: number[] = [];
     let activeSenFlags = 0;
 
     for (const history of filteredHistories) {
       totalAssessments += history.length;
       for (const a of history) {
         const v = effectiveNumericScore(a);
-        if (v !== null) districtScores.push(v);
+        if (v !== null) scopeScores.push(v);
       }
     }
 
@@ -168,17 +170,15 @@ export async function generateDistrictAnalytics(options: DistrictAnalyticsOption
       if (latest?.senWarningFlag != null) activeSenFlags += 1;
     }
 
-    const districtAverageScore =
-      districtScores.length > 0
-        ? round1(districtScores.reduce((sum, x) => sum + x, 0) / districtScores.length)
+    const networkAverageScore =
+      scopeScores.length > 0
+        ? round1(scopeScores.reduce((sum, x) => sum + x, 0) / scopeScores.length)
         : 0;
 
     const bySchoolId = new Map<string, SchoolBucket>();
     for (let i = 0; i < scopedStudents.length; i++) {
       const s = scopedStudents[i];
       const history = filteredHistories[i];
-      // Only include students in school buckets if they have relevant assessments?
-      // Actually, we should probably include them anyway, but their avg score will be 0 if no assessments.
       const key = schoolGroupKey(s);
       let bucket = bySchoolId.get(key);
       if (!bucket) {
@@ -197,7 +197,7 @@ export async function generateDistrictAnalytics(options: DistrictAnalyticsOption
       }
     }
 
-    const catalogNames = await schoolCatalogNameById(districtId, scopedStudents);
+    const catalogNames = await schoolCatalogNameById(organizationId, scopedStudents);
 
     const schools: SchoolMetrics[] = [];
     for (const [schoolKey, bucket] of bySchoolId) {
@@ -218,31 +218,41 @@ export async function generateDistrictAnalytics(options: DistrictAnalyticsOption
       a.schoolName.localeCompare(b.schoolName, undefined, { sensitivity: 'base' })
     );
 
-    const overview: DistrictOverviewMetrics = {
+    const overview: NetworkOverviewMetrics = {
       totalSchools: bySchoolId.size,
       totalStudents: scopedStudents.length,
       totalAssessments,
       activeSenFlags,
-      districtAverageScore,
+      networkAverageScore,
     };
 
     return { overview, schools: schoolsResolved };
   } catch (error) {
-    console.error('districtAnalyticsService.generateDistrictAnalytics failed:', error);
+    console.error('organizationAnalyticsService.getNetworkMetrics failed:', error);
     return null;
   }
 }
 
-/** Org slice for district-level panels (heatmap, playbook lift) — not persisted. */
-export interface DistrictFeatureScope {
-  districtId?: string;
+/** @deprecated use getNetworkMetrics */
+export const generateJurisdictionAnalytics = getNetworkMetrics;
+
+/** @deprecated use getNetworkMetrics */
+export const generateDistrictAnalytics = getNetworkMetrics;
+
+/** Org / network scope for org-admin panels (heatmap, playbook lift) — not persisted. */
+export interface OrganizationFeatureScope {
+  organizationId?: string;
   circuitId?: string;
   schoolId?: string;
 }
 
-function studentInDistrictFeatureScope(s: Student, scope: DistrictFeatureScope): boolean {
-  const d = scope.districtId ?? DEFAULT_DISTRICT_ID;
-  if (s.districtId && s.districtId !== d) return false;
+/** @deprecated use OrganizationFeatureScope */
+export type JurisdictionFeatureScope = OrganizationFeatureScope;
+
+function studentInOrganizationScope(s: Student, scope: OrganizationFeatureScope): boolean {
+  const o = scope.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  const sid = effectiveOrganizationId(s);
+  if (sid && sid !== o) return false;
   if (scope.schoolId) {
     if (!s.schoolId || s.schoolId !== scope.schoolId) return false;
   }
@@ -253,13 +263,13 @@ function studentInDistrictFeatureScope(s: Student, scope: DistrictFeatureScope):
 }
 
 /**
- * Students and their assessments for scoped district analytics (circuit heatmap, playbook lift).
+ * Students and their assessments for scoped organization analytics (circuit heatmap, playbook lift).
  */
-export async function fetchScopedDistrictRollupInputs(
-  scope: DistrictFeatureScope
+export async function fetchScopedJurisdictionRollupInputs(
+  scope: OrganizationFeatureScope
 ): Promise<{ students: Student[]; assessments: Assessment[] }> {
   const [students, allAssessments] = await Promise.all([getStudents(), fetchAllAssessments()]);
-  const scopedStudents = students.filter((s) => studentInDistrictFeatureScope(s, scope));
+  const scopedStudents = students.filter((s) => studentInOrganizationScope(s, scope));
   const ids = new Set(scopedStudents.map((s) => s.id).filter(Boolean) as string[]);
   const assessments = allAssessments.filter((a) => ids.has(a.studentId));
   return { students: scopedStudents, assessments };

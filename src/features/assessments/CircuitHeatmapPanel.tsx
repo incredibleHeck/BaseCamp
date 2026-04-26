@@ -3,13 +3,14 @@ import { Download, MapPin } from 'lucide-react';
 import type { UserData } from '../../components/layout/Header';
 import {
   buildCircuitSkillRollups,
-  fetchScopedDistrictRollupInputs,
+  fetchScopedJurisdictionRollupInputs,
   heatmapRowsToCsv,
   type CircuitSkillRollup,
-  type DistrictFeatureScope,
-} from '../../services/analytics/districtAnalyticsService';
+  type OrganizationFeatureScope,
+} from '../../services/analytics/organizationAnalyticsService';
 import { DEMO_CIRCUIT_REGIONS, CIRCUIT_MAP_VIEWBOX, bandFillClass } from '../../data/demoCircuitMap';
-import { DEFAULT_DISTRICT_ID } from '../../config/organizationDefaults';
+import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 
 interface CircuitHeatmapPanelProps {
   user: UserData;
@@ -28,13 +29,14 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const scope: DistrictFeatureScope = useMemo(
+  const orgScope = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
+  const scope: OrganizationFeatureScope = useMemo(
     () => ({
-      districtId: user.districtId ?? DEFAULT_DISTRICT_ID,
+      organizationId: orgScope,
       circuitId: undefined,
       schoolId: undefined,
     }),
-    [user.districtId]
+    [orgScope]
   );
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
       setLoading(true);
       setError(null);
       try {
-        const dash = await fetchScopedDistrictRollupInputs(scope);
+        const dash = await fetchScopedJurisdictionRollupInputs(scope);
         if (cancelled) return;
         const roll = buildCircuitSkillRollups(dash.students, dash.assessments, skill);
         setRows(roll);
@@ -123,7 +125,7 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
       {!loading && !error && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="border border-gray-200 rounded-xl overflow-hidden bg-slate-50">
-            <svg viewBox={CIRCUIT_MAP_VIEWBOX} className="w-full h-auto max-h-[320px]" role="img" aria-label="Schematic district map by circuit">
+            <svg viewBox={CIRCUIT_MAP_VIEWBOX} className="w-full h-auto max-h-[320px]" role="img" aria-label="Schematic region map by circuit">
               <title>Circuit choropleth</title>
               {DEMO_CIRCUIT_REGIONS.map((region) => {
                 const band = bandByCircuit.get(region.circuitId) ?? 'suppressed';

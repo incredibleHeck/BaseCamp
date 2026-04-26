@@ -24,6 +24,7 @@
     "deploy:firestore:pilot": "firebase deploy --only firestore:rules --project basecamp-pilot",
     "deploy:firestore:demo": "firebase deploy --only firestore:rules --project basecamp-diagnostics --config firebase.demo.json",
     "deploy:diagnostics": "npm run build -- --mode diagnostics && firebase deploy --config firebase.demo.json --project basecamp-diagnostics",
+    "deploy:hosting:pilot": "npm run build && firebase deploy --only hosting --project basecamp-pilot",
     "test:rtdb-load": "tsx scripts/loadTestRtdb.ts"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "sonner": "^2.0.7",
     "vite": "^6.2.0"
   },
   "devDependencies": {

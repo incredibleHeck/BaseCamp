@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { effectiveOrganizationId } from '../utils/organizationScope';
 import type { School } from '../types/domain';
 
 export type { School };
@@ -7,12 +8,14 @@ export type { School };
 const SCHOOLS_COLLECTION = 'schools';
 
 function schoolFromFirestoreDoc(docId: string, data: Record<string, unknown>): School | null {
-  const districtId = typeof data.districtId === 'string' ? data.districtId.trim() : '';
+  const organizationId = effectiveOrganizationId(
+    data as { organizationId?: string; districtId?: string }
+  );
   const name = typeof data.name === 'string' ? data.name.trim() : '';
-  if (!districtId || !name) return null;
+  if (!organizationId || !name) return null;
   return {
     id: docId,
-    districtId,
+    organizationId,
     circuitId: typeof data.circuitId === 'string' ? data.circuitId.trim() : undefined,
     name,
     region: typeof data.region === 'string' && data.region.trim() ? data.region.trim() : undefined,
@@ -45,22 +48,32 @@ export async function getSchool(id: string): Promise<School | null> {
 }
 
 /**
- * Schools in a district (matches `districtId` on the school document).
+ * Branches (Firestore `schools` docs) in an organization scope.
+ * Queries both `organizationId` and legacy `districtId` and merges.
  */
-export async function getSchoolsByDistrict(districtId: string): Promise<School[]> {
-  const trimmed = districtId?.trim();
+export async function getSchoolsInOrganization(organizationId: string): Promise<School[]> {
+  const trimmed = organizationId?.trim();
   if (!trimmed) return [];
   try {
-    const q = query(collection(db, SCHOOLS_COLLECTION), where('districtId', '==', trimmed));
-    const snap = await getDocs(q);
-    const out: School[] = [];
-    snap.forEach((d) => {
-      const row = schoolFromFirestoreDoc(d.id, d.data() as Record<string, unknown>);
-      if (row) out.push(row);
-    });
-    return out;
+    const [byOrg, byLegacy] = await Promise.all([
+      getDocs(query(collection(db, SCHOOLS_COLLECTION), where('organizationId', '==', trimmed))),
+      getDocs(query(collection(db, SCHOOLS_COLLECTION), where('districtId', '==', trimmed))),
+    ]);
+    const map = new Map<string, School>();
+    for (const snap of [byOrg, byLegacy]) {
+      snap.forEach((d) => {
+        const row = schoolFromFirestoreDoc(d.id, d.data() as Record<string, unknown>);
+        if (row) map.set(d.id, row);
+      });
+    }
+    return [...map.values()];
   } catch (error) {
-    console.error('schoolService.getSchoolsByDistrict failed:', error);
+    console.error('schoolService.getSchoolsInOrganization failed:', error);
     return [];
   }
 }
+
+/** @deprecated use getSchoolsInOrganization */
+export const getSchoolsInJurisdiction = getSchoolsInOrganization;
+/** @deprecated */
+export const getSchoolsByDistrict = getSchoolsInOrganization;
