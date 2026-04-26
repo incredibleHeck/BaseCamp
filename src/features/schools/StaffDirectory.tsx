@@ -24,9 +24,11 @@ import { InviteTeacherDialog } from './InviteTeacherDialog';
 
 interface StaffDirectoryProps {
   user: UserData;
+  /** When set (e.g. org admin picked a branch from the directory), scope staff to this school. */
+  scopeSchoolId?: string;
 }
 
-export function StaffDirectory({ user }: StaffDirectoryProps) {
+export function StaffDirectory({ user, scopeSchoolId }: StaffDirectoryProps) {
   const { tokenClaims } = useAuth();
   const [teachers, setTeachers] = useState<SchoolTeacherSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,22 +45,22 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
   const [teacherToDelete, setTeacherToDelete] = useState<SchoolTeacherSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const schoolId = user.schoolId;
-  const effectiveSchoolId = tokenClaims.schoolId ?? user.schoolId ?? '';
+  const activeSchoolId = scopeSchoolId?.trim() || user.schoolId;
+  const effectiveSchoolId = tokenClaims.schoolId ?? activeSchoolId ?? '';
   const canInviteByEmail =
     Boolean(effectiveSchoolId) &&
     (user.role === 'headteacher' || user.role === 'org_admin' || user.role === 'super_admin');
 
   const loadTeachers = useCallback(async () => {
-    if (!schoolId) {
+    if (!activeSchoolId) {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     setError(null);
     try {
-      const data = await getTeachersBySchool(schoolId);
+      const data = await getTeachersBySchool(activeSchoolId);
       setTeachers(data);
     } catch (err) {
       setError('Failed to load teachers.');
@@ -66,7 +68,7 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
     } finally {
       setLoading(false);
     }
-  }, [schoolId]);
+  }, [activeSchoolId]);
 
   useEffect(() => {
     void loadTeachers();
@@ -74,12 +76,12 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
 
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schoolId || !newTeacherName.trim()) return;
+    if (!activeSchoolId || !newTeacherName.trim()) return;
 
     setIsSubmitting(true);
     setError(null);
     try {
-      const result = await addTeacher(newTeacherName, schoolId, user.id);
+      const result = await addTeacher(newTeacherName, activeSchoolId, user.id);
       setCreatedTeacher(result);
       await loadTeachers(); // Refresh the list
     } catch (err) {
@@ -115,7 +117,16 @@ export function StaffDirectory({ user }: StaffDirectoryProps) {
     }
   };
 
-  if (!schoolId) {
+  if (!activeSchoolId) {
+    if (user.role === 'org_admin') {
+      return (
+        <div className="mx-auto w-full max-w-lg rounded-xl border border-amber-200 bg-amber-50/80 p-6 text-center text-zinc-700">
+          <p className="text-sm text-zinc-800">
+            Please select a branch from the Branch Directory first to manage its staff.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="p-8 text-center text-zinc-500">
         You must be assigned to a school to view the Staff Directory.

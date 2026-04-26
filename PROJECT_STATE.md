@@ -27,13 +27,13 @@ Roles are defined on user profile / header ([`src/components/layout/Header.tsx`]
 |------|----------------|
 | `teacher` | Class roster, new assessment (photo / manual / voice), pending analyses, student profiles |
 | `headteacher` | School overview, teacher directory, playbook lift (if enabled) |
-| `org_admin` | Organization / multi-branch admin: network dashboard, risk map, playbooks |
+| `org_admin` | Organization / multi-branch admin: network dashboard, Campus Gap Analysis, playbooks |
 | `school_admin` | Legacy role normalized to `org_admin` in app on read (Firestore may still store `school_admin`) |
-| `circuit_supervisor` | Risk map–centric default view |
-| `sen_coordinator` | SEN inbox, regional context, risk map |
+| `circuit_supervisor` | MoE / regional pilot role; enterprise nav per [`enterpriseAccess.ts`](src/auth/enterpriseAccess.ts) when used |
+| `sen_coordinator` | SEN inbox, regional context, Campus Gap Analysis (when `showCampusGapAnalysis` applies) |
 | `super_admin` | Full enterprise tools + pilot export |
 
-Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN inbox**.
+Enterprise flags control tabs such as **Campus Gap Analysis** (`showCampusGapAnalysis`), **Playbook lift**, and **SEN inbox**.
 
 ---
 
@@ -86,9 +86,9 @@ Enterprise flags control tabs such as **Risk map**, **Playbook lift**, and **SEN
 ### Enterprise / analytics
 
 - **[`OrganizationDashboard.tsx`](src/features/dashboards/OrganizationDashboard.tsx)** (school network overview), **[`NetworkBranchKPIs.tsx`](src/features/dashboards/NetworkBranchKPIs.tsx)**, **[`HeadmasterDashboard.tsx`](src/features/dashboards/HeadmasterDashboard.tsx)**  
-- **[`CircuitHeatmapPanel.tsx`](src/features/assessments/CircuitHeatmapPanel.tsx):** Geographic / circuit risk visualization  
+- **[`CampusGapAnalysisPanel.tsx`](src/features/assessments/CampusGapAnalysisPanel.tsx):** Campus / branch **gap analysis** (Recharts + table; rollups from [`buildBranchGapRollups`](src/services/analytics/organizationAnalyticsService.ts)); shell view `org-admin-campus-gaps`  
 - **[`PlaybookLiftLeaderboard.tsx`](src/features/dashboards/PlaybookLiftLeaderboard.tsx)**, **[`SenAlertsInbox.tsx`](src/features/sen-coordinator/SenAlertsInbox.tsx)**  
-- **[`organizationAnalyticsService.ts`](src/services/analytics/organizationAnalyticsService.ts)** (`getNetworkMetrics`, org-scoped rollups), **[`schoolAnalyticsService.ts`](src/services/schoolAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
+- **[`organizationAnalyticsService.ts`](src/services/analytics/organizationAnalyticsService.ts)** (`getNetworkMetrics`, `buildBranchGapRollups` / `BranchGapRollup` by `schoolId`, CSV export), **[`schoolAnalyticsService.ts`](src/services/schoolAnalyticsService.ts)**, **[`playbookAnalyticsService.ts`](src/services/playbookAnalyticsService.ts)**, **[`senAlertService.ts`](src/services/senAlertService.ts)**  
 - **[`StaffDirectory.tsx`](src/features/schools/StaffDirectory.tsx)** (headteacher)  
 - **[`FineTunePilotPanel.tsx`](src/features/ai-tools/FineTunePilotPanel.tsx)** + **[`fineTunePilotService.ts`](src/services/fineTunePilotService.ts)** (super_admin)  
 
@@ -103,7 +103,7 @@ Canonical org identifiers: **`organizationId`** on users, students, and schools 
 ### Curriculum / RAG
 
 - **[`curriculumRagService.ts`](src/services/ai/curriculumRagService.ts):** GES + Cambridge curriculum context retrieval for analysis prompts  
-- Pilot / demo data: **[`data/gesCurriculumPilot.ts`](src/data/gesCurriculumPilot.ts)**, **[`data/demoCircuitMap.ts`](src/data/demoCircuitMap.ts)**  
+- Pilot / demo data: **[`data/gesCurriculumPilot.ts`](src/data/gesCurriculumPilot.ts)**; demo school/circuit identifiers in **[`config/organizationDefaults.ts`](src/config/organizationDefaults.ts)** (`DEMO_SCHOOLS`, `DEMO_CIRCUITS`) for seeds and rollups only  
 
 ### Config and utilities
 
@@ -127,7 +127,7 @@ src/
 │   └── …
 ├── context/                 # e.g. AuthContext (token claims include organizationId)
 ├── features/                # Domain screens (primary location for dashboards & workflows)
-│   ├── assessments/         # AssessmentSetup, AnalysisResults, CircuitHeatmapPanel, …
+│   ├── assessments/         # AssessmentSetup, AnalysisResults, CampusGapAnalysisPanel, …  
 │   ├── dashboards/          # OrganizationDashboard, NetworkBranchKPIs, HeadmasterDashboard, PlaybookLiftLeaderboard, …
 │   ├── schools/             # StaffDirectory, cohort/school directory, invites
 │   ├── students/            # Class roster, StudentProfile, portal app, …
@@ -136,7 +136,7 @@ src/
 │   ├── liveClassroom/       # Premium live session UI
 │   └── parent/              # Parent digest portal
 ├── config/                  # academicContext, organizationDefaults, featureFlags
-├── data/                    # demoCircuitMap, curriculum pilots
+├── data/                    # curriculum pilot fragments, Cambridge NDJSON, etc.
 ├── hooks/
 ├── lib/                     # firebase.ts
 ├── services/
@@ -175,4 +175,4 @@ src/
 
 ---
 
-*Last updated: organization-scoped analytics (`organizationAnalyticsService`), `src/features/` layout, and doc links aligned with repo.*
+*Last updated: Campus Gap Analysis (branch rollups, `CampusGapAnalysisPanel`, `org-admin-campus-gaps`); `organizationAnalyticsService` branch gap CSV; `enterpriseAccess` `showCampusGapAnalysis`.*

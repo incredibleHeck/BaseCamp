@@ -6,6 +6,10 @@
 
 **Implementation (current repo):** Multi-branch / “network” scope is modeled with **`organizationId`** in Firestore and JWT claims (`AuthContext` maps legacy `districtId` claims to `organizationId`). Network rollups use [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts) (`getNetworkMetrics`).
 
+### Campus Gap Analysis (MVP in-app, B2B / multi-campus)
+
+The **shipped** network analytics view is **Campus Gap Analysis** (not a geographic map): per-**branch** (`schoolId`) gap rollups via [`buildBranchGapRollups`](../../src/services/analytics/organizationAnalyticsService.ts), minimum-*n* suppression (`AGGREGATION_MIN_N`), Recharts comparison + data table, and CSV ([`branchGapRowsToCsv`](../../src/services/analytics/organizationAnalyticsService.ts)). UI: [`CampusGapAnalysisPanel.tsx`](../../src/features/assessments/CampusGapAnalysisPanel.tsx). App shell view key **`org-admin-campus-gaps`**; enterprise nav flag **`showCampusGapAnalysis`** in [`enterpriseAccess.ts`](../../src/auth/enterpriseAccess.ts). The old schematic circuit SVG and `demoCircuitMap` assets were **removed** in favor of branch-level analytics. **Pillar 1** below remains the long-term **B2G** geospatial roadmap (boundaries, MapLibre/Mapbox, etc.).
+
 ---
 
 ## Pillar 1: Geospatial risk heatmaps
@@ -120,7 +124,7 @@ Many remedial activities are proposed; few are measured **at scale** across teac
 
 1. **Foundations** – consistent identifiers (school, circuit, **organization** / network id), assessment history API, RBAC for org-level roles (`org_admin`, coordinators, super admin).
 2. **SEN alert MVP** – rule engine + coordinator inbox + audit log (highest direct impact on safeguarding narrative).
-3. **Heatmap MVP** – circuit-level choropleth for 1–2 key skills; suppression rules; export bundle.
+3. **Campus / district analytics MVP** – In-repo: **branch-level** gap analysis + suppression + export; B2G **choropleth** remains a follow-on (see Pillar 1).
 4. **Playbook analytics MVP** – log playbook usage + outcomes; simple leaderboard; then ML/ranking.
 
 *(Order may change if geo boundary licensing or partner contract requires maps first.)*
@@ -135,13 +139,13 @@ Many remedial activities are proposed; few are measured **at scale** across teac
 
 ## Implementation status (MVP shipped in repo)
 
-Aligned with **suggested implementation order** in this doc: foundations → SEN → heatmap → playbook lift (client-side / Firestore demo; not BigQuery/Mapbox production yet).
+Aligned with **suggested implementation order** in this doc: foundations → SEN → **campus gap analysis (branch rollups in-app)** → playbook lift (client-side / Firestore demo; B2G geo map not in production yet).
 
 | Track | What shipped | Key files |
 | ----- | ------------- | --------- |
 | **Foundations** | Student org fields + defaults; `users` docs use **`organizationId`** (legacy `districtId` still merged on read); optional `circuitId`, `schoolId`; network dashboard rollups from Firestore; RBAC-driven tabs. | [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts), [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts), [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts), [`enterpriseAccess.ts`](../../src/auth/enterpriseAccess.ts), [`App.tsx`](../../src/App.tsx) |
 | **SEN alerts** | Rule pack v1: 3 consecutive numeracy assessments matching text + low score → `senAlerts` document; dismiss / snooze / escalate + audit log entries. | [`senAlertService.ts`](../../src/services/senAlertService.ts), [`SenAlertsInbox.tsx`](../../src/features/sen-coordinator/SenAlertsInbox.tsx) |
-| **Heatmap** | Schematic **circuit** SVG map (not official boundaries); **minimum-n suppression**; skill filter; **CSV** export of table. | [`demoCircuitMap.ts`](../../src/data/demoCircuitMap.ts), [`CircuitHeatmapPanel.tsx`](../../src/features/assessments/CircuitHeatmapPanel.tsx) |
+| **Campus Gap Analysis** | **Branch** (`schoolId`) rollups; **minimum-n suppression**; skill filter; Recharts + table; **CSV** export. | [`CampusGapAnalysisPanel.tsx`](../../src/features/assessments/CampusGapAnalysisPanel.tsx), [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts) (`buildBranchGapRollups`, `branchGapRowsToCsv`) |
 | **Playbook analytics** | `playbookKey` from remedial activity title on save; **mean score delta** on next same-subject assessment; evidence strength by *n*. | [`playbookKey.ts`](../../src/utils/playbookKey.ts), [`playbookAnalyticsService.ts`](../../src/services/playbookAnalyticsService.ts), [`PlaybookLiftLeaderboard.tsx`](../../src/features/dashboards/PlaybookLiftLeaderboard.tsx) |
 
 **Demo login:** Extra tiles for SEN Coordinator, Circuit Supervisor, MoE/Super Admin (`*@basecamp.com` — create users + `users/{uid}.role` in Firebase). Optional **seed** path in [`Login.tsx`](../../src/components/Login.tsx) wipes `senAlerts` and seeds org-tagged students + one SEN workflow row.

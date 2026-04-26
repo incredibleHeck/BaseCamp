@@ -48,8 +48,9 @@ export async function getSchool(id: string): Promise<School | null> {
 }
 
 /**
- * Branches (Firestore `schools` docs) in an organization scope.
- * Queries both `organizationId` and legacy `districtId` and merges.
+ * Branches (Firestore `schools` docs) in a school-network scope.
+ * B2B canonical field on documents is **`organizationId`**. A second query matches legacy **`districtId`**
+ * (same string id) so older seeded rows still appear until backfilled.
  */
 export async function getSchoolsInOrganization(organizationId: string): Promise<School[]> {
   const trimmed = organizationId?.trim();
@@ -72,6 +73,9 @@ export async function getSchoolsInOrganization(organizationId: string): Promise<
     return [];
   }
 }
+
+/** Preferred alias: load branches for a private school network / org id. */
+export const getSchoolsByOrganization = getSchoolsInOrganization;
 
 /**
  * All branches in Firestore `schools` (super_admin / platform-wide directory only).

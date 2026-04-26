@@ -8,6 +8,7 @@ import { CreateBranchDialog } from './CreateBranchDialog';
 import { getAllSchools, getSchoolsInOrganization } from '../../services/schoolService';
 import { getAllHeadteachers, getHeadteachersInOrganization } from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
+import { effectiveOrganizationId } from '../../utils/organizationScope';
 
 interface SchoolDirectoryProps {
   user: UserData;
@@ -29,7 +30,8 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
   const [inviteSchoolId, setInviteSchoolId] = useState<string | null>(null);
   const [createBranchOpen, setCreateBranchOpen] = useState(false);
 
-  const organizationId = user.organizationId;
+  /** `user.organizationId`, with legacy `user.districtId` fallback (same as App.tsx / Firestore profile). */
+  const organizationId = effectiveOrganizationId(user);
   const isSuperAdmin = user.role === 'super_admin';
   const canInviteToSchools = user.role === 'org_admin' || user.role === 'super_admin';
 
@@ -42,6 +44,9 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     setLoading(true);
     setError(null);
     try {
+      if (!isSuperAdmin) {
+        console.log('Org Admin loading schools for Org:', organizationId);
+      }
       const [fetchedSchools, fetchedHeadteachers] = await Promise.all(
         isSuperAdmin
           ? [getAllSchools(), getAllHeadteachers()]
@@ -82,7 +87,8 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
   if (!isSuperAdmin && !organizationId) {
     return (
       <div className="p-8 text-center text-zinc-500">
-        You must be assigned an organization to view the branch directory.
+        You must be assigned an organization (organizationId or districtId on your profile) to view the branch
+        directory.
       </div>
     );
   }

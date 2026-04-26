@@ -203,7 +203,7 @@ export function LoggedInAppChrome({
       case 'sen-inbox':
         return <SenDashboard user={user} onAlertClick={handleViewProfile} />;
       case 'staff-directory':
-        return <StaffDirectory user={user} />;
+        return <StaffDirectory user={user} scopeSchoolId={selectedSchoolForOverviewId || undefined} />;
       case 'school-directory':
         return <SchoolDirectory user={user} onSchoolClick={handleSchoolClick} />;
       case 'fine-tune-pilot':
@@ -282,12 +282,20 @@ export function LoggedInAppChrome({
 
     const secondary: NavDef[] = [];
     if (role === 'org_admin') {
-      secondary.push({
-        view: 'school-directory',
-        label: 'Branch directory',
-        shortLabel: 'Branches',
-        icon: Building,
-      });
+      secondary.push(
+        {
+          view: 'school-directory',
+          label: 'Branch directory',
+          shortLabel: 'Branches',
+          icon: Building,
+        },
+        {
+          view: 'staff-directory',
+          label: 'Staff Directory',
+          shortLabel: 'Staff',
+          icon: UsersRound,
+        }
+      );
     }
     if (enterpriseNav.showCampusGapAnalysis) {
       secondary.push({

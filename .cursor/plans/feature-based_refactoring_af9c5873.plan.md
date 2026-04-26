@@ -52,7 +52,7 @@ Move components from `src/components/` to their respective feature directories:
 
 - **dashboards**: `OrganizationDashboard.tsx`, `NetworkBranchKPIs.tsx`, `HeadmasterDashboard.tsx`, `PlaybookLiftLeaderboard.tsx`
 - **students**: `StudentProfile.tsx`, `AddStudentForm.tsx`, `StudentRecordCard.tsx`, `ClassRoster.tsx`, `StudentPortalApp.tsx`
-- **assessments**: `AssessmentSetup.tsx`, `DiagnosticReportCard.tsx`, `CircuitHeatmapPanel.tsx`, `WorksheetModal.tsx`, `PendingAnalyses.tsx`
+- **assessments**: `AssessmentSetup.tsx`, `DiagnosticReportCard.tsx`, `CampusGapAnalysisPanel.tsx`, `WorksheetModal.tsx`, `PendingAnalyses.tsx`
 - **schools**: `SchoolDirectory.tsx`, `StaffDirectory.tsx`, `TeacherDirectory.tsx`, `CohortManager.tsx`, `CreateCohortDialog.tsx`
 - **ai-tools**: `FineTunePilotPanel.tsx`, `VoiceObservationRecorder.tsx`, `ExtensionActivityMarkdown.tsx`
 

@@ -12,7 +12,7 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 | [plans/demo-prototype-readiness.md](plans/demo-prototype-readiness.md) | Done | Roster summary, README, indexes, etc. |
 | [plans/mobile-frontend-optimization.md](plans/mobile-frontend-optimization.md) | Done | Header, roster, profile, tabs; AnalysisResults/TeacherDirectory already aligned |
 | [plans/phase-2-pro-teacher-tools-v2.md](plans/phase-2-pro-teacher-tools-v2.md) | Done (MVP) | Gradebook CSV, GES RAG pilot, voice queue + sync, assessment fields |
-| [plans/phase-3-premium-enterprise-dashboard-v3.md](plans/phase-3-premium-enterprise-dashboard-v3.md) | Done (MVP) | Org IDs, RBAC, SEN inbox, heatmap, playbook lift |
+| [plans/phase-3-premium-enterprise-dashboard-v3.md](plans/phase-3-premium-enterprise-dashboard-v3.md) | Done (MVP) | Org IDs, RBAC, SEN inbox, Campus Gap Analysis (branch rollups), playbook lift |
 | [plans/phase-4-master-ecosystem-v4.md](plans/phase-4-master-ecosystem-v4.md) | Done (MVP) | Connect stub, portal #/portal, pilot export, PWA manifest |
 
 ### Mobile optimization checklist
@@ -37,7 +37,7 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 
 - [x] **Foundations** – `organizationId` / `circuitId` / `schoolId` on students (defaults in `addStudent`; legacy Firestore may still carry `districtId` for reads); demo schools/circuits in [`organizationDefaults.ts`](../../src/config/organizationDefaults.ts); network rollups in [`organizationAnalyticsService.ts`](../../src/services/analytics/organizationAnalyticsService.ts) (`getNetworkMetrics`) and [`schoolAnalyticsService.ts`](../../src/services/schoolAnalyticsService.ts); roles `org_admin`, `sen_coordinator`, `circuit_supervisor`, `super_admin` + nav in [`App.tsx`](../../src/App.tsx).
 - [x] **SEN alert MVP** – Rule v1 + `senAlerts` + audit via `arrayUnion`; inbox [`SenAlertsInbox.tsx`](../../src/features/sen-coordinator/SenAlertsInbox.tsx); runs after save ([`senAlertService.ts`](../../src/services/senAlertService.ts)).
-- [x] **Heatmap MVP** – Schematic SVG choropleth + suppression (`AGGREGATION_MIN_N`); CSV export; [`CircuitHeatmapPanel.tsx`](../../src/features/assessments/CircuitHeatmapPanel.tsx).
+- [x] **Campus Gap Analysis MVP** – Branch / `schoolId` rollups (`buildBranchGapRollups`); minimum-*n* suppression (`AGGREGATION_MIN_N`); Recharts + table; CSV export; shell view `org-admin-campus-gaps`; [`CampusGapAnalysisPanel.tsx`](../../src/features/assessments/CampusGapAnalysisPanel.tsx).
 - [x] **Playbook analytics MVP** – `playbookKey` / `playbookTitle` on assessments; observational lift leaderboard [`PlaybookLiftLeaderboard.tsx`](../../src/features/dashboards/PlaybookLiftLeaderboard.tsx).
 
 ### Phase 4 checklist (MVP in repo)
@@ -47,4 +47,4 @@ We implement [plans/plans](plans/README.md) **in order**, one slice at a time, a
 - [x] **Student portal MVP** – Hash route **`#/portal`** [`StudentPortalApp.tsx`](../../src/components/StudentPortalApp.tsx); gamified MCQ from gap tags; [`portalSessions`](../../src/services/portalSessionService.ts); [`public/manifest.webmanifest`](../../public/manifest.webmanifest).
 - [x] **Fine-tuning pilot** – JSONL export + gap-tag A/B flag [`FineTunePilotPanel.tsx`](../../src/components/FineTunePilotPanel.tsx); [`VITE_FT_PILOT_GAP_TAGS`](../../.env.example) + [`suggestGapTagsFromObservations`](../../src/services/aiPrompts.ts).
 
-*Last updated: Phase 4 MVP implemented.*
+*Last updated: Phase 3 doc aligned with Campus Gap Analysis (replaces circuit heatmap MVP).*

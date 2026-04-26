@@ -161,6 +161,11 @@ The architecture introduces a specialized scheduled Cloud Function configured to
 The resulting text strings are saved into a dedicated /parent_digests Firestore collection. When parents authenticate via the dedicated Parent Login, their frontend application subscribes exclusively to their specific document within this collection. By completely isolating the parent interface from the raw assessment data, the architecture ensures absolute data privacy, eliminates the possibility of unauthorized cross-tenant queries, and maintains the stringent O(1) read efficiency mandated by the data warehouse strategy.
 
 
+### Multi-campus gap analysis (organization / coordinator UI)
+
+For **multi-branch** private networks and pilot **MoE-style** roles, the application implements **Campus Gap Analysis**: client-side rollups of skill-gap signals from the latest assessments, **grouped by branch** (`schoolId`), with **minimum cohort suppression** and exportable CSV. Primary modules: [`src/services/analytics/organizationAnalyticsService.ts`](src/services/analytics/organizationAnalyticsService.ts) (`buildBranchGapRollups`, `branchGapRowsToCsv`), [`src/features/assessments/CampusGapAnalysisPanel.tsx`](src/features/assessments/CampusGapAnalysisPanel.tsx), app shell view **`org-admin-campus-gaps`**, and enterprise navigation flag **`showCampusGapAnalysis`** in [`src/auth/enterpriseAccess.ts`](src/auth/enterpriseAccess.ts). This is distinct from the B2G **geospatial** heatmap roadmap (Phase 3 planning doc); server-side pre-aggregation may be added later for very large organizations to mirror the executive-summary O(1) read pattern.
+
+
 ## Pillar 4: Design System Overhaul and The PWA Service Worker Trap
 
 The final pillar of the Premium Tier involves a comprehensive overhaul of the visual interface. To align with the expectations of an elite private school demographic, the UI transitions to an "Obsidian & Gold" design system. This requires refactoring the Tailwind CSS configurations to implement a premium dark mode and integrating the framer-motion library to provide sophisticated micro-interactions, layout transitions, and fluid physics-based animations.

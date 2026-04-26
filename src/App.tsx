@@ -123,6 +123,17 @@ export default function App() {
             }
           }
 
+          if (
+            !demoSeedEnabled &&
+            !organizationId &&
+            (role === 'org_admin' || role === 'sen_coordinator')
+          ) {
+            console.warn(
+              '[BaseCamp] User profile has no organizationId or districtId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
+              user.uid
+            );
+          }
+
           let stableId = user.uid;
           if (demoSeedEnabled) {
             const lp = data.linkedProfileId;
