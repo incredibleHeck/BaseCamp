@@ -25,7 +25,7 @@ service firebase.storage {
 
     function isDistrictScoped() {
       return userExists() &&
-        userData().role in ['district', 'sen_coordinator', 'circuit_supervisor'];
+        userData().role in ['district', 'sen_coordinator'];
     }
 
     function userSchoolId() {

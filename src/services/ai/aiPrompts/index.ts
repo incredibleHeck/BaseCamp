@@ -16,6 +16,9 @@ export type {
   SenRiskReport,
   WeeklyDigestEnglish,
   WorksheetContext,
+  WorksheetPremiumElement,
+  WorksheetPremiumElementType,
+  WorksheetPremiumFigure,
   WorksheetResult,
 } from './types';
 

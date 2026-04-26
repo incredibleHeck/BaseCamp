@@ -14,6 +14,8 @@ import { AssessmentProvider } from './context/AssessmentContext';
 import { DEFAULT_DISTRICT_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
 import { isDemoHostedBuild } from './config/demoMode';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
+import { PremiumTierProvider } from './context/PremiumTierContext';
+import { LiveClassroomSessionProvider } from './context/LiveClassroomSessionContext';
 
 const demoSeedEnabled = isDemoHostedBuild;
 
@@ -25,7 +27,6 @@ const VALID_ROLES: UserData['role'][] = [
   'headteacher',
   'district',
   'sen_coordinator',
-  'circuit_supervisor',
   'super_admin',
 ];
 
@@ -97,12 +98,10 @@ export default function App() {
 
           if (demoSeedEnabled) {
             if (role === 'headteacher' && !schoolId) schoolId = DEMO_SEED_PRIMARY_SCHOOL_ID;
-            if (role === 'circuit_supervisor' && !circuitId) circuitId = 'circuit-north';
             if (
               (role === 'district' ||
                 role === 'sen_coordinator' ||
-                role === 'super_admin' ||
-                role === 'circuit_supervisor') &&
+                role === 'super_admin') &&
               !districtId
             ) {
               districtId = DEFAULT_DISTRICT_ID;
@@ -243,39 +242,43 @@ function LoggedInApp({ user }: LoggedInAppProps) {
   }, [processQueue, refreshQueue]);
 
   return (
-    <AssessmentProvider
-      isOffline={isOffline}
-      currentView={currentView}
-      refreshQueue={refreshQueue}
-      onOfflineQueued={() => {
-        setShowOfflineQueuedModal(true);
-        setHadQueuedWork(true);
-      }}
-      onOpenStudentProfile={() => setCurrentView('student-profile')}
-    >
-      <LoggedInAppChrome
-        user={user}
-        currentView={currentView}
-        setCurrentView={setCurrentView}
-        selectedStudentId={selectedStudentId}
-        setSelectedStudentId={setSelectedStudentId}
-        selectedSchoolForOverviewId={selectedSchoolForOverviewId}
-        setSelectedSchoolForOverviewId={setSelectedSchoolForOverviewId}
-        isOffline={isOffline}
-        setIsOffline={setIsOffline}
-        isOnline={isOnline}
-        isSyncing={isSyncing}
-        queueLength={queueLength}
-        queuedItems={queuedItems}
-        batchSyncProgress={batchSyncProgress}
-        showOfflineQueuedModal={showOfflineQueuedModal}
-        setShowOfflineQueuedModal={setShowOfflineQueuedModal}
-        syncToast={syncToast}
-        handleLogout={handleLogout}
-        studentNameById={studentNameById}
-        handleRemoveQueuedItem={handleRemoveQueuedItem}
-        handleRetryQueuedNow={handleRetryQueuedNow}
-      />
-    </AssessmentProvider>
+    <PremiumTierProvider user={user}>
+      <LiveClassroomSessionProvider>
+        <AssessmentProvider
+          isOffline={isOffline}
+          currentView={currentView}
+          refreshQueue={refreshQueue}
+          onOfflineQueued={() => {
+            setShowOfflineQueuedModal(true);
+            setHadQueuedWork(true);
+          }}
+          onOpenStudentProfile={() => setCurrentView('student-profile')}
+        >
+          <LoggedInAppChrome
+            user={user}
+            currentView={currentView}
+            setCurrentView={setCurrentView}
+            selectedStudentId={selectedStudentId}
+            setSelectedStudentId={setSelectedStudentId}
+            selectedSchoolForOverviewId={selectedSchoolForOverviewId}
+            setSelectedSchoolForOverviewId={setSelectedSchoolForOverviewId}
+            isOffline={isOffline}
+            setIsOffline={setIsOffline}
+            isOnline={isOnline}
+            isSyncing={isSyncing}
+            queueLength={queueLength}
+            queuedItems={queuedItems}
+            batchSyncProgress={batchSyncProgress}
+            showOfflineQueuedModal={showOfflineQueuedModal}
+            setShowOfflineQueuedModal={setShowOfflineQueuedModal}
+            syncToast={syncToast}
+            handleLogout={handleLogout}
+            studentNameById={studentNameById}
+            handleRemoveQueuedItem={handleRemoveQueuedItem}
+            handleRetryQueuedNow={handleRetryQueuedNow}
+          />
+        </AssessmentProvider>
+      </LiveClassroomSessionProvider>
+    </PremiumTierProvider>
   );
 }

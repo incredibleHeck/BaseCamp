@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { AlertTriangle, FileText, TrendingUp, Users, BarChart3, ArrowLeft } from 'lucide-react';
 import {
   Bar,
@@ -24,6 +24,7 @@ import {
   type SchoolAnalyticsPayload,
 } from '../../services/analytics/schoolAnalyticsService';
 import { useAuth } from '../../context/AuthContext';
+import { useExecutiveSummary } from '../../hooks/useExecutiveSummary';
 
 const BAR_FILL = '#4f46e5';
 
@@ -35,39 +36,68 @@ export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideScho
   const { user } = useAuth();
   const schoolId = overrideSchoolId || user.schoolId?.trim() || undefined;
 
-  const [data, setData] = useState<SchoolAnalyticsPayload | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(schoolId));
-  const [error, setError] = useState<string | null>(null);
+  const { summary: aggDoc, loading: aggLoading, error: aggError } = useExecutiveSummary(schoolId);
 
-  const load = useCallback(async () => {
+  const aggData = useMemo<SchoolAnalyticsPayload | null>(() => {
+    if (!aggDoc) return null;
+    return {
+      overview: {
+        totalStudents: aggDoc.byCohort.reduce((n, c) => n + c.assessmentCount, 0),
+        totalAssessments: aggDoc.window.assessmentCount,
+        activeSenFlags: aggDoc.window.assessmentsWithSenFlag,
+        schoolAverageScore: aggDoc.window.averageScore,
+      },
+      classrooms: aggDoc.byCohort.map((c) => ({
+        classLabel: c.cohortId,
+        gradeLevel: 0,
+        studentCount: c.assessmentCount,
+        avgScore: c.averageScore,
+        activeSenCount: c.assessmentsWithSenFlag,
+        topLearningGap: c.topLearningGap,
+      })),
+    };
+  }, [aggDoc]);
+
+  const [fallbackData, setFallbackData] = useState<SchoolAnalyticsPayload | null>(null);
+  const [fallbackLoading, setFallbackLoading] = useState(false);
+  const [fallbackError, setFallbackError] = useState<string | null>(null);
+
+  const loadFallback = useCallback(async () => {
     if (!schoolId) return;
-    setLoading(true);
-    setError(null);
+    setFallbackLoading(true);
+    setFallbackError(null);
     try {
       const payload = await generateSchoolAnalytics(schoolId);
       if (payload === null) {
-        setData(null);
-        setError('Could not load school analytics. Please try again.');
+        setFallbackData(null);
+        setFallbackError('Could not load school analytics. Please try again.');
         return;
       }
-      setData(payload);
+      setFallbackData(payload);
     } catch (e) {
-      setData(null);
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
+      setFallbackData(null);
+      setFallbackError(e instanceof Error ? e.message : 'Something went wrong.');
     } finally {
-      setLoading(false);
+      setFallbackLoading(false);
     }
   }, [schoolId]);
 
+  const useAgg = aggData !== null;
+  const data = useAgg ? aggData : fallbackData;
+  const loading = useAgg ? aggLoading : (aggLoading || fallbackLoading);
+  const error = useAgg ? aggError : (aggError || fallbackError);
+
   useEffect(() => {
     if (!schoolId) {
-      setData(null);
-      setError(null);
-      setLoading(false);
+      setFallbackData(null);
+      setFallbackError(null);
+      setFallbackLoading(false);
       return;
     }
-    void load();
-  }, [schoolId, load]);
+    if (aggLoading) return;
+    if (aggData) return;
+    void loadFallback();
+  }, [schoolId, aggLoading, aggData, loadFallback]);
 
   const scopeMissing = !schoolId;
   const showSkeleton = loading || scopeMissing;
@@ -119,7 +149,7 @@ export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideScho
           <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">{error}</p>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void loadFallback()}
             className="mt-3 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 dark:bg-amber-700 dark:hover:bg-amber-600"
           >
             Retry

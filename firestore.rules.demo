@@ -49,7 +49,7 @@ service cloud.firestore {
 
     function isDistrictScoped() {
       return isAuthenticated() && userExists() &&
-        (ud().role == 'district' || ud().role == 'sen_coordinator' || ud().role == 'circuit_supervisor');
+        (ud().role == 'district' || ud().role == 'sen_coordinator');
     }
 
     function isStudentPortal() {
@@ -299,6 +299,29 @@ service cloud.firestore {
       );
     }
 
+    match /showYourWorkInsights/{insightId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isDemoSeedSuperAdminAuth() ||
+        (resource.data.studentId != null &&
+          get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.cohortId != null &&
+          isTeacherOfCohort(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.cohortId
+          )) ||
+        (resource.data.studentId != null &&
+          isHeadteacher() &&
+          get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          == getUserSchoolId()) ||
+        (resource.data.studentId != null &&
+          isDistrictScoped() &&
+          get(/databases/$(database)/documents/schools/$(
+              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+            )).data.districtId
+            == getUserDistrictId())
+      );
+      allow write: if false;
+    }
+
     match /whatsappOutbox/{id} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
@@ -317,6 +340,34 @@ service cloud.firestore {
         request.resource.data.studentId is string &&
         studentPortalReadsStudent(request.resource.data.studentId);
       allow update, delete: if false;
+    }
+
+    match /aggregations/{summaryId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isDemoSeedSuperAdminAuth() ||
+        (isHeadteacher() && summaryId == getUserSchoolId()) ||
+        (isDistrictScoped() &&
+          exists(/databases/$(database)/documents/schools/$(summaryId)) &&
+          get(/databases/$(database)/documents/schools/$(summaryId)).data.districtId == getUserDistrictId())
+      );
+      allow write: if false;
+    }
+
+    match /parent_digests/{studentId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isDemoSeedSuperAdminAuth() ||
+        (isHeadteacher() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+          get(/databases/$(database)/documents/students/$(studentId)).data.schoolId == getUserSchoolId()) ||
+        (isDistrictScoped() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+          get(/databases/$(database)/documents/students/$(studentId)).data.schoolId is string &&
+          get(/databases/$(database)/documents/schools/$(
+              get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
+            )).data.districtId
+            == getUserDistrictId())
+      );
+      allow write: if false;
     }
 
     match /{document=**} {

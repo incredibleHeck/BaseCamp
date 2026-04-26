@@ -28,12 +28,6 @@ export function enterpriseNavForRole(role: EnterpriseRole): EnterpriseNavFlags {
         showPlaybooks: true,
         showSenInbox: false,
       };
-    case 'circuit_supervisor':
-      return {
-        showHeatmap: true,
-        showPlaybooks: false,
-        showSenInbox: false,
-      };
     case 'sen_coordinator':
       return {
         showHeatmap: true,
@@ -63,8 +57,6 @@ export function defaultViewForRole(role: EnterpriseRole): string {
       return 'school-overview';
     case 'district':
       return 'district-overview';
-    case 'circuit_supervisor':
-      return 'district-heatmap';
     case 'sen_coordinator':
       return 'sen-inbox';
     case 'super_admin':

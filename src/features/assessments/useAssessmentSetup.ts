@@ -296,6 +296,12 @@ export function useAssessmentSetup(initialStudentId: string) {
         classLabel: selectedCohort.name,
       });
 
+      if (result.ok && 'bypassed' in result && result.bypassed) {
+        clearVoiceStaging();
+        logWorkflow('assessmentSetup:hybrid_offline_bypassed', { studentId: selectedStudent });
+        return;
+      }
+
       if (result.ok && 'queued' in result && result.queued) {
         handleHybridQueued();
         clearVoiceStaging();

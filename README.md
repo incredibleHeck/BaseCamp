@@ -36,3 +36,5 @@ View your app in AI Studio: https://ai.studio/apps/ec58a563-8013-4579-90d6-536bf
    ```
 
 **Note on Firebase CLI:** This project uses a local installation of `firebase-tools` to ensure consistent and reliable deployments. Use `npx firebase <command>` for all Firebase operations.
+
+**Cloud Functions — student “Show your work” (Storage trigger):** First deploy may require a one-time IAM grant (`Pub/Sub Publisher` on the GCS service account). Step-by-step instructions, deploy command, and optional `STORAGE_BUCKET` notes are in [functions/DEPLOY.md](functions/DEPLOY.md). Quick deploy: `npm run deploy:functions:showYourWork`.

@@ -161,6 +161,15 @@ export function useSyncManager(connectivityOnline: boolean): SyncManagerState {
 
         for (const item of queue) {
           try {
+          if (item.offlineQueueChannel === 'live_classroom_ephemeral') {
+            console.warn(
+              '[useSyncManager] removing orphan live_classroom_ephemeral row from IndexedDB (should use bypass path)',
+              item.id
+            );
+            await removeFromQueue(item.id);
+            continue;
+          }
+
           if (item.inputMode === 'upload_batch') {
             const batchId = item.batchId ?? '';
             const img = item.imageBase64s?.[0];

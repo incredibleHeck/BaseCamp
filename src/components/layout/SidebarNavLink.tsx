@@ -9,7 +9,20 @@ interface SidebarNavLinkProps {
   active: boolean;
   layout: 'sidebar' | 'mobile';
   onClick: () => void;
+  /** Premium (Obsidian & Gold) — only when `isPremiumTier` in layout chrome. */
+  variant?: 'default' | 'premium';
 }
+
+const variantClasses: Record<'default' | 'premium', { active: string; idle: string }> = {
+  default: {
+    active: 'bg-indigo-50/80 text-indigo-700 shadow-sm ring-1 ring-indigo-100',
+    idle: 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900',
+  },
+  premium: {
+    active: 'bg-gold-500/15 text-gold-200 shadow-sm ring-1 ring-gold-500/30',
+    idle: 'text-zinc-400 hover:bg-obsidian-800 hover:text-zinc-100',
+  },
+};
 
 export function SidebarNavLink({
   icon: Icon,
@@ -18,10 +31,10 @@ export function SidebarNavLink({
   active,
   layout,
   onClick,
+  variant = 'default',
 }: SidebarNavLinkProps) {
-  const state = active
-    ? 'bg-indigo-50/80 text-indigo-700 shadow-sm ring-1 ring-indigo-100'
-    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900';
+  const v = variantClasses[variant];
+  const state = active ? v.active : v.idle;
 
   if (layout === 'sidebar') {
     return (

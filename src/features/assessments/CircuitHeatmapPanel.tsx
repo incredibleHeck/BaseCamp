@@ -31,10 +31,10 @@ export function CircuitHeatmapPanel({ user }: CircuitHeatmapPanelProps) {
   const scope: DistrictFeatureScope = useMemo(
     () => ({
       districtId: user.districtId ?? DEFAULT_DISTRICT_ID,
-      circuitId: user.role === 'circuit_supervisor' ? user.circuitId : undefined,
+      circuitId: undefined,
       schoolId: undefined,
     }),
-    [user.role, user.districtId, user.circuitId]
+    [user.districtId]
   );
 
   useEffect(() => {

@@ -53,7 +53,7 @@ export async function getStaffAccessScope(): Promise<StaffAccessScope> {
     return cohortIds.length > 0 ? { kind: 'cohorts', cohortIds } : { kind: 'none' };
   }
 
-  if (role === 'district' || role === 'sen_coordinator' || role === 'circuit_supervisor') {
+  if (role === 'district' || role === 'sen_coordinator') {
     const did = typeof d.districtId === 'string' ? d.districtId.trim() : '';
     if (!did) return { kind: 'none' };
     const schoolSnap = await getDocs(query(collection(db, 'schools'), where('districtId', '==', did)));

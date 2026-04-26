@@ -1,7 +1,29 @@
 import { get, set, update } from 'idb-keyval';
 import { compressImage } from '../../utils/imageCompression';
+import {
+  shouldEnqueueToIndexedDb,
+  type OfflineQueuePayloadChannel,
+  type OfflineQueueRoutingInput,
+} from './offlineQueueRouting';
+import { dispatchLiveClassroomQueueBypass } from './liveClassroomQueueBypass';
 
 const QUEUE_KEY = 'basecamp-offline-queue';
+
+/** Stored on queued rows; `live_classroom_ephemeral` should not appear (defensive cleanup in sync). */
+export type OfflineQueueChannel = 'standard' | 'live_classroom_ephemeral';
+
+export type { OfflineQueuePayloadChannel, OfflineQueueRoutingInput } from './offlineQueueRouting';
+export { shouldEnqueueToIndexedDb, describeOfflineQueueRoute } from './offlineQueueRouting';
+export {
+  setLiveClassroomQueueBypassHandler,
+  type LiveClassroomQueueBypassPayload,
+} from './liveClassroomQueueBypass';
+
+const WORKSHEET_BATCH_ROUTING: OfflineQueueRoutingInput = {
+  isPremiumTier: false,
+  isLiveSessionActive: false,
+  channel: 'standard_assessment',
+};
 
 export type QueuedAssessmentInputMode = 'upload' | 'manual' | 'hybrid_voice' | 'upload_batch';
 
@@ -59,6 +81,11 @@ export interface QueuedAssessment {
    * Sync attempts that failed (analysis null/error, save failure). Removed from queue after max retries.
    */
   retryCount?: number;
+  /**
+   * Discriminator for Premium live bypass. Omitted or `standard` for normal offline assessments.
+   * Rows with `live_classroom_ephemeral` in IndexedDB are treated as orphans and removed by the sync manager.
+   */
+  offlineQueueChannel?: OfflineQueueChannel;
 }
 
 /** Shown in alerts when enqueue fails due to device / IndexedDB storage limits. */
@@ -96,19 +123,38 @@ function newQueueItemId(): string {
     : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export type AddToQueueRouting = OfflineQueueRoutingInput;
+
+export type AddToQueueResult = { status: 'queued' } | { status: 'bypassed' };
+
 /**
- * Adds an assessment to the offline queue. Generates id and timestamp automatically.
+ * Adds an assessment to the offline queue when routing selects IndexedDB; otherwise dispatches
+ * to the live-classroom bypass handler (no IndexedDB write).
  */
-export async function addToQueue(item: Omit<QueuedAssessment, 'id' | 'timestamp'>): Promise<void> {
+export async function addToQueue(
+  item: Omit<QueuedAssessment, 'id' | 'timestamp'>,
+  routing: AddToQueueRouting
+): Promise<AddToQueueResult> {
+  if (!shouldEnqueueToIndexedDb(routing)) {
+    dispatchLiveClassroomQueueBypass(item);
+    return { status: 'bypassed' };
+  }
+
   try {
     const id = newQueueItemId();
     const timestamp = Date.now();
-    const queuedItem: QueuedAssessment = { ...item, id, timestamp };
+    const queuedItem: QueuedAssessment = {
+      ...item,
+      id,
+      timestamp,
+      offlineQueueChannel: 'standard',
+    };
 
     await update(QUEUE_KEY, (existing: QueuedAssessment[] | undefined) => {
       const queue = existing ?? [];
       return [...queue, queuedItem];
     });
+    return { status: 'queued' };
   } catch (error) {
     if (isQuotaExceededError(error)) {
       console.error('offlineQueueService.addToQueue: storage quota exceeded', error);
@@ -165,16 +211,19 @@ export async function enqueueWorksheetBatch(
         continue;
       }
 
-      await addToQueue({
-        studentId: null,
-        assessmentType,
-        inputMode: 'upload_batch',
-        imageBase64s: [dataUrl],
-        dialectContext,
-        batchId,
-        autoDetectStudent: true,
-        batchAssessmentContext,
-      });
+      await addToQueue(
+        {
+          studentId: null,
+          assessmentType,
+          inputMode: 'upload_batch',
+          imageBase64s: [dataUrl],
+          dialectContext,
+          batchId,
+          autoDetectStudent: true,
+          batchAssessmentContext,
+        },
+        WORKSHEET_BATCH_ROUTING
+      );
       queuedCount++;
     } catch (e) {
       if (e instanceof StorageQuotaExceededError || isQuotaExceededError(e)) {

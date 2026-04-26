@@ -2,12 +2,17 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { Loader2, Sparkles, Trophy, ArrowRight, Smartphone } from 'lucide-react';
-import { auth, db } from '../../lib/firebase';
+import { auth, db, rtdb, storage } from '../../lib/firebase';
+import { StudentFollowMeSession } from '../liveClassroom/StudentFollowMeSession';
+import { getLiveSessionIdFromLocation } from '../../utils/studentPortalLiveLink';
 import type { GamifiedQuiz } from '../../types/domain';
 import { getStudentByPortalCode } from '../../services/studentService';
 import { getStudentHistory } from '../../services/assessmentService';
 import { generateStudentPortalPracticeRound, type PortalPracticeRound } from '../../services/ai/aiPrompts';
 import { clearActiveQuiz, logPortalSessionSummary } from '../../services/core/portalSessionService';
+import { useSchoolConfig } from '../../hooks/useSchoolConfig';
+import { ShowYourWorkRecorder } from './showYourWork/ShowYourWorkRecorder';
+import { uploadShowYourWorkVideo } from './showYourWork/uploadShowYourWorkVideo';
 
 function parseActiveQuiz(raw: unknown): GamifiedQuiz | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -36,6 +41,10 @@ export function StudentPortalApp() {
   const [error, setError] = useState<string | null>(null);
   const [studentName, setStudentName] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [showYourWorkNotice, setShowYourWorkNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(
+    null,
+  );
   const [activeQuiz, setActiveQuiz] = useState<GamifiedQuiz | null>(null);
 
   const [round, setRound] = useState<PortalPracticeRound | null>(null);
@@ -51,6 +60,21 @@ export function StudentPortalApp() {
   const [tqScore, setTqScore] = useState(0);
   const [tqPicked, setTqPicked] = useState<number | null>(null);
   const [tqReveal, setTqReveal] = useState(false);
+
+  const [liveFromUrl, setLiveFromUrl] = useState<string | null>(() => getLiveSessionIdFromLocation());
+
+  const { school, loading: schoolLoading } = useSchoolConfig(schoolId ?? undefined);
+  const showShowYourWork =
+    Boolean(studentId) &&
+    !schoolLoading &&
+    (school?.curriculumType === 'cambridge' || school?.curriculumType === 'both');
+
+  useEffect(() => {
+    const sync = () => setLiveFromUrl(getLiveSessionIdFromLocation());
+    sync();
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
 
   useEffect(() => {
     if (!studentId) {
@@ -106,6 +130,7 @@ export function StudentPortalApp() {
         return;
       }
       setStudentId(st.id);
+      setSchoolId(st.schoolId?.trim() || null);
       setStudentName(st.name.trim().split(/\s+/)[0] ?? 'Friend');
     } finally {
       setLoading(false);
@@ -202,6 +227,8 @@ export function StudentPortalApp() {
       console.error('signOut', e);
     }
     setStudentId(null);
+    setSchoolId(null);
+    setShowYourWorkNotice(null);
     setStudentName(null);
     setRound(null);
     setActiveQuiz(null);
@@ -217,6 +244,7 @@ export function StudentPortalApp() {
   const item = currentItem;
 
   const showCodeGate = !studentId;
+  const showFollowMe = Boolean(studentId && liveFromUrl && rtdb);
   const showTeacherPlaying = Boolean(activeQuiz && teacherPhase === 'playing' && tq);
   const showTeacherComplete = Boolean(activeQuiz && teacherPhase === 'complete');
   const showAiDone = Boolean(!activeQuiz && round && done);
@@ -258,6 +286,33 @@ export function StudentPortalApp() {
             <p className="text-xs text-gray-500 text-center">
               Teachers set this code on the learner profile. For school / lab use only.
             </p>
+          </div>
+        ) : showFollowMe && liveFromUrl && studentId ? (
+          <StudentFollowMeSession
+            sessionId={liveFromUrl}
+            displayName={studentName ?? 'Student'}
+            firestoreStudentId={studentId}
+            onLeave={() => {
+              setLiveFromUrl(null);
+              if (typeof window !== 'undefined') {
+                window.location.hash = '#/portal';
+              }
+            }}
+          />
+        ) : studentId && liveFromUrl && !rtdb ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-sm text-amber-950">
+            <p>This link is for a live class session, but Realtime Database is not configured on this app build.</p>
+            <p className="mt-2 text-amber-800/90">You can still use practice mode below after closing this message.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setLiveFromUrl(null);
+                if (typeof window !== 'undefined') window.location.hash = '#/portal';
+              }}
+              className="mt-4 w-full py-2 rounded-xl bg-white border border-amber-300 font-medium"
+            >
+              Continue without live session
+            </button>
           </div>
         ) : showTeacherComplete ? (
           <div className="bg-white rounded-2xl shadow border border-gray-200 p-8 text-center space-y-6 animate-in zoom-in-95 max-w-xl mx-auto">
@@ -416,6 +471,55 @@ export function StudentPortalApp() {
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
               Start practice
             </button>
+            {showShowYourWork && studentId ? (
+              <div className="pt-2 text-left">
+                <ShowYourWorkRecorder
+                  studentId={studentId}
+                  learnerLabel={studentName ?? undefined}
+                  disabled={loading}
+                  onRecordingStart={() => setShowYourWorkNotice(null)}
+                  onRecordingComplete={async (blob, meta) => {
+                    if (import.meta.env.DEV) {
+                      console.log('[ShowYourWork]', meta, 'bytes=', blob.size);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `show-your-work-${studentId}-${Date.now()}.mp4`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }
+                    try {
+                      if (!storage) {
+                        setShowYourWorkNotice({
+                          kind: 'error',
+                          text: 'Video could not be uploaded — storage is not configured for this app.',
+                        });
+                        return;
+                      }
+                      await uploadShowYourWorkVideo({ studentId, blob, meta });
+                      setShowYourWorkNotice({
+                        kind: 'success',
+                        text: 'Video uploaded successfully. Your teacher will be able to review it.',
+                      });
+                    } catch (e) {
+                      setShowYourWorkNotice({
+                        kind: 'error',
+                        text: e instanceof Error ? e.message : 'Upload failed. Check your connection and try again.',
+                      });
+                    }
+                  }}
+                />
+                {showYourWorkNotice ? (
+                  <p
+                    className={`mt-3 text-sm ${
+                      showYourWorkNotice.kind === 'success' ? 'text-emerald-700' : 'text-red-600'
+                    }`}
+                  >
+                    {showYourWorkNotice.text}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <p className="text-xs text-gray-500">
               Your teacher may also send a quiz to this device — it will appear here automatically.
             </p>

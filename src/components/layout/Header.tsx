@@ -4,7 +4,7 @@ import { BookOpen, LogOut, Wifi, WifiOff } from 'lucide-react';
 // 1. Define a scalable user object instead of loose strings
 export interface UserData {
   id: string;
-  role: 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
+  role: 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'super_admin';
   name: string;
   location: string;
   /** Scoped org ids (Phase 3 enterprise); optional on older user docs. */
@@ -29,9 +29,8 @@ export function Header({ onLogout, user, isOffline, setIsOffline, queueLength = 
     const titles = {
       teacher: 'Teacher Portal',
       headteacher: 'Headteacher Portal',
-      district: 'District Admin',
+      district: 'School Admin',
       sen_coordinator: 'SEN Coordinator',
-      circuit_supervisor: 'Circuit Supervisor',
       super_admin: 'MoE / Super Admin',
     };
     return titles[role as keyof typeof titles] || '';

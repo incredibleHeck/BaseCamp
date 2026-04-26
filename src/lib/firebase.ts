@@ -10,12 +10,15 @@
  * VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
  * VITE_FIREBASE_APP_ID=your_app_id
  * VITE_FIREBASE_MEASUREMENT_ID=G-...   (optional; Analytics id from Console web app config)
+ * VITE_FIREBASE_DATABASE_URL=...   (optional; Realtime Database data URL from Console — required for live classroom RTDB)
  */
 
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFunctions, type Functions } from 'firebase/functions';
+import { getDatabase, type Database } from 'firebase/database';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 const FUNCTIONS_REGION =
   typeof import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION === 'string' &&
@@ -78,4 +81,41 @@ export const db: Firestore = getFirestore(app);
 export const auth: Auth = getAuth(app);
 export const functions: Functions = getFunctions(app, FUNCTIONS_REGION);
 
+let storage: FirebaseStorage | null = null;
+if (
+  hasValidConfig &&
+  typeof firebaseConfig.storageBucket === 'string' &&
+  firebaseConfig.storageBucket.trim().length > 0
+) {
+  try {
+    storage = getStorage(app);
+  } catch (e) {
+    console.error('BaseCamp: getStorage failed. Check VITE_FIREBASE_STORAGE_BUCKET.', e);
+  }
+} else if (hasValidConfig) {
+  console.warn(
+    'BaseCamp: VITE_FIREBASE_STORAGE_BUCKET is unset. Firebase Storage uploads are disabled. Add the bucket from Firebase Console → Project settings.'
+  );
+}
+
+const rtdbUrl =
+  typeof env.VITE_FIREBASE_DATABASE_URL === 'string' && env.VITE_FIREBASE_DATABASE_URL.trim().length > 0
+    ? env.VITE_FIREBASE_DATABASE_URL.trim()
+    : null;
+
+let rtdb: Database | null = null;
+if (rtdbUrl) {
+  try {
+    rtdb = getDatabase(app, rtdbUrl);
+  } catch (e) {
+    console.error('BaseCamp: getDatabase failed. Check VITE_FIREBASE_DATABASE_URL.', e);
+  }
+} else if (hasValidConfig) {
+  console.warn(
+    'BaseCamp: VITE_FIREBASE_DATABASE_URL is unset. Realtime Database (live classroom) is disabled. Add the URL from Firebase Console → Realtime Database.'
+  );
+}
+
+export { rtdb };
 export { app };
+export { storage };

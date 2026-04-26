@@ -37,7 +37,7 @@ service cloud.firestore {
 
     function isDistrictScoped() {
       return isAuthenticated() && userExists() &&
-        (ud().role == 'district' || ud().role == 'sen_coordinator' || ud().role == 'circuit_supervisor');
+        (ud().role == 'district' || ud().role == 'sen_coordinator');
     }
 
     function isStudentPortal() {
@@ -272,6 +272,29 @@ service cloud.firestore {
       );
     }
 
+    // --- Show your work: AI insights on portal video uploads (Admin SDK writes only; staff read) ---
+    match /showYourWorkInsights/{insightId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.studentId != null &&
+          get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.cohortId != null &&
+          isTeacherOfCohort(
+            get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.cohortId
+          )) ||
+        (resource.data.studentId != null &&
+          isHeadteacher() &&
+          get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+          == getUserSchoolId()) ||
+        (resource.data.studentId != null &&
+          isDistrictScoped() &&
+          get(/databases/$(database)/documents/schools/$(
+              get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.schoolId
+            )).data.districtId
+            == getUserDistrictId())
+      );
+      allow write: if false;
+    }
+
     match /whatsappOutbox/{id} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
@@ -290,6 +313,42 @@ service cloud.firestore {
         request.resource.data.studentId is string &&
         studentPortalReadsStudent(request.resource.data.studentId);
       allow update, delete: if false;
+    }
+
+    // --- Precomputed parent weekly digests (written by Cloud Functions Admin SDK only) ---
+    // `studentId` in path. Staff reads for QA; parent-only reads can use custom claims later (Sprint 1.3+).
+
+    match /parent_digests/{studentId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        studentPortalReadsStudent(studentId) ||
+        (isTeacher() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+          get(/databases/$(database)/documents/students/$(studentId)).data.cohortId != null &&
+          isTeacherOfCohort(get(/databases/$(database)/documents/students/$(studentId)).data.cohortId)) ||
+        (isHeadteacher() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+          get(/databases/$(database)/documents/students/$(studentId)).data.schoolId == getUserSchoolId()) ||
+        (isDistrictScoped() && exists(/databases/$(database)/documents/students/$(studentId)) &&
+          get(/databases/$(database)/documents/students/$(studentId)).data.schoolId is string &&
+          get(/databases/$(database)/documents/schools/$(
+              get(/databases/$(database)/documents/students/$(studentId)).data.schoolId
+            )).data.districtId
+            == getUserDistrictId())
+      );
+      allow write: if false;
+    }
+
+    // --- Precomputed analytics (written by Cloud Functions Admin SDK only) ---
+    // summaryId is the school id. District read uses schools/{summaryId}.districtId (see Pillar 3).
+
+    match /aggregations/{summaryId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (isHeadteacher() && summaryId == getUserSchoolId()) ||
+        (isDistrictScoped() &&
+          exists(/databases/$(database)/documents/schools/$(summaryId)) &&
+          get(/databases/$(database)/documents/schools/$(summaryId)).data.districtId == getUserDistrictId())
+      );
+      allow write: if false;
     }
 
     match /{document=**} {

@@ -27,7 +27,10 @@ import { StudentProfileAnalyticalView } from './StudentProfileAnalyticalView';
 import { StudentProfileActionPlanView } from './StudentProfileActionPlanView';
 import { WorksheetModal } from '../assessments/WorksheetModal';
 import { useAuth } from '../../context/AuthContext';
+import { usePremiumTier } from '../../context/PremiumTierContext';
 import { useSchoolConfig } from '../../hooks/useSchoolConfig';
+import { useShowYourWorkInsights } from '../../hooks/useShowYourWorkInsights';
+import { ShowYourWorkInsightsPanel } from './ShowYourWorkInsightsPanel';
 
 interface StudentProfileProps {
   studentId?: string;
@@ -89,6 +92,11 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
     [school?.curriculumType]
   );
   const isSenCoordinator = currentUser.role === 'sen_coordinator';
+
+  const { isPremiumTier, isReady: premiumReady } = usePremiumTier();
+  const showVideoInsightsPanel = Boolean(premiumReady && isPremiumTier && selectedStudentId);
+  const { rows: showYourWorkRows, loading: showYourWorkLoading, error: showYourWorkError } =
+    useShowYourWorkInsights(showVideoInsightsPanel ? selectedStudentId : null);
 
   useEffect(() => {
     setSenReport(null);
@@ -207,7 +215,8 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         subject,
         grade,
         context,
-        resolveAiCurriculumPromptType(school?.curriculumType, inferCurriculumFrameworkFromAssessment(assessment))
+        resolveAiCurriculumPromptType(school?.curriculumType, inferCurriculumFrameworkFromAssessment(assessment)),
+        Boolean(premiumReady && isPremiumTier)
       );
       if (result && assessment.id) {
         await updateAssessment(assessment.id, { worksheet: result });
@@ -226,7 +235,7 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
   const handlePrintWorksheet = (cardKey: string) => {
     const stored = lastWorksheetByCard[cardKey];
     if (!stored) return;
-    printWorksheetToWindow(stored);
+    printWorksheetToWindow(stored, { isPremiumTier: Boolean(premiumReady && isPremiumTier) });
   };
 
   const handlePushInteractiveQuiz = async (
@@ -415,24 +424,33 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
       </div>
 
       {viewMode === 'analytical' ? (
-        <StudentProfileAnalyticalView
-          hasRealData={hasRealData}
-          history={history}
-          fallbackHistoricalData={fallbackHistoricalData}
-          realReadinessScore={realReadinessScore}
-          numeracyScores={numeracyScores}
-          literacyScores={literacyScores}
-          numeracyTrajectory={numeracyTrajectory}
-          literacyTrajectory={literacyTrajectory}
-          numeracyReadiness={numeracyReadiness}
-          literacyReadiness={literacyReadiness}
-          isHighRisk={isHighRisk}
-          recentGaps={recentGaps}
-          recentMastery={recentMastery}
-          senReport={senReport}
-          isAnalyzingSEN={isAnalyzingSEN}
-          onRunDeepPatternAnalysis={runDeepPatternAnalysis}
-        />
+        <>
+          {showVideoInsightsPanel ? (
+            <ShowYourWorkInsightsPanel
+              rows={showYourWorkRows}
+              loading={showYourWorkLoading}
+              error={showYourWorkError}
+            />
+          ) : null}
+          <StudentProfileAnalyticalView
+            hasRealData={hasRealData}
+            history={history}
+            fallbackHistoricalData={fallbackHistoricalData}
+            realReadinessScore={realReadinessScore}
+            numeracyScores={numeracyScores}
+            literacyScores={literacyScores}
+            numeracyTrajectory={numeracyTrajectory}
+            literacyTrajectory={literacyTrajectory}
+            numeracyReadiness={numeracyReadiness}
+            literacyReadiness={literacyReadiness}
+            isHighRisk={isHighRisk}
+            recentGaps={recentGaps}
+            recentMastery={recentMastery}
+            senReport={senReport}
+            isAnalyzingSEN={isAnalyzingSEN}
+            onRunDeepPatternAnalysis={runDeepPatternAnalysis}
+          />
+        </>
       ) : viewMode === 'action-plan' ? (
         <StudentProfileActionPlanView
           curriculumAlignmentLabel={curriculumAlignmentLabel}
@@ -482,6 +500,7 @@ export function StudentProfile({ studentId: initialStudentId, userRole }: Studen
         activeWorksheet={activeWorksheet}
         onClose={() => setActiveWorksheet(null)}
         curriculumAlignmentLabel={curriculumAlignmentLabel}
+        isPremiumTier={Boolean(premiumReady && isPremiumTier)}
       />
 
       {portalToast ? (

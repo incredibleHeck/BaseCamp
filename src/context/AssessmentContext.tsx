@@ -9,6 +9,8 @@ import React, {
   type ReactNode,
 } from 'react';
 import { addToQueue, StorageQuotaExceededError } from '../services/core/offlineQueueService';
+import { usePremiumTier } from './PremiumTierContext';
+import { useLiveClassroomSession } from './LiveClassroomSessionContext';
 import { logWorkflow } from '../utils/workflowLog';
 import type { AssessmentData, AssessmentSetupSnapshot } from '../features/assessments/AssessmentSetup';
 import type {
@@ -74,6 +76,9 @@ export function AssessmentProvider({
   onOfflineQueued,
   onOpenStudentProfile,
 }: AssessmentProviderProps) {
+  const { isPremiumTier } = usePremiumTier();
+  const { isLiveSessionActive } = useLiveClassroomSession();
+
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>('empty');
   const [lastAssessmentData, setLastAssessmentData] = useState<AssessmentData | null>(null);
   const [setupSnapshot, setSetupSnapshot] = useState<AssessmentSetupSnapshot | null>(null);
@@ -181,32 +186,54 @@ export function AssessmentProvider({
           const assessmentType = data.assessmentType === 'literacy' ? 'literacy' : 'numeracy';
 
           if (data.inputMode === 'manual') {
-            await addToQueue({
-              studentId: data.studentId,
-              assessmentType,
-              inputMode: 'manual',
-              manualRubric: data.manualRubric ?? [],
-              observations: data.observations ?? '',
-              dialectContext: data.dialect ?? undefined,
-              curriculumFramework: data.curriculumFramework ?? 'GES',
-              gradeLevel: data.gradeLevel,
-              cohortId: data.cohortId,
-              classLabel: data.classLabel,
-            });
-          } else {
-            const imageBase64s = (data.imageBase64s ?? []).filter(Boolean);
-            if (imageBase64s.length > 0) {
-              await addToQueue({
+            const addResult = await addToQueue(
+              {
                 studentId: data.studentId,
                 assessmentType,
-                inputMode: 'upload',
-                imageBase64s,
+                inputMode: 'manual',
+                manualRubric: data.manualRubric ?? [],
+                observations: data.observations ?? '',
                 dialectContext: data.dialect ?? undefined,
                 curriculumFramework: data.curriculumFramework ?? 'GES',
                 gradeLevel: data.gradeLevel,
                 cohortId: data.cohortId,
                 classLabel: data.classLabel,
-              });
+              },
+              {
+                isPremiumTier,
+                isLiveSessionActive,
+                channel: 'standard_assessment',
+              }
+            );
+            if (addResult.status === 'bypassed') {
+              setAnalysisStatus('empty');
+              return;
+            }
+          } else {
+            const imageBase64s = (data.imageBase64s ?? []).filter(Boolean);
+            if (imageBase64s.length > 0) {
+              const addResult = await addToQueue(
+                {
+                  studentId: data.studentId,
+                  assessmentType,
+                  inputMode: 'upload',
+                  imageBase64s,
+                  dialectContext: data.dialect ?? undefined,
+                  curriculumFramework: data.curriculumFramework ?? 'GES',
+                  gradeLevel: data.gradeLevel,
+                  cohortId: data.cohortId,
+                  classLabel: data.classLabel,
+                },
+                {
+                  isPremiumTier,
+                  isLiveSessionActive,
+                  channel: 'standard_assessment',
+                }
+              );
+              if (addResult.status === 'bypassed') {
+                setAnalysisStatus('empty');
+                return;
+              }
             } else {
               alert('Please upload at least one image before running diagnosis.');
               return;
@@ -233,7 +260,7 @@ export function AssessmentProvider({
       });
       setAnalysisStatus('analyzing');
     },
-    [isOffline, refreshQueue, onOfflineQueued]
+    [isOffline, refreshQueue, onOfflineQueued, isPremiumTier, isLiveSessionActive]
   );
 
   // Leaving the assessment tab while mid-analysis: avoid stuck spinner on return

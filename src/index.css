@@ -4,6 +4,17 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Premium tier: Obsidian & Gold (use only when `isPremiumTier` in React) */
+  --color-obsidian-950: #0a0a0b;
+  --color-obsidian-900: #101012;
+  --color-obsidian-850: #141416;
+  --color-obsidian-800: #1a1a1d;
+  --color-obsidian-700: #232326;
+  --color-gold-200: #f5e6b8;
+  --color-gold-300: #e6cf7a;
+  --color-gold-400: #d4af37;
+  --color-gold-500: #b8962e;
+  --color-gold-600: #9a7b24;
 }
 
 @layer utilities {
@@ -13,11 +24,20 @@
   .glass-dark {
     @apply bg-zinc-900/80 backdrop-blur-md border border-zinc-800/50;
   }
+  .premium-glass {
+    @apply border border-obsidian-700/60 bg-obsidian-900/90 backdrop-blur-md;
+  }
+  .premium-surface {
+    @apply border border-obsidian-800 bg-obsidian-900/80;
+  }
   .shadow-soft {
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
   }
   .shadow-soft-hover {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  }
+  .shadow-premium {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   }
 }
 

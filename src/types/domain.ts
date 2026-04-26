@@ -4,7 +4,7 @@
  */
 
 import type { Timestamp } from 'firebase/firestore';
-import type { SenWarningFlag } from '../services/ai/aiPrompts/types';
+import type { SenWarningFlag, WorksheetResult } from '../services/ai/aiPrompts/types';
 
 /** Single multiple-choice item for AI-generated gamified practice quizzes. */
 export interface QuizQuestion {
@@ -96,7 +96,7 @@ export interface Assessment {
   /** A* / gifted extension (markdown); optional. */
   extensionActivity?: string;
   /** Generated practice worksheet; overwritten when regenerated. */
-  worksheet?: { title: string; questions: string[] };
+  worksheet?: WorksheetResult;
   /** 0–100 mastery score from AI diagnostic (Phase 2 gradebook). */
   score?: number;
   /** Optional raw score when persisted separately from `score`. */
@@ -128,6 +128,8 @@ export interface Assessment {
   /** Phase 3: remedial playbook identity for A/B style analytics */
   playbookKey?: string;
   playbookTitle?: string;
+  /** Set when the row comes from a concluded Premium live classroom RTDB session. */
+  liveSessionId?: string;
   timestamp: Date | Timestamp | number;
   status: 'Pending' | 'In Progress' | 'Completed';
   /** Model / screening hint persisted for gradebook & longitudinal views (non-clinical). */

@@ -1,0 +1,41 @@
+{
+  "rules": {
+    "live_sessions": {
+      "$sessionId": {
+        "state": {
+          ".read": "auth != null",
+          ".write": "auth != null && ((!data.exists() && newData.hasChildren(['teacherId']) && newData.child('teacherId').val() == auth.uid) || (data.exists() && data.child('teacherId').val() == auth.uid && newData.hasChildren(['teacherId']) && newData.child('teacherId').val() == data.child('teacherId').val()))"
+        },
+        "presence": {
+          "$studentId": {
+            ".read": "auth != null",
+            ".write": "auth != null && $studentId == auth.uid"
+          }
+        },
+        "answers": {
+          "$questionId": {
+            "$studentId": {
+              ".read": "auth != null",
+              ".write": "auth != null && $studentId == auth.uid"
+            }
+          }
+        },
+        "student_links": {
+          "$anonUid": {
+            ".read": "auth != null",
+            ".write": "auth != null && $anonUid == auth.uid",
+            ".validate": "newData.hasChildren(['firestoreStudentId']) && newData.child('firestoreStudentId').isString() && newData.child('firestoreStudentId').val().length > 0"
+          }
+        }
+      }
+    },
+    "live_bypass_ledger": {
+      "$uid": {
+        "$entryId": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    }
+  }
+}

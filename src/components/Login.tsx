@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Lock, KeyRound, BookOpen, GraduationCap, Building, HeartHandshake, ArrowLeft, MapPin } from 'lucide-react';
+import { Loader2, Lock, KeyRound, BookOpen, GraduationCap, Building, HeartHandshake, ArrowLeft } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { signInWithEmailAndPassword, signInAnonymously, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -8,10 +8,10 @@ import { seedDemoEnvironment } from '../utils/demoSeeder';
 import { buildManagedStaffEmail } from '../utils/managedCredentials';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { isDemoHostedBuild } from '../config/demoMode';
 
-type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'circuit_supervisor' | 'super_admin';
+type Role = 'teacher' | 'headteacher' | 'district' | 'sen_coordinator' | 'super_admin';
 
 /** Placeholder only — not a guaranteed password. Super admin must exist in Firebase Auth for this project. */
 const ADMIN_PASSWORD_PLACEHOLDER = 'Your Firebase Auth password';
@@ -47,8 +47,6 @@ function defaultEmailForAdminRole(role: Role): string {
       return 'district@basecamp.com';
     case 'sen_coordinator':
       return 'sen_coordinator@basecamp.com';
-    case 'circuit_supervisor':
-      return 'circuit_supervisor@basecamp.com';
     case 'super_admin':
       return 'superadmin@basecamp.com';
     default:
@@ -86,8 +84,8 @@ export function Login() {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
 
-  /** Pilot headteacher: PIN (managed account) vs email/password (registered headteacher). */
-  const [headteacherLoginMode, setHeadteacherLoginMode] = useState<'pin' | 'admin'>('pin');
+  /** Pilot headteacher: PIN (managed account) vs email/password (registered headteacher). Default to admin for clarity. */
+  const [headteacherLoginMode, setHeadteacherLoginMode] = useState<'pin' | 'admin'>('admin');
   const [headteacherAdminEmail, setHeadteacherAdminEmail] = useState('');
   const [headteacherAdminPassword, setHeadteacherAdminPassword] = useState('');
 
@@ -98,7 +96,6 @@ export function Login() {
     if (
       selectedRole === 'district' ||
       selectedRole === 'sen_coordinator' ||
-      selectedRole === 'circuit_supervisor' ||
       selectedRole === 'super_admin'
     ) {
       setAdminEmail(defaultEmailForAdminRole(selectedRole));
@@ -218,7 +215,6 @@ export function Login() {
       !selectedRole ||
       (selectedRole !== 'district' &&
         selectedRole !== 'sen_coordinator' &&
-        selectedRole !== 'circuit_supervisor' &&
         selectedRole !== 'super_admin')
     ) {
       return;
@@ -281,7 +277,9 @@ export function Login() {
             <div className="mx-auto w-16 h-16 bg-amber-500 rounded-xl flex items-center justify-center mb-6 shadow-lg transform -rotate-3 transition-transform hover:rotate-0">
               <span className="text-black font-bold text-2xl tracking-tighter">HT</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">BaseCamp Diagnostics</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+              {isDemoHostedBuild ? 'BaseCamp Diagnostics' : 'BaseCamp'}
+            </h1>
             <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">by HecTech</p>
           </div>
 
@@ -291,7 +289,7 @@ export function Login() {
 
           <AnimatePresence mode="wait">
             {!selectedRole ? (
-              <motion.div
+              <m.div
                 key="role-selection"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -312,7 +310,7 @@ export function Login() {
                   />
                   <PortalSelectCard
                     icon={<Building />}
-                    title="District Director"
+                    title="School Administrator"
                     onClick={() => setSelectedRole('district')}
                   />
                   <PortalSelectCard
@@ -348,18 +346,9 @@ export function Login() {
                   </div>
                 )}
 
-                <div className="mt-4 pt-4 border-t border-zinc-100 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRole('circuit_supervisor')}
-                    className="text-xs text-zinc-400 hover:text-zinc-700 transition-colors"
-                  >
-                    Circuit Supervisor
-                  </button>
-                </div>
-              </motion.div>
+              </m.div>
             ) : (
-              <motion.div
+              <m.div
                 key="login-form"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -401,27 +390,21 @@ export function Login() {
                       {selectedRole === 'teacher' ? 'Teacher Access' : 'Headteacher Access'}
                     </h2>
 
-                    {demoSeedEnabled ? (
+                    {demoSeedEnabled && selectedRole === 'teacher' ? (
                       <>
                         <p className="text-sm text-zinc-500 mb-2">
-                          {selectedRole === 'teacher'
-                            ? 'Enter the access code provided by your Headteacher.'
-                            : 'Enter your school-assigned email address.'}
+                          Enter the access code provided by your Headteacher.
                         </p>
                         <p className="text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-lg px-3 py-2 mb-6 leading-relaxed">
                           <span className="font-semibold text-amber-900">Hosted demo:</span> Logins below only work after a one-time{' '}
                           <strong>Seed Demo Data</strong> (footer). Then use School&nbsp;1:{' '}
-                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">teacher1@school1.com</code>{' '}
-                          (Teacher tile) or{' '}
-                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">headteacher@school1.com</code>{' '}
-                          (Headteacher tile). Same pattern for school&nbsp;2 and&nbsp;3. Use{' '}
-                          <strong>.com</strong> (period), not a comma.
+                          <code className="text-[11px] bg-white/80 px-1 rounded border border-amber-200/60">teacher1@school1.com</code>.
                         </p>
                         <form onSubmit={handleDemoAccessCodeLogin} className="space-y-4">
                           <div>
                             <Input
                               type="text"
-                              placeholder={selectedRole === 'teacher' ? 'e.g. teacher1@school1.com' : 'e.g. headteacher@school1.com'}
+                              placeholder="e.g. teacher1@school1.com"
                               value={accessCode}
                               onChange={(e) => setAccessCode(e.target.value)}
                               disabled={isCodeLoggingIn}
@@ -614,7 +597,6 @@ export function Login() {
                     <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-zinc-100 text-indigo-600">
                       {selectedRole === 'district' && <Building className="w-6 h-6" />}
                       {selectedRole === 'sen_coordinator' && <HeartHandshake className="w-6 h-6" />}
-                      {selectedRole === 'circuit_supervisor' && <MapPin className="w-6 h-6" />}
                       {selectedRole === 'super_admin' && <Lock className="w-6 h-6" />}
                     </div>
                     <h2 className="text-lg font-semibold text-zinc-900 mb-2 text-center capitalize">
@@ -668,7 +650,7 @@ export function Login() {
                     </form>
                   </div>
                 )}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>

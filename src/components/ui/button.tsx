@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { motion, HTMLMotionProps } from 'motion/react';
+import { m, HTMLMotionProps } from 'motion/react';
 
 import { cn } from '../../utils/ui-helpers';
 
@@ -46,7 +46,7 @@ export interface ButtonProps extends Omit<HTMLMotionProps<"button">, "ref"> {
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'default', size = 'default', type = 'button', ...props }, ref) => (
-    <motion.button
+    <m.button
       ref={ref}
       type={type}
       whileTap={{ scale: 0.97 }}

@@ -1,7 +1,8 @@
 import { collection, addDoc, doc, updateDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { chunkIds, getStaffAccessScope } from './staffFirestoreScope';
-import type { SenWarningFlag } from './ai/aiPrompts/types';
+import { alignParallelArray, normalizeGesTikzEntry, normalizePremiumFigure } from './ai/aiPrompts/worksheetFiguresNormalize';
+import type { SenWarningFlag, WorksheetResult } from './ai/aiPrompts/types';
 import type { Assessment } from '../types/domain';
 
 export type { Assessment };
@@ -55,8 +56,24 @@ function worksheetFromFirestore(raw: unknown): Assessment['worksheet'] {
   if (raw == null || typeof raw !== 'object') return undefined;
   const o = raw as Record<string, unknown>;
   if (typeof o.title !== 'string' || !Array.isArray(o.questions)) return undefined;
-  const questions = o.questions.filter((x): x is string => typeof x === 'string');
-  return { title: o.title, questions };
+  const questions = o.questions
+    .filter((x): x is string => typeof x === 'string')
+    .map((q) => q.trim());
+  if (questions.length === 0) return undefined;
+  const base: WorksheetResult = { title: o.title.trim(), questions };
+  if (Array.isArray(o.premiumFigures)) {
+    base.premiumFigures = alignParallelArray(
+      o.premiumFigures.map((item) => normalizePremiumFigure(item)),
+      questions.length
+    );
+  }
+  if (Array.isArray(o.gesTikzFigures)) {
+    base.gesTikzFigures = alignParallelArray(
+      o.gesTikzFigures.map((item) => normalizeGesTikzEntry(item)),
+      questions.length
+    );
+  }
+  return base;
 }
 
 /** Optional epoch ms from number or Firestore Timestamp-style values. */

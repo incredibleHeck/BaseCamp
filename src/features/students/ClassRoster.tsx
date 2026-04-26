@@ -103,8 +103,7 @@ export function ClassRoster({
     if (
       user.role === 'super_admin' ||
       user.role === 'district' ||
-      user.role === 'sen_coordinator' ||
-      user.role === 'circuit_supervisor'
+      user.role === 'sen_coordinator'
     ) {
       return 'All students';
     }

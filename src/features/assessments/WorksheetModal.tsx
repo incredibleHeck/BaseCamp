@@ -3,15 +3,23 @@ import { Printer } from 'lucide-react';
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import type { WorksheetResult } from '../../services/ai/aiPrompts';
 import { printWorksheetToWindow } from '../../utils/printUtils';
+import { WorksheetPremiumFigure } from './WorksheetPremiumFigure';
 
 interface WorksheetModalProps {
   activeWorksheet: { gap: string; data: WorksheetResult } | null;
   onClose: () => void;
   /** Optional curriculum context for the generated sheet. */
   curriculumAlignmentLabel?: string;
+  /** When true, TikZ blocks from GES worksheets are hidden (Premium tier). */
+  isPremiumTier?: boolean;
 }
 
-export function WorksheetModal({ activeWorksheet, onClose, curriculumAlignmentLabel }: WorksheetModalProps) {
+export function WorksheetModal({
+  activeWorksheet,
+  onClose,
+  curriculumAlignmentLabel,
+  isPremiumTier = false,
+}: WorksheetModalProps) {
   if (!activeWorksheet) return null;
 
   return (
@@ -36,7 +44,7 @@ export function WorksheetModal({ activeWorksheet, onClose, curriculumAlignmentLa
             </button>
             <button
               type="button"
-              onClick={() => printWorksheetToWindow(activeWorksheet)}
+              onClick={() => printWorksheetToWindow(activeWorksheet, { isPremiumTier })}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-200 text-blue-800 text-sm font-medium bg-blue-50 hover:bg-blue-100"
             >
               <Printer size={16} />
@@ -69,6 +77,19 @@ export function WorksheetModal({ activeWorksheet, onClose, curriculumAlignmentLa
                     className="!my-0 max-w-none"
                   />
                 </div>
+                {activeWorksheet.data.premiumFigures?.[idx] ? (
+                  <WorksheetPremiumFigure figure={activeWorksheet.data.premiumFigures[idx]!} />
+                ) : null}
+                {!isPremiumTier && activeWorksheet.data.gesTikzFigures?.[idx] ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 print:border-black print:bg-white">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 print:text-black">
+                      Diagram (LaTeX / TikZ)
+                    </p>
+                    <pre className="mt-2 max-h-48 overflow-auto text-xs text-slate-800 whitespace-pre-wrap print:max-h-none print:text-black">
+                      {activeWorksheet.data.gesTikzFigures[idx]}
+                    </pre>
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   {[1, 2, 3, 4].map((line) => (
                     <div

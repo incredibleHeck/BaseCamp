@@ -1,15 +1,9 @@
-function isDiagnosticsHostingHostname(): boolean {
-  if (typeof window === 'undefined') return false;
-  const h = window.location.hostname;
-  return h === 'basecamp-diagnostics.web.app' || h === 'basecamp-diagnostics.firebaseapp.com';
-}
+const DIAGNOSTICS_FIREBASE_PROJECT_ID = 'basecamp-diagnostics' as const;
 
 /**
- * Hosted investor/demo (basecamp-diagnostics) should always show access-code login + linkedProfileId
- * routing without relying on a build-time flag being set correctly.
- * Pilot / other projects: set VITE_ENABLE_DEMO_SEED=true only when you want that behaviour.
+ * When the Vite build targets the diagnostics Firebase project, enable demo auth:
+ * access-code teacher login, seed footer, linkedProfileId resolution, etc.
+ * Pilot and other project IDs always get full staff (PIN / email+password) flows.
  */
 export const isDemoHostedBuild =
-  import.meta.env.VITE_ENABLE_DEMO_SEED === 'true' ||
-  import.meta.env.VITE_FIREBASE_PROJECT_ID === 'basecamp-diagnostics' ||
-  isDiagnosticsHostingHostname();
+  import.meta.env.VITE_FIREBASE_PROJECT_ID === DIAGNOSTICS_FIREBASE_PROJECT_ID;

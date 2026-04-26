@@ -2,8 +2,14 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
+import { runAggregateCambridgeExecutive } from './aggregateCambridgeExecutive.js';
+import { runWeeklyParentDigest } from './weeklyParentDigest.js';
 import { buildManagedStaffEmail, generateTeacherUsername } from './managedEmail.js';
+import { createOnLiveSessionConcluded } from './liveSessionConcluded.js';
+import { createOnShowYourWorkVideoFinalized } from './onShowYourWorkVideoFinalized.js';
 
 if (!getApps().length) {
   initializeApp();
@@ -13,11 +19,95 @@ const auth = getAuth();
 
 const REGION = process.env.FUNCTIONS_REGION || 'europe-west1';
 
+/** Optional: pin Storage trigger to the same bucket as the web app (`VITE_FIREBASE_STORAGE_BUCKET`). */
+const STORAGE_BUCKET = process.env.STORAGE_BUCKET?.trim() || undefined;
+
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+
+/**
+ * Realtime Database: when `live_sessions/{sessionId}/state/status` becomes `concluded`,
+ * persist scores to `assessments` and remove the RTDB subtree.
+ */
+export const onLiveSessionConcluded = createOnLiveSessionConcluded(REGION);
+
+/**
+ * When a student portal "Show your work" MP4 is finalized under
+ * `students/{studentId}/showYourWork/`. Requires `GEMINI_API_KEY` secret (multimodal Gemini).
+ */
+export const onShowYourWorkVideoFinalized = createOnShowYourWorkVideoFinalized(REGION, {
+  bucket: STORAGE_BUCKET,
+  geminiApiKey,
+});
+
+/**
+ * Friday 16:00 Africa/Accra: weekly parent digest to `parent_digests/{studentId}`.
+ * Requires secret `GEMINI_API_KEY` (see Firebase console / Secret Manager). Optional env `GEMINI_MODEL` overrides the model.
+ */
+export const weeklyParentDigestJob = onSchedule(
+  {
+    schedule: '0 16 * * 5',
+    timeZone: 'Africa/Accra',
+    region: REGION,
+    memory: '1GiB',
+    timeoutSeconds: 540,
+    secrets: [geminiApiKey],
+  },
+  async () => {
+    const key = geminiApiKey.value();
+    if (!key?.trim()) {
+      logger.error('weeklyParentDigestJob: GEMINI_API_KEY secret is empty');
+      return;
+    }
+    const result = await runWeeklyParentDigest(db, key.trim());
+    if (result.errors.length > 0) {
+      logger.warn('weeklyParentDigestJob partial errors', { errors: result.errors });
+    }
+    logger.info('weeklyParentDigestJob complete', {
+      studentsProcessed: result.studentsProcessed,
+      studentsSkipped: result.studentsSkipped,
+    });
+  }
+);
+
+/**
+ * Nightly (Africa/Accra): aggregate last 24h `assessments` per Cambridge/both school into
+ * `aggregations/{schoolId}`. Client reads are O(1); writes are Admin-only (see firestore.rules).
+ */
+export const aggregateCambridgeExecutiveSummary = onSchedule(
+  {
+    schedule: '0 2 * * *',
+    timeZone: 'Africa/Accra',
+    region: REGION,
+    memory: '512MiB',
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const result = await runAggregateCambridgeExecutive(db);
+    if (result.errors.length > 0) {
+      logger.warn('aggregateCambridgeExecutiveSummary partial errors', { errors: result.errors });
+    }
+    logger.info('aggregateCambridgeExecutiveSummary complete', {
+      schoolsProcessed: result.schoolsProcessed,
+    });
+  }
+);
+
 function randomPassword(length = 14): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
   let out = '';
   for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+async function assertSuperAdmin(uid: string): Promise<void> {
+  const snap = await db.collection('users').doc(uid).get();
+  if (!snap.exists) {
+    throw new HttpsError('permission-denied', 'No user profile.');
+  }
+  const data = snap.data() as Record<string, unknown>;
+  if (data.role !== 'super_admin') {
+    throw new HttpsError('permission-denied', 'Only super admins can manage premium claims.');
+  }
 }
 
 async function assertHeadteacher(uid: string): Promise<{ schoolId: string; districtId: string }> {
@@ -116,6 +206,41 @@ export const createSchoolTeacher = onCall(
       email,
       temporaryPassword: password,
     };
+  }
+);
+
+/**
+ * Sets or clears the `premiumTier` custom claim on a Firebase Auth user. Merge-preserves
+ * other custom claims. Invokable only by `super_admin` (Firestore `users/{uid}.role`).
+ * The client also gates the visible Premium tier on school `curriculumType`.
+ */
+export const adminSetPremiumClaim = onCall(
+  { region: REGION },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    await assertSuperAdmin(request.auth.uid);
+
+    const { targetUid, premiumTier } = request.data as { targetUid?: string; premiumTier?: unknown };
+    const tid = typeof targetUid === 'string' ? targetUid.trim() : '';
+    if (!tid) {
+      throw new HttpsError('invalid-argument', 'targetUid is required.');
+    }
+    if (typeof premiumTier !== 'boolean') {
+      throw new HttpsError('invalid-argument', 'premiumTier must be a boolean.');
+    }
+
+    const userRecord = await auth.getUser(tid);
+    const existing: Record<string, unknown> = { ...(userRecord.customClaims as Record<string, unknown> | null | undefined) };
+    if (premiumTier) {
+      existing.premiumTier = true;
+    } else {
+      delete existing.premiumTier;
+    }
+    await auth.setCustomUserClaims(tid, existing);
+    return { ok: true };
   }
 );
 

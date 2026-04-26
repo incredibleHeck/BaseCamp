@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
@@ -16,6 +16,7 @@ import {
   UsersRound,
   Building,
   HeartHandshake,
+  Zap,
 } from 'lucide-react';
 import { Header, type UserData } from './Header';
 import { AssessmentSetup } from '../../features/assessments/AssessmentSetup';
@@ -37,9 +38,15 @@ import { PendingAnalyses } from '../../features/assessments/PendingAnalyses';
 import { OfflineQueuedModal } from '../OfflineQueuedModal';
 import { useAssessment } from '../../context/AssessmentContext';
 import { AuthProvider } from '../../context/AuthContext';
+import { usePremiumTier } from '../../context/PremiumTierContext';
+import { rtdb } from '../../lib/firebase';
+import { TeacherLiveClassroomPanel } from '../../features/liveClassroom/TeacherLiveClassroomPanel';
 import type { QueuedAssessment } from '../../services/core/offlineQueueService';
 import type { BatchSyncProgress } from '../../hooks/useSyncManager';
 import { SidebarNavLink } from './SidebarNavLink';
+import { premiumClassNames } from '../premium/premiumClassNames';
+import { PremiumHeaderChrome } from '../premium/PremiumHeaderChrome';
+import { PremiumWelcomeBanner } from '../premium/PremiumWelcomeBanner';
 
 export type View =
   | 'class-roster'
@@ -54,17 +61,27 @@ export type View =
   | 'district-heatmap'
   | 'district-playbooks'
   | 'sen-inbox'
-  | 'fine-tune-pilot';
+  | 'fine-tune-pilot'
+  | 'live-classroom';
 
 const DASHBOARD_CONFIG: Record<
   UserData['role'],
-  { title: string; welcome: string }
+  { title: string; welcome: string; premiumTitle?: string; premiumWelcome?: string }
 > = {
   teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
   headteacher: { title: 'Headmaster Dashboard', welcome: 'Here is your school-wide performance overview.' },
-  district: { title: 'District Analytics Dashboard', welcome: 'Here is the district-wide performance overview.' },
-  sen_coordinator: { title: 'SEN Coordination', welcome: 'Review screening signals and district context.' },
-  circuit_supervisor: { title: 'Circuit Supervision', welcome: 'Target support using geographic risk bands.' },
+  district: { 
+    title: 'District Analytics Dashboard', 
+    welcome: 'Here is the district-wide performance overview.',
+    premiumTitle: 'School Admin Dashboard',
+    premiumWelcome: 'Here is the school-wide administrative overview.'
+  },
+  sen_coordinator: { 
+    title: 'SEN Coordination', 
+    welcome: 'Review screening signals and district context.',
+    premiumTitle: 'Special Needs Coordination',
+    premiumWelcome: 'Review screening signals and support context.'
+  },
   super_admin: { title: 'Enterprise / MoE View', welcome: 'Cross-cutting analytics and governance tools.' },
 };
 
@@ -116,6 +133,10 @@ export function LoggedInAppChrome({
   handleRetryQueuedNow,
 }: LoggedInAppChromeProps) {
   const { resetAssessment } = useAssessment();
+  const { isPremiumTier, isReady: premiumReady } = usePremiumTier();
+  const showPremiumShell = premiumReady && isPremiumTier;
+  const showLiveClassroom = showPremiumShell && Boolean(rtdb);
+  const navVariant = showPremiumShell ? 'premium' : 'default';
 
   const handleStartAssessment = (studentId: string) => {
     setSelectedStudentId(studentId);
@@ -189,8 +210,10 @@ export function LoggedInAppChrome({
         return <SchoolDirectory user={user} onSchoolClick={handleSchoolClick} />;
       case 'fine-tune-pilot':
         return <FineTunePilotPanel />;
+      case 'live-classroom':
+        return <TeacherLiveClassroomPanel />;
       default:
-        return <div className="p-12 text-center text-gray-400">View under construction.</div>;
+        return <div className="p-12 text-center text-zinc-400">View under construction.</div>;
     }
   };
 
@@ -226,11 +249,19 @@ export function LoggedInAppChrome({
         icon: School,
       });
     }
-    if (role === 'district' || role === 'sen_coordinator' || role === 'circuit_supervisor' || role === 'super_admin') {
+    if (showLiveClassroom && (role === 'teacher' || role === 'headteacher')) {
+      primary.push({
+        view: 'live-classroom',
+        label: 'Live classroom',
+        shortLabel: 'Live',
+        icon: Zap,
+      });
+    }
+    if (role === 'district' || role === 'sen_coordinator' || role === 'super_admin') {
       primary.push({
         view: 'district-overview',
-        label: 'District View',
-        shortLabel: 'District',
+        label: showPremiumShell ? 'School View' : 'District View',
+        shortLabel: showPremiumShell ? 'School' : 'District',
         icon: Map,
       });
     }
@@ -247,8 +278,8 @@ export function LoggedInAppChrome({
     if (enterpriseNav.showHeatmap) {
       secondary.push({
         view: 'district-heatmap',
-        label: 'Risk map',
-        shortLabel: 'Risk',
+        label: showPremiumShell ? 'Support map' : 'Risk map',
+        shortLabel: showPremiumShell ? 'Support' : 'Risk',
         icon: MapPin,
       });
     }
@@ -310,7 +341,7 @@ export function LoggedInAppChrome({
     }
 
     return { primarySidebarNav: primary, secondarySidebarNav: secondary };
-  }, [user.role, enterpriseNav.showHeatmap, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox]);
+  }, [user.role, enterpriseNav.showHeatmap, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom]);
 
   const mobileNavItems = useMemo(
     () => [...primarySidebarNav, ...secondarySidebarNav],
@@ -319,66 +350,122 @@ export function LoggedInAppChrome({
 
   return (
     <AuthProvider user={user}>
-      <div className="min-h-screen bg-gray-50 text-gray-900 font-sans flex flex-col">
-        <Header
-          onLogout={handleLogout}
-          user={user}
-          isOffline={isOffline}
-          setIsOffline={setIsOffline}
-          queueLength={queueLength}
-          isSyncing={isSyncing}
-        />
+      <div
+        className={
+          showPremiumShell
+            ? premiumClassNames.pageRoot
+            : 'flex min-h-screen flex-col bg-gray-50 font-sans text-gray-900'
+        }
+      >
+        {showPremiumShell ? (
+          <PremiumHeaderChrome
+            onLogout={handleLogout}
+            user={user}
+            isOffline={isOffline}
+            setIsOffline={setIsOffline}
+            queueLength={queueLength}
+            isSyncing={isSyncing}
+          />
+        ) : (
+          <Header
+            onLogout={handleLogout}
+            user={user}
+            isOffline={isOffline}
+            setIsOffline={setIsOffline}
+            queueLength={queueLength}
+            isSyncing={isSyncing}
+          />
+        )}
 
-      <div className="flex flex-1 min-h-0 flex-col pt-14 sm:pt-16 md:flex-row">
-        <aside
-          className="hidden md:flex w-64 shrink-0 flex-col border-r border-zinc-200/60 bg-zinc-50/50 backdrop-blur-sm"
-          aria-label="Main navigation"
-        >
-          <nav className="flex flex-col gap-1 overflow-y-auto px-3 py-4">
-            {primarySidebarNav.map((item) => (
-              <SidebarNavLink
-                key={item.view}
-                icon={item.icon}
-                label={item.label}
-                active={currentView === item.view}
-                layout="sidebar"
-                onClick={() => setCurrentView(item.view)}
-              />
-            ))}
-            {secondarySidebarNav.length > 0 && (
-              <div className="my-2 border-t border-zinc-200/60 pt-2" role="presentation" />
-            )}
-            {secondarySidebarNav.map((item) => (
-              <SidebarNavLink
-                key={item.view}
-                icon={item.icon}
-                label={item.label}
-                active={currentView === item.view}
-                layout="sidebar"
-                onClick={() => setCurrentView(item.view)}
-              />
-            ))}
-          </nav>
-        </aside>
+        <div className="flex min-h-0 flex-1 flex-col pt-14 sm:pt-16 md:flex-row">
+          <aside
+            className={
+              showPremiumShell
+                ? premiumClassNames.aside
+                : 'hidden w-64 shrink-0 flex-col border-r border-zinc-200/60 bg-zinc-50/50 backdrop-blur-sm md:flex'
+            }
+            aria-label="Main navigation"
+          >
+            <nav className="flex flex-col gap-1 overflow-y-auto px-3 py-4">
+              {primarySidebarNav.map((item) => (
+                <SidebarNavLink
+                  key={item.view}
+                  icon={item.icon}
+                  label={item.label}
+                  active={currentView === item.view}
+                  layout="sidebar"
+                  variant={navVariant}
+                  onClick={() => setCurrentView(item.view)}
+                />
+              ))}
+              {secondarySidebarNav.length > 0 && (
+                <div
+                  className={
+                    showPremiumShell
+                      ? premiumClassNames.asideDivider
+                      : 'my-2 border-t border-zinc-200/60 pt-2'
+                  }
+                  role="presentation"
+                />
+              )}
+              {secondarySidebarNav.map((item) => (
+                <SidebarNavLink
+                  key={item.view}
+                  icon={item.icon}
+                  label={item.label}
+                  active={currentView === item.view}
+                  layout="sidebar"
+                  variant={navVariant}
+                  onClick={() => setCurrentView(item.view)}
+                />
+              ))}
+            </nav>
+          </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-zinc-50/30">
-          <main className="mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-6 sm:pt-6 md:pb-12 lg:px-8">
-            {syncToast && (
-              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
-                {syncToast.message}
-              </div>
-            )}
-            <div className="mb-6 sm:mb-8">
-              <h2 className="text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl">
-                {DASHBOARD_CONFIG[user.role].title}
-              </h2>
-              <p className="mt-0.5 text-sm text-zinc-500 sm:mt-1 sm:text-base">
-                Welcome back, {user.name}. {DASHBOARD_CONFIG[user.role].welcome}
-              </p>
-            </div>
+          <div
+            className={
+              showPremiumShell
+                ? premiumClassNames.mainColumn
+                : 'flex min-h-0 min-w-0 flex-1 flex-col bg-zinc-50/30'
+            }
+          >
+            <main
+              className={
+                showPremiumShell
+                  ? premiumClassNames.main
+                  : 'mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-6 sm:pt-6 md:pb-12 lg:px-8'
+              }
+            >
+              {syncToast && (
+                <div
+                  className={
+                    showPremiumShell
+                      ? premiumClassNames.syncToast
+                      : 'mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm'
+                  }
+                >
+                  {syncToast.message}
+                </div>
+              )}
+              {showPremiumShell ? (
+                <PremiumWelcomeBanner
+                  title={DASHBOARD_CONFIG[user.role].premiumTitle || DASHBOARD_CONFIG[user.role].title}
+                  welcome={DASHBOARD_CONFIG[user.role].premiumWelcome || DASHBOARD_CONFIG[user.role].welcome}
+                  userName={user.name}
+                />
+              ) : (
+                <div className="mb-6 sm:mb-8">
+                  <h2 className="text-xl font-bold tracking-tight text-zinc-900 sm:text-2xl">
+                    {DASHBOARD_CONFIG[user.role].title}
+                  </h2>
+                  <p className="mt-0.5 text-sm text-zinc-500 sm:mt-1 sm:text-base">
+                    Welcome back, {user.name}. {DASHBOARD_CONFIG[user.role].welcome}
+                  </p>
+                </div>
+              )}
 
-            <AnimatePresence mode="wait">
-              <motion.div
+              <AnimatePresence mode="wait">
+              <m.div
                 key={currentView}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -386,37 +473,44 @@ export function LoggedInAppChrome({
                 transition={{ duration: 0.2 }}
               >
                 {renderContent()}
-              </motion.div>
-            </AnimatePresence>
-          </main>
+              </m.div>
+              </AnimatePresence>
+            </main>
+          </div>
+
+          <nav
+            className={showPremiumShell ? premiumClassNames.mobileNavWrap : 'fixed bottom-4 left-1/2 z-40 -translate-x-1/2 md:hidden'}
+            aria-label="Main navigation"
+          >
+            <div
+              className={
+                showPremiumShell
+                  ? premiumClassNames.mobileNavPill
+                  : 'flex gap-1 overflow-x-auto rounded-full px-2 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden glass shadow-soft'
+              }
+            >
+              {mobileNavItems.map((item) => (
+                <SidebarNavLink
+                  key={item.view}
+                  icon={item.icon}
+                  label={item.shortLabel}
+                  title={item.label}
+                  active={currentView === item.view}
+                  layout="mobile"
+                  variant={navVariant}
+                  onClick={() => setCurrentView(item.view)}
+                />
+              ))}
+            </div>
+          </nav>
         </div>
 
-        <nav
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 md:hidden"
-          aria-label="Main navigation"
-        >
-          <div className="flex gap-1 overflow-x-auto px-2 py-2 glass rounded-full shadow-soft [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {mobileNavItems.map((item) => (
-              <SidebarNavLink
-                key={item.view}
-                icon={item.icon}
-                label={item.shortLabel}
-                title={item.label}
-                active={currentView === item.view}
-                layout="mobile"
-                onClick={() => setCurrentView(item.view)}
-              />
-            ))}
-          </div>
-        </nav>
+        <OfflineQueuedModal
+          open={showOfflineQueuedModal}
+          queueLength={queueLength}
+          onClose={() => setShowOfflineQueuedModal(false)}
+        />
       </div>
-
-      <OfflineQueuedModal
-        open={showOfflineQueuedModal}
-        queueLength={queueLength}
-        onClose={() => setShowOfflineQueuedModal(false)}
-      />
-    </div>
     </AuthProvider>
   );
 }

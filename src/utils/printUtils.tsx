@@ -8,6 +8,7 @@ import katexCss from 'katex/dist/katex.min.css?inline';
 import type { Assessment } from '../services/assessmentService';
 import type { WorksheetResult } from '../services/ai/aiPrompts';
 import { escapeHtml } from './studentProfileHelpers';
+import { premiumFigureToSvgMarkup } from './worksheetPremiumFigureSvg';
 
 export function renderMarkdownMathToHtml(markdown: string): string {
   return ReactDOMServer.renderToStaticMarkup(
@@ -55,8 +56,12 @@ export function printLessonPlanWindow(assessment: Assessment): void {
   }
 }
 
-export function printWorksheetToWindow(worksheet: { gap: string; data: WorksheetResult }): void {
+export function printWorksheetToWindow(
+  worksheet: { gap: string; data: WorksheetResult },
+  options?: { isPremiumTier?: boolean }
+): void {
   const { data, gap } = worksheet;
+  const isPremiumTier = options?.isPremiumTier ?? false;
   const title = escapeHtml(data.title);
   const gapEscaped = escapeHtml(gap);
   const questionsBlocks = data.questions
@@ -68,9 +73,18 @@ export function printWorksheetToWindow(worksheet: { gap: string; data: Worksheet
             '<div style="border-bottom: 2px dotted #000; height: 2.5rem; width: 100%; margin-bottom: 0.5rem;"></div>'
         )
         .join('');
+      const premium = data.premiumFigures?.[idx];
+      const tikz = !isPremiumTier ? data.gesTikzFigures?.[idx] : null;
+      let figureBlock = '';
+      if (premium) {
+        figureBlock = `<div class="worksheet-figure" style="margin: 1rem 0; text-align: center;">${premiumFigureToSvgMarkup(premium)}</div>`;
+      } else if (tikz) {
+        figureBlock = `<div style="margin: 1rem 0;"><div style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem;">Diagram (LaTeX / TikZ)</div><pre style="white-space: pre-wrap; font-size: 0.7rem; background: #f5f5f5; padding: 0.5rem; border: 1px solid #ddd;">${escapeHtml(tikz)}</pre></div>`;
+      }
       return `
         <div style="margin-bottom: 4rem;">
           <div style="font-size: 1.125rem; font-weight: 500; color: #111; margin-bottom: 1.5rem;">${idx + 1}. ${qHtml}</div>
+          ${figureBlock}
           <div style="margin-top: 0.5rem;">${lines}</div>
         </div>`;
     })
@@ -93,6 +107,7 @@ export function printWorksheetToWindow(worksheet: { gap: string; data: Worksheet
     .katex { font-size: 1.05em; }
     .katex-display { margin: 0.75em 0; }
     p { margin: 0; }
+    .worksheet-figure svg { max-height: 12rem; width: 100%; max-width: 28rem; }
   </style>
 </head>
 <body>

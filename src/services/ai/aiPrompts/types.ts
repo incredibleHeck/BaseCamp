@@ -109,9 +109,33 @@ export interface MathLessonPlanResult {
  */
 export type EnglishLessonPlanResult = MathLessonPlanResult;
 
+export type WorksheetPremiumElementType = 'path' | 'circle' | 'line' | 'polygon' | 'text';
+
+/**
+ * One drawable primitive inside a worksheet figure. Uses SVG attribute names as keys
+ * (e.g. d, cx, cy, r, x1, fill, stroke) — no raw HTML.
+ */
+export interface WorksheetPremiumElement {
+  type: WorksheetPremiumElementType;
+  attrs: Record<string, string>;
+}
+
+/** Structured SVG-safe figure aligned with a single question (Premium tier). */
+export interface WorksheetPremiumFigure {
+  viewBox: string;
+  elements: WorksheetPremiumElement[];
+}
+
 export interface WorksheetResult {
   title: string;
   questions: string[];
+  /** One entry per question index; null when no diagram for that question (Premium). */
+  premiumFigures?: (WorksheetPremiumFigure | null)[] | null;
+  /**
+   * One entry per question index; null when no diagram. Each non-null string must be a complete
+   * `\\begin{tikzpicture}...\\end{tikzpicture}` block (GES / print pipeline).
+   */
+  gesTikzFigures?: (string | null)[] | null;
 }
 
 /** Required diagnostic context so the worksheet always aligns with the full report. */

@@ -28,6 +28,8 @@ import {
   loadLongitudinalPromptFields,
 } from '../services/assessmentPipelineService';
 import { useAuth } from '../context/AuthContext';
+import { usePremiumTier } from '../context/PremiumTierContext';
+import { useLiveClassroomSession } from '../context/LiveClassroomSessionContext';
 import { useSchoolConfig } from './useSchoolConfig';
 
 export type AnalysisStatus = 'empty' | 'analyzing' | 'results';
@@ -39,6 +41,8 @@ export interface DiagnosticReport extends AIDiagnosticReport {
 export type HybridAssessmentFlowResult =
   | { ok: true; savedAssessmentId: string }
   | { ok: true; queued: true }
+  /** Live classroom path: IndexedDB skipped (RTDB in Sprint 2.2). */
+  | { ok: true; bypassed: true }
   /** AI succeeded and UI shows the report, but Firestore save failed (e.g. rules / permissions). */
   | { ok: true; displayedOnly: true }
   | { ok: false; error: string };
@@ -90,6 +94,8 @@ const EMPTY_REPORT: DiagnosticReport = {
 export function useAnalysisFlow() {
   const { user } = useAuth();
   const { school } = useSchoolConfig(user.schoolId);
+  const { isPremiumTier } = usePremiumTier();
+  const { isLiveSessionActive } = useLiveClassroomSession();
 
   const {
     analysisStatus: status,
@@ -169,19 +175,30 @@ export function useAnalysisFlow() {
           optionalImageBlob && optionalImageBlob.size > 0 ? await blobToDataUrl(optionalImageBlob) : undefined;
 
         if (isOffline) {
-          await addToQueue({
-            studentId,
-            assessmentType: subjectKey,
-            inputMode: 'hybrid_voice',
-            dialectContext: effectiveDialect,
-            curriculumFramework: effectiveFramework,
-            gradeLevel: effectiveGrade,
-            cohortId: effectiveCohortId,
-            classLabel: effectiveClassLabel,
-            audioBase64: audioDataUrl,
-            audioMimeType: audioBlob.type || 'audio/webm',
-            imageBase64s: worksheetDataUrl ? [worksheetDataUrl] : undefined,
-          });
+          const addResult = await addToQueue(
+            {
+              studentId,
+              assessmentType: subjectKey,
+              inputMode: 'hybrid_voice',
+              dialectContext: effectiveDialect,
+              curriculumFramework: effectiveFramework,
+              gradeLevel: effectiveGrade,
+              cohortId: effectiveCohortId,
+              classLabel: effectiveClassLabel,
+              audioBase64: audioDataUrl,
+              audioMimeType: audioBlob.type || 'audio/webm',
+              imageBase64s: worksheetDataUrl ? [worksheetDataUrl] : undefined,
+            },
+            {
+              isPremiumTier,
+              isLiveSessionActive,
+              channel: 'standard_assessment',
+            }
+          );
+          if (addResult.status === 'bypassed') {
+            logWorkflow('analysis:hybrid_offline_bypassed', { studentId });
+            return { ok: true, bypassed: true };
+          }
           logWorkflow('analysis:hybrid_queued_offline', { studentId });
           return { ok: true, queued: true };
         }
@@ -286,6 +303,8 @@ export function useAnalysisFlow() {
       cohortIdFromSetup,
       classLabelFromSetup,
       isOffline,
+      isPremiumTier,
+      isLiveSessionActive,
       school?.curriculumType,
       setAnalysisResults,
       abortAnalysisFlow,
