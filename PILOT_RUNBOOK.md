@@ -16,10 +16,12 @@ Complete every item before going live with a pilot school.
 
 - [ ] `GEMINI_API_KEY` set via `firebase functions:secrets:set GEMINI_API_KEY --project basecamp-pilot`
 - [ ] Verify secret is accessible: `firebase functions:secrets:access GEMINI_API_KEY --project basecamp-pilot`
+- [ ] **Staff invites (Resend):** `RESEND_API_KEY` via `firebase functions:secrets:set RESEND_API_KEY --project basecamp-pilot` (used by `inviteStaffMember`). In Firebase Console → Functions → `inviteStaffMember` → Environment, set `TRANSACTIONAL_FROM_EMAIL` to a verified sender (and optionally `TRANSACTIONAL_FROM_NAME`, e.g. `BaseCamp`). For a targeted deploy after code changes: `npx firebase deploy --only functions:inviteStaffMember --project basecamp-pilot`
 - [ ] `functions/.env` created from `functions/.env.example` with:
   - `FUNCTIONS_REGION=europe-west1`
   - `STORAGE_BUCKET=<pilot bucket name>`
   - `MANAGED_EMAIL_DOMAIN=<school domain or basecamp.internal>`
+  - For local emulator testing of invites, you may set `RESEND_API_KEY`, `TRANSACTIONAL_FROM_EMAIL`, and `TRANSACTIONAL_FROM_NAME` in `.env` (see `.env.example`)
 
 ### 3. Web App Environment
 
@@ -101,7 +103,7 @@ Verify in GCP Console:
 - [ ] `onShowYourWorkVideoFinalized` is deployed with GEMINI_API_KEY secret
 - [ ] `weeklyParentDigestJob` is deployed with schedule (Fri 16:00 Africa/Accra)
 - [ ] `aggregateCambridgeExecutiveSummary` is deployed with schedule (02:00 daily)
-- [ ] `createSchoolTeacher`, `adminSetPremiumClaim`, `deleteSchoolTeacher` are deployed
+- [ ] `createSchoolTeacher`, `adminSetPremiumClaim`, `deleteSchoolTeacher`, `inviteStaffMember` are deployed (`inviteStaffMember` requires `RESEND_API_KEY` secret and transactional `from` env vars)
 
 ### Step 6: Build and Deploy Hosting
 

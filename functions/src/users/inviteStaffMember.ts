@@ -2,9 +2,13 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { sendInviteEmailStub } from '../lib/inviteEmailStub.js';
+import { defineSecret } from 'firebase-functions/params';
+import * as logger from 'firebase-functions/logger';
+import { sendTransactionalEmail, transactionalFromHeader } from '../managedEmail.js';
 
 const REGION = process.env.FUNCTIONS_REGION || 'europe-west1';
+
+const resendApiKey = defineSecret('RESEND_API_KEY');
 
 type InvitedRole = 'org_admin' | 'headteacher' | 'teacher';
 
@@ -48,6 +52,99 @@ async function loadUserDoc(db: Firestore, uid: string) {
     throw new HttpsError('permission-denied', 'No user profile.');
   }
   return snap.data() as Record<string, unknown>;
+}
+
+async function resolveOrganizationDisplayName(
+  db: Firestore,
+  orgId: string | undefined,
+  schoolData: Record<string, unknown> | undefined
+): Promise<string> {
+  if (orgId) {
+    const orgSnap = await db.collection('organizations').doc(orgId).get();
+    if (orgSnap.exists) {
+      const d = orgSnap.data() as Record<string, unknown> | undefined;
+      const n = d && typeof d.name === 'string' ? d.name.trim() : '';
+      if (n) return n;
+    }
+  }
+  const schoolName =
+    schoolData && typeof schoolData.name === 'string' ? schoolData.name.trim() : '';
+  if (schoolName) return schoolName;
+  return 'your organization';
+}
+
+function roleLabel(role: InvitedRole): string {
+  switch (role) {
+    case 'org_admin':
+      return 'Organization administrator';
+    case 'headteacher':
+      return 'Headteacher';
+    case 'teacher':
+      return 'Teacher';
+    default:
+      return 'Staff';
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildStaffInviteEmail(args: {
+  roleLabel: string;
+  organizationDisplayName: string;
+  schoolName: string;
+  inviteLink: string;
+}): { subject: string; html: string; text: string } {
+  const { roleLabel: role, organizationDisplayName, schoolName, inviteLink } = args;
+  const subject = `You have been invited to join BaseCamp [${organizationDisplayName}]`;
+
+  const safeOrg = escapeHtml(organizationDisplayName);
+  const safeSchool = escapeHtml(schoolName);
+  const safeRole = escapeHtml(role);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f4f5;color:#18181b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:12px;padding:32px 28px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <tr><td style="font-size:18px;font-weight:600;color:#4f46e5;padding-bottom:16px;">BaseCamp</td></tr>
+          <tr><td style="font-size:16px;line-height:1.55;padding-bottom:12px;">Hello,</td></tr>
+          <tr><td style="font-size:16px;line-height:1.55;padding-bottom:16px;">
+            You have been invited to join BaseCamp as a <strong>${safeRole}</strong>. You have been added to the workspace for <strong>${safeSchool}</strong> within <strong>${safeOrg}</strong>.
+          </td></tr>
+          <tr><td style="padding:8px 0 24px;">
+            <a href="${inviteLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:8px;">Click here to set your password and log in</a>
+          </td></tr>
+          <tr><td style="font-size:13px;line-height:1.5;color:#71717a;">
+            If the button does not work, copy and paste this link into your browser (link expires for security; request a new invite if needed).
+          </td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const text = [
+    'Hello,',
+    '',
+    `You have been invited to join BaseCamp as a ${role}. You have been added to the workspace for ${schoolName} within ${organizationDisplayName}.`,
+    '',
+    'Set your password and log in:',
+    inviteLink,
+    '',
+    '— BaseCamp',
+  ].join('\n');
+
+  return { subject, html, text };
 }
 
 /**
@@ -150,7 +247,15 @@ function assertNotWrongSchool(
   }
 }
 
-export const inviteStaffMember = onCall({ region: REGION }, async (request) => {
+function resolveResendApiKey(): string {
+  const fromSecret = resendApiKey.value();
+  if (typeof fromSecret === 'string' && fromSecret.trim()) return fromSecret.trim();
+  const fromEnv = process.env.RESEND_API_KEY;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+  return '';
+}
+
+export const inviteStaffMember = onCall({ region: REGION, secrets: [resendApiKey] }, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Sign in required.');
   }
@@ -237,7 +342,47 @@ export const inviteStaffMember = onCall({ region: REGION }, async (request) => {
   await profileRef.set(userPayload, { merge: true });
 
   const inviteLink = await auth.generatePasswordResetLink(email);
-  await sendInviteEmailStub({ to: email, role: targetRole, inviteLink });
+  const organizationDisplayName = await resolveOrganizationDisplayName(db, orgIdFromSchool, schoolData);
+  const schoolName =
+    schoolData && typeof schoolData.name === 'string' && schoolData.name.trim()
+      ? schoolData.name.trim()
+      : 'your school';
+  const { subject, html, text } = buildStaffInviteEmail({
+    roleLabel: roleLabel(targetRole),
+    organizationDisplayName,
+    schoolName,
+    inviteLink,
+  });
 
-  return { ok: true, uid };
+  const apiKey = resolveResendApiKey();
+  const from = transactionalFromHeader();
+
+  try {
+    const result = await sendTransactionalEmail({
+      to: email,
+      subject,
+      html,
+      text,
+      apiKey,
+      from,
+    });
+    logger.info('inviteStaffMember: invite email sent', {
+      to: email,
+      linkLength: inviteLink.length,
+      resendId: result.id,
+    });
+    return { ok: true, uid };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('inviteStaffMember: email send failed', {
+      error: msg,
+      to: email,
+      linkLength: inviteLink.length,
+    });
+    return {
+      ok: true,
+      uid,
+      warning: 'Email failed to send, manual link required',
+    };
+  }
 });

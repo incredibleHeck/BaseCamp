@@ -17,7 +17,7 @@ import {
 
 const inviteStaffMember = httpsCallable<
   { email: string; role: 'teacher'; targetSchoolId: string },
-  { ok: boolean; uid: string }
+  { ok: boolean; uid: string; warning?: string }
 >(functions, 'inviteStaffMember');
 
 type InviteTeacherDialogProps = {
@@ -54,9 +54,16 @@ export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvi
     setError(null);
     setMessage(null);
     try {
-      await inviteStaffMember({ email: em, role: 'teacher', targetSchoolId });
-      setMessage('Invitation sent. The teacher will receive an email to set their password.');
-      toast.success('Invitation sent. The teacher can set their password from the email.');
+      const { data } = await inviteStaffMember({ email: em, role: 'teacher', targetSchoolId });
+      if (data.warning) {
+        setMessage(
+          'Account created, but the invite email could not be sent. Share the password reset link manually or try again later.'
+        );
+        toast.warning(data.warning);
+      } else {
+        setMessage('Invitation sent. The teacher will receive an email to set their password.');
+        toast.success('Invitation sent. The teacher can set their password from the email.');
+      }
       setEmail('');
       await refreshTokenClaims();
       onInvited?.();

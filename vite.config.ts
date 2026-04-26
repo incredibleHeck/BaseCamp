@@ -7,6 +7,16 @@ import {VitePWA} from 'vite-plugin-pwa';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('ffmpeg')) return 'ffmpeg-core';
+            if (id.includes('node_modules/motion') || id.includes('framer-motion')) return 'premium-ui';
+          },
+        },
+      },
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -17,8 +27,10 @@ export default defineConfig(({mode}) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
           globIgnores: [
-            '**/ffmpeg-core.*',
-            '**/ffmpeg*.wasm',
+            '**/*.wasm',
+            '**/ffmpeg*',
+            '**/framer-motion*',
+            '**/assets/ffmpeg*.js',
             '**/assets/premium-*.js',
             '**/assets/motion-*.js',
           ],

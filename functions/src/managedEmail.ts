@@ -46,3 +46,5 @@ export function generateTeacherUsername(name: string, schoolId: string): string 
   username += `.sch${randomSuffix}`;
   return sanitizeEmailLocalPart(`${username}.${sanitizeSchoolIdForEmail(schoolId).slice(0, 20)}`);
 }
+
+export { sendTransactionalEmail, transactionalFromHeader } from './transactionalEmail.js';
