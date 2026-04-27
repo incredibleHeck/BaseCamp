@@ -115,7 +115,7 @@ export const registerOrganization = onCall({ region: REGION }, async (request) =
     userRef,
     {
       role: 'org_admin',
-      organizationId,
+      organizationId: organizationId,
       districtId: organizationId,
       name: 'Organization Admin',
     },
@@ -134,10 +134,11 @@ export const registerOrganization = onCall({ region: REGION }, async (request) =
     const merged: Record<string, unknown> = {
       ...(userRecord.customClaims as Record<string, unknown> | null | undefined),
       role: 'org_admin',
-      organizationId,
+      organizationId: organizationId,
+      districtId: organizationId,
     };
     delete merged.schoolId;
-    await auth.setCustomUserClaims(uid, merged as { [key: string]: unknown });
+    await auth.setCustomUserClaims(uid, merged);
   } catch (e) {
     logger.error(
       'registerOrganization: setCustomUserClaims failed after Firestore commit; repair claims manually',

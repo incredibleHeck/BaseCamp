@@ -308,3 +308,59 @@ export const deleteSchoolTeacher = onCall(
 
 export { inviteStaffMember } from './users/inviteStaffMember.js';
 export { registerOrganization } from './organizations/registerOrganization.js';
+
+export const debugOrgSync = onCall({ region: REGION }, async (request) => {
+  const email = (request.data as any).email;
+  const uid = (request.data as any).uid || 'PgiuoBzlcnOj4cFb4A7J42JS4nD2';
+  const res: any = { user: null, schools: [], allOrgAdmins: [] };
+  
+  let userSnap;
+  if (email) {
+    userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+  } else {
+    const docRef = db.collection('users').doc(uid);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      // Mock a QuerySnapshot-like behavior for consistency
+      userSnap = { empty: false, docs: [docSnap] };
+    } else {
+      userSnap = { empty: true };
+    }
+  }
+
+  if (userSnap.empty || !userSnap.docs) {
+    res.error = `User not found (uid=${uid}, email=${email})`;
+    const adminsSnap = await db.collection('users').where('role', '==', 'org_admin').get();
+    adminsSnap.forEach(d => res.allOrgAdmins.push({ email: d.data().email, uid: d.id }));
+    return res;
+  }
+  
+  const userDoc = userSnap.docs[0];
+  const userData = userDoc.data() as any;
+  const userOrgId = userData.organizationId || userData.districtId;
+  
+  const userRecord = await auth.getUser(userDoc.id);
+  
+  res.user = {
+    uid: userDoc.id,
+    email: userData.email || email,
+    organizationId: userData.organizationId || null,
+    districtId: userData.districtId || null,
+    effectiveOrgId: userOrgId || null,
+    customClaims: userRecord.customClaims || {}
+  };
+  
+  const schoolsSnap = await db.collection('schools').get();
+  schoolsSnap.forEach(doc => {
+    const s = doc.data() as any;
+    res.schools.push({
+      id: doc.id,
+      name: s.name,
+      organizationId: s.organizationId || null,
+      districtId: s.districtId || null,
+      matches: (s.organizationId === userOrgId || s.districtId === userOrgId)
+    });
+  });
+  
+  return res;
+});

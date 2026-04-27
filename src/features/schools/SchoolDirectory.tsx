@@ -45,7 +45,7 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     setError(null);
     try {
       if (!isSuperAdmin) {
-        console.log('Org Admin loading schools for Org:', organizationId);
+        console.error('DEBUG: OrgAdmin is querying with ID:', effectiveOrganizationId(user));
       }
       const [fetchedSchools, fetchedHeadteachers] = await Promise.all(
         isSuperAdmin

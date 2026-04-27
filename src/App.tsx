@@ -96,6 +96,32 @@ export default function App() {
             return;
           }
 
+          // Org / SEN roles: profile doc can lag right after registerOrganization; retry until organizationId is visible.
+          if (!user.isAnonymous) {
+            const probe = userDocSnap.data() as Record<string, unknown>;
+            const rawProbe = typeof probe.role === 'string' ? probe.role : '';
+            const mappedProbe =
+              rawProbe === 'district' || rawProbe === 'school_admin' ? 'org_admin' : rawProbe;
+            const scopedRole =
+              mappedProbe === 'org_admin' || mappedProbe === 'sen_coordinator'
+                ? (mappedProbe as UserData['role'])
+                : null;
+            if (
+              scopedRole &&
+              VALID_ROLES.includes(scopedRole) &&
+              !effectiveOrganizationId(probe as { organizationId?: string; districtId?: string })
+            ) {
+              for (let attempt = 0; attempt < 25; attempt++) {
+                await new Promise((r) => setTimeout(r, 150));
+                const again = await getDoc(userDocRef);
+                if (!again.exists()) break;
+                userDocSnap = again;
+                const d = again.data() as Record<string, unknown>;
+                if (effectiveOrganizationId(d as { organizationId?: string; districtId?: string })) break;
+              }
+            }
+          }
+
           const data = userDocSnap.data() as Record<string, unknown>;
           const rawRole = data.role as string;
           const r =
@@ -132,6 +158,39 @@ export default function App() {
               '[BaseCamp] User profile has no organizationId or districtId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
               user.uid
             );
+          }
+
+          // Claims can be ahead of a stale profile read; Firestore rules use users/{uid}, so backfill when safe.
+          if (!demoSeedEnabled && (role === 'org_admin' || role === 'sen_coordinator')) {
+            try {
+              const idt = await user.getIdTokenResult();
+              const fromClaims = effectiveOrganizationId(
+                idt.claims as { organizationId?: string; districtId?: string }
+              );
+              if (!organizationId && fromClaims) {
+                try {
+                  await setDoc(
+                    userDocRef,
+                    { organizationId: fromClaims, districtId: fromClaims },
+                    { merge: true }
+                  );
+                } catch (backfillErr) {
+                  console.warn('[BaseCamp] Could not write organizationId from claims to users doc', backfillErr);
+                }
+                organizationId = fromClaims;
+              } else if (
+                organizationId &&
+                fromClaims &&
+                organizationId !== fromClaims
+              ) {
+                console.warn(
+                  '[BaseCamp] organizationId mismatch: Firestore users doc vs Auth custom claims. Branch queries use the profile value; align Firestore schools.organizationId with users.organizationId if the directory is empty.',
+                  { uid: user.uid, profileOrganizationId: organizationId, claimsOrganizationId: fromClaims }
+                );
+              }
+            } catch (tokenErr) {
+              console.warn('[BaseCamp] getIdTokenResult failed while resolving organization scope', tokenErr);
+            }
           }
 
           let stableId = user.uid;

@@ -69,7 +69,16 @@ export async function getSchoolsInOrganization(organizationId: string): Promise<
     }
     return [...map.values()];
   } catch (error) {
-    console.error('schoolService.getSchoolsInOrganization failed:', error);
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code: unknown }).code)
+        : '';
+    console.error(
+      'schoolService.getSchoolsInOrganization failed:',
+      code === 'permission-denied'
+        ? 'permission-denied (check Firestore rules and users/{uid}.organizationId vs schools.organizationId)'
+        : error
+    );
     return [];
   }
 }
