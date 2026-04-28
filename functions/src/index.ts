@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
@@ -108,6 +108,21 @@ async function assertSuperAdmin(uid: string): Promise<void> {
   if (data.role !== 'super_admin') {
     throw new HttpsError('permission-denied', 'Only super admins can manage premium claims.');
   }
+}
+
+/** Aligns cohort document teacher sources with web client normalization. */
+function normalizeCohortAssignedTeacherIds(data: Record<string, unknown> | undefined): string[] {
+  if (!data) return [];
+  const rawList = data.assignedTeacherIds;
+  if (Array.isArray(rawList)) {
+    const out = rawList.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean);
+    return [...new Set(out)];
+  }
+  const legacy = data.teacherId;
+  if (typeof legacy === 'string' && legacy.trim()) {
+    return [legacy.trim()];
+  }
+  return [];
 }
 
 async function assertHeadteacher(uid: string): Promise<{ schoolId: string; organizationId: string }> {
@@ -256,10 +271,18 @@ export const deleteSchoolTeacher = onCall(
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
 
-    const { teacherUid } = request.data as { teacherUid?: string };
+    const { teacherUid, successorTeacherUid } = request.data as {
+      teacherUid?: string;
+      successorTeacherUid?: string;
+    };
     const tid = typeof teacherUid === 'string' ? teacherUid.trim() : '';
     if (!tid) {
       throw new HttpsError('invalid-argument', 'teacherUid is required.');
+    }
+
+    const succRaw = typeof successorTeacherUid === 'string' ? successorTeacherUid.trim() : '';
+    if (succRaw && succRaw === tid) {
+      throw new HttpsError('invalid-argument', 'successorTeacherUid cannot be the departing teacher.');
     }
 
     const { schoolId: headSchoolId } = await assertHeadteacher(request.auth.uid);
@@ -276,11 +299,49 @@ export const deleteSchoolTeacher = onCall(
       throw new HttpsError('permission-denied', 'Teacher is not in your school.');
     }
 
-    const cohortQs = await db.collection('cohorts').where('teacherId', '==', tid).get();
-    if (!cohortQs.empty) {
+    let succ = '';
+    if (succRaw) {
+      const sSnap = await db.collection('users').doc(succRaw).get();
+      if (!sSnap.exists) {
+        throw new HttpsError('not-found', 'Successor teacher not found.');
+      }
+      const s = sSnap.data() as Record<string, unknown>;
+      if (s.role !== 'teacher') {
+        throw new HttpsError('invalid-argument', 'Successor must be a teacher.');
+      }
+      if (typeof s.schoolId !== 'string' || s.schoolId !== headSchoolId) {
+        throw new HttpsError('permission-denied', 'Successor is not in your school.');
+      }
+      succ = succRaw;
+    }
+
+    const [assignedQs, legacyQs] = await Promise.all([
+      db.collection('cohorts').where('assignedTeacherIds', 'array-contains', tid).get(),
+      db.collection('cohorts').where('teacherId', '==', tid).get(),
+    ]);
+
+    const cohortSnaps = new Map<string, QueryDocumentSnapshot>();
+    assignedQs.forEach((d) => cohortSnaps.set(d.id, d));
+    legacyQs.forEach((d) => {
+      if (!cohortSnaps.has(d.id)) cohortSnaps.set(d.id, d);
+    });
+
+    if (cohortSnaps.size > 0) {
       const batch = db.batch();
-      cohortQs.forEach((d) => {
-        batch.update(d.ref, { teacherId: FieldValue.delete() });
+      cohortSnaps.forEach((snap) => {
+        const data = snap.data() as Record<string, unknown>;
+        const cohortSchool = typeof data.schoolId === 'string' ? data.schoolId.trim() : '';
+        if (cohortSchool && cohortSchool !== headSchoolId) {
+          throw new HttpsError('permission-denied', 'A class is outside your school scope.');
+        }
+        let nextIds = normalizeCohortAssignedTeacherIds(data).filter((id) => id !== tid);
+        if (succ) {
+          if (!nextIds.includes(succ)) nextIds.push(succ);
+        }
+        batch.update(snap.ref, {
+          assignedTeacherIds: nextIds,
+          teacherId: FieldValue.delete(),
+        });
       });
       await batch.commit();
     }

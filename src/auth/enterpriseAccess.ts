@@ -60,7 +60,7 @@ export function defaultViewForRole(role: EnterpriseRole): string {
     case 'sen_coordinator':
       return 'sen-inbox';
     case 'super_admin':
-      return 'school-directory';
+      return 'organization-directory';
     default:
       return 'class-roster';
   }

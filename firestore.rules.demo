@@ -48,7 +48,7 @@ service cloud.firestore {
     }
 
     function isOrgAdminRole() {
-      return ud().role == 'org_admin' || ud().role == 'school_admin' || ud().role == 'district';
+      return ud().role == 'org_admin' || ud().role == 'school_admin';
     }
 
     function isJurisdictionOversight() {
@@ -66,11 +66,11 @@ service cloud.firestore {
 
     function getUserOrganizationId() {
       let u = ud();
-      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : u.districtId;
+      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : '';
     }
 
     function orgIdFromSchoolData(d) {
-      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : '';
     }
 
     function orgIdForSchoolId(sid) {
@@ -78,7 +78,7 @@ service cloud.firestore {
     }
 
     function userDocOrgId(d) {
-      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : '';
     }
 
     /**
@@ -158,16 +158,6 @@ service cloud.firestore {
 
     // --- Org ---
 
-    match /districts/{districtId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (isJurisdictionOversight() && districtId == getUserOrganizationId()) ||
-        (isHeadteacher() && getUserOrganizationId() == districtId) ||
-        (isTeacher() && getUserOrganizationId() == districtId)
-      );
-      allow write: if isAdmin() || isDemoSeedSuperAdminAuth();
-    }
-
     match /organizations/{orgId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
@@ -182,7 +172,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         (isJurisdictionOversight() &&
-          orgIdForSchoolId(schoolId) == getUserOrganizationId()) ||
+          orgIdFromSchoolData(resource.data) == getUserOrganizationId()) ||
         (isHeadteacher() && schoolId == getUserSchoolId()) ||
         (isTeacher() && schoolId == getUserSchoolId()) ||
         (isStudentPortal() &&

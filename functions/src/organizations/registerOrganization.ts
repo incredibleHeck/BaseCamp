@@ -80,9 +80,7 @@ export const registerOrganization = onCall({ region: REGION }, async (request) =
   const userSnap = await userRef.get();
   if (userSnap.exists) {
     const u = userSnap.data() as Record<string, unknown>;
-    const existingOrg =
-      (typeof u.organizationId === 'string' && u.organizationId.trim()) ||
-      (typeof u.districtId === 'string' && u.districtId.trim());
+    const existingOrg = typeof u.organizationId === 'string' && u.organizationId.trim();
     if (existingOrg) {
       throw new HttpsError(
         'failed-precondition',
@@ -116,7 +114,6 @@ export const registerOrganization = onCall({ region: REGION }, async (request) =
     {
       role: 'org_admin',
       organizationId: organizationId,
-      districtId: organizationId,
       name: 'Organization Admin',
     },
     { merge: true }
@@ -135,9 +132,9 @@ export const registerOrganization = onCall({ region: REGION }, async (request) =
       ...(userRecord.customClaims as Record<string, unknown> | null | undefined),
       role: 'org_admin',
       organizationId: organizationId,
-      districtId: organizationId,
     };
     delete merged.schoolId;
+    delete merged.districtId;
     await auth.setCustomUserClaims(uid, merged);
   } catch (e) {
     logger.error(

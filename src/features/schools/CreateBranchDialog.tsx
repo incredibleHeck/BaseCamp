@@ -17,9 +17,10 @@ type CreateBranchDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
+  orgId?: string;
 };
 
-export function CreateBranchDialog({ open, onOpenChange, onCreated }: CreateBranchDialogProps) {
+export function CreateBranchDialog({ open, onOpenChange, onCreated, orgId }: CreateBranchDialogProps) {
   const [name, setName] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [circuitId, setCircuitId] = useState('');
@@ -41,7 +42,7 @@ export function CreateBranchDialog({ open, onOpenChange, onCreated }: CreateBran
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
-    const trimmedOrg = organizationId.trim();
+    const trimmedOrg = (orgId || organizationId).trim();
     if (!trimmedName || !trimmedOrg) return;
     setSubmitting(true);
     setError(null);
@@ -81,8 +82,10 @@ export function CreateBranchDialog({ open, onOpenChange, onCreated }: CreateBran
             Add new branch
           </DialogTitle>
           <p className="text-sm text-zinc-500">
-            Creates a school/branch document under the given organization. The organization should
-            already exist in Firestore.
+            {orgId 
+              ? `Creates a school/branch document under your organization (${orgId}).`
+              : 'Creates a school/branch document under the given organization. The organization should already exist in Firestore.'
+            }
           </p>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)}>
@@ -102,21 +105,23 @@ export function CreateBranchDialog({ open, onOpenChange, onCreated }: CreateBran
                 required
               />
             </div>
-            <div>
-              <label htmlFor="branch-org-id" className="text-sm font-medium text-zinc-800 block mb-1.5">
-                Organization ID
-              </label>
-              <Input
-                id="branch-org-id"
-                type="text"
-                autoComplete="off"
-                value={organizationId}
-                onChange={(e) => setOrganizationId(e.target.value)}
-                disabled={submitting}
-                placeholder="Firestore organization document id"
-                required
-              />
-            </div>
+            {!orgId && (
+              <div>
+                <label htmlFor="branch-org-id" className="text-sm font-medium text-zinc-800 block mb-1.5">
+                  Organization ID
+                </label>
+                <Input
+                  id="branch-org-id"
+                  type="text"
+                  autoComplete="off"
+                  value={organizationId}
+                  onChange={(e) => setOrganizationId(e.target.value)}
+                  disabled={submitting}
+                  placeholder="Firestore organization document id"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label htmlFor="branch-circuit-id" className="text-sm font-medium text-zinc-800 block mb-1.5">
                 Circuit ID <span className="font-normal text-zinc-500">(optional)</span>

@@ -18,7 +18,7 @@ export type StaffAuthRole =
   | 'super_admin'
   | 'student_portal';
 
-/** Firebase Auth custom claims (Cloud Functions). Legacy JWTs may still carry `districtId`; map it to `organizationId` when parsing in AuthContext. */
+/** Firebase Auth custom claims (Cloud Functions). B2B model: organizationId is the sole grouping mechanism. */
 export interface AuthCustomClaims {
   schoolId?: string;
   role?: StaffAuthRole | string;
@@ -39,13 +39,13 @@ export interface GamifiedQuiz {
   questions: QuizQuestion[];
 }
 
-/** First-class class/cohort for grouping students within a school (NoSQL-friendly). */
+/** First-class class/cohort for grouping students within a school (NoSQL-friendly). Belongs to the campus (`schoolId`); teachers are assigned via list. */
 export interface Cohort {
   id: string;
   schoolId: string;
   name: string;
   gradeLevel: number;
-  teacherId?: string;
+  assignedTeacherIds: string[];
 }
 
 /**
@@ -72,7 +72,7 @@ export interface Student {
   grade: string;
   /** Canonical class/cohort (preferred over inferring from grade or classLabel). */
   cohortId?: string;
-  /** Denormalized from cohort.teacherId for Firestore rules (linked teacher profile id). */
+  /** Denormalized from cohort (first entry in assignedTeacherIds, or legacy single teacher) for Firestore rules. */
   cohortTeacherId?: string;
   /** Denormalized from cohort at write time; preferred by AI over parsing {@link grade} free text. */
   numericGradeLevel?: number;
@@ -129,7 +129,7 @@ export interface Assessment {
   classLabel?: string;
   /** Denormalized cohort for queries and rollups (mirrors student’s cohort at write time). */
   cohortId?: string;
-  /** Denormalized cohort.teacherId for staff list queries (avoids cohort get() in security rules). */
+  /** Denormalized cohort teacher id for staff list queries (avoids cohort get() in security rules). */
   cohortTeacherId?: string;
   /** Denormalized school for school-scoped queries without student joins. */
   schoolId?: string;

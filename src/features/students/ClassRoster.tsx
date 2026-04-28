@@ -11,11 +11,12 @@ import {
   TrendingUp,
   Loader2,
   Filter,
+  LayoutGrid,
 } from 'lucide-react';
 import { getStudents, getStudentsByCohorts, getStudentsBySchool, Student } from '../../services/studentService';
 import { getAssessmentSummaryByStudent } from '../../services/assessmentService';
 import { exportClassGradebookCsv } from '../../services/gradebookExport';
-import { getCohortsBySchool, getCohortsByTeacher } from '../../services/cohortService';
+import { getCohortsForCampus, getCohortsForTeacher } from '../../services/cohortService';
 import type { Cohort } from '../../types/domain';
 import { useAuth } from '../../context/AuthContext';
 import { AddStudentForm } from './AddStudentForm';
@@ -24,6 +25,7 @@ import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { useRosterFilters } from './useRosterFilters';
 import { DEFAULT_CLASS_LABEL } from '../../config/academicContext';
+import { PageHero } from '../../components/page-shell/PageHero';
 
 function formatLastAssessment(lastDateMs: number): string {
   const now = Date.now();
@@ -59,12 +61,15 @@ interface ClassRosterProps {
   rosterLabel?: string;
   onViewProfile: (studentId: string) => void;
   onNewAssessment: (studentId: string) => void;
+  /** Headteacher: navigate to class management when roster is empty. */
+  onGoToManageClasses?: () => void;
 }
 
 export function ClassRoster({
   rosterLabel: rosterLabelOverride,
   onViewProfile,
   onNewAssessment,
+  onGoToManageClasses,
 }: ClassRosterProps) {
   const { user } = useAuth();
   const schoolId = user.schoolId?.trim() ?? '';
@@ -135,11 +140,11 @@ export function ClassRoster({
 
       // Fetch cohorts if headteacher or teacher
       if (user.role === 'headteacher' && schoolId) {
-        fetchedCohorts = await getCohortsBySchool(schoolId);
+        fetchedCohorts = await getCohortsForCampus(schoolId);
         setCohorts(fetchedCohorts);
         fetchedStudents = await getStudentsBySchool(schoolId);
       } else if (user.role === 'teacher') {
-        fetchedCohorts = await getCohortsByTeacher(user.id);
+        fetchedCohorts = await getCohortsForTeacher(user.id);
         setCohorts(fetchedCohorts);
         if (fetchedCohorts.length > 0 && selectedCohortId === 'all') {
           setSelectedCohortId(fetchedCohorts[0].id);
@@ -211,14 +216,15 @@ export function ClassRoster({
         preselectedCohortId={selectedCohortId !== 'all' ? selectedCohortId : undefined}
       />
 
+      <PageHero
+        className="!mb-4"
+        title={resolvedRosterLabel}
+        description={`${students.length} learner${students.length === 1 ? '' : 's'} enrolled on this roster.`}
+      />
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full animate-in fade-in duration-500">
-        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{resolvedRosterLabel} Roster</h2>
-            <p className="text-sm text-gray-500 mt-1">{students.length} Students Enrolled</p>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+        <div className="p-6 border-b border-gray-100 flex flex-col lg:flex-row lg:flex-wrap lg:items-center lg:justify-end gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:flex-1 lg:min-w-0 lg:justify-end">
             {(user.role === 'headteacher' && cohorts.length > 0) || (user.role === 'teacher' && cohorts.length > 1) ? (
               <div className="relative w-full sm:w-48 shrink-0">
                 <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden />
@@ -301,8 +307,19 @@ export function ClassRoster({
               <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
                 {user.role === 'teacher'
                   ? 'Build your class roster to track readiness, run assessments, and open learner profiles from one place.'
-                  : 'No students have been added to this class by the assigned teacher yet.'}
+                  : 'No students are linked to this school roster yet. Create classes and assign teachers, or wait for teachers to enrol learners.'}
               </p>
+              {user.role === 'headteacher' && onGoToManageClasses && (
+                <Button
+                  type="button"
+                  variant="default"
+                  className="mt-6"
+                  onClick={() => onGoToManageClasses()}
+                >
+                  <LayoutGrid size={16} aria-hidden />
+                  Manage classes
+                </Button>
+              )}
               {user.role === 'teacher' && (
                 <Button
                   type="button"

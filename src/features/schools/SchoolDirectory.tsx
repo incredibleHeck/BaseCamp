@@ -1,18 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building, Loader2, Mail, MapPin, Plus, User } from 'lucide-react';
+import { ArrowLeft, Building, Loader2, Mail, MapPin, Plus, User, UserPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
 import { InviteTeacherDialog } from './InviteTeacherDialog';
 import { CreateBranchDialog } from './CreateBranchDialog';
-import { getAllSchools, getSchoolsInOrganization } from '../../services/schoolService';
-import { getAllHeadteachers, getHeadteachersInOrganization } from '../../services/userService';
+import { getSchoolsInOrganization } from '../../services/schoolService';
+import { getHeadteachersInOrganization } from '../../services/userService';
+import { getOrganizationById } from '../../services/organizationService';
 import type { UserData } from '../../components/layout/Header';
-import { effectiveOrganizationId } from '../../utils/organizationScope';
+import { useAuth } from '../../context/AuthContext';
+
+export type SuperAdminNetworkScope = { organizationId: string; name: string };
 
 interface SchoolDirectoryProps {
   user: UserData;
   onSchoolClick?: (schoolId: string) => void;
+  /** When set, super admin sees only that network’s branches (not a global list). */
+  superAdminNetwork?: SuperAdminNetworkScope | null;
+  onBackToNetworks?: () => void;
 }
 
 interface SchoolWithHeadteacher {
@@ -22,20 +28,33 @@ interface SchoolWithHeadteacher {
   headteacherName?: string;
 }
 
-export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
+type InviteTarget = { schoolId: string; role: 'teacher' | 'headteacher' };
+
+export function SchoolDirectory({ user, onSchoolClick, superAdminNetwork, onBackToNetworks }: SchoolDirectoryProps) {
   const [schools, setSchools] = useState<SchoolWithHeadteacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [circuitFilter, setCircuitFilter] = useState<string>('All');
-  const [inviteSchoolId, setInviteSchoolId] = useState<string | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<InviteTarget | null>(null);
   const [createBranchOpen, setCreateBranchOpen] = useState(false);
+  const [orgBrandingName, setOrgBrandingName] = useState<string | null>(null);
 
-  /** `user.organizationId`, with legacy `user.districtId` fallback (same as App.tsx / Firestore profile). */
-  const organizationId = effectiveOrganizationId(user);
+  const { tokenClaims } = useAuth();
+
+  /** B2B: org_admin uses profile `organizationId` only; other roles may fall back to token claims. */
+  const organizationId =
+    user.role === 'org_admin'
+      ? user.organizationId
+      : user.organizationId || tokenClaims.organizationId;
   const isSuperAdmin = user.role === 'super_admin';
   const canInviteToSchools = user.role === 'org_admin' || user.role === 'super_admin';
 
   const loadData = useCallback(async () => {
+    if (isSuperAdmin && !superAdminNetwork) {
+      setSchools([]);
+      setLoading(false);
+      return;
+    }
     if (!isSuperAdmin && !organizationId) {
       setLoading(false);
       return;
@@ -44,17 +63,14 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     setLoading(true);
     setError(null);
     try {
-      if (!isSuperAdmin) {
-        console.error('DEBUG: OrgAdmin is querying with ID:', effectiveOrganizationId(user));
-      }
-      const [fetchedSchools, fetchedHeadteachers] = await Promise.all(
-        isSuperAdmin
-          ? [getAllSchools(), getAllHeadteachers()]
-          : [
-              getSchoolsInOrganization(organizationId!),
-              getHeadteachersInOrganization(organizationId!),
-            ]
-      );
+      const orgIdForQuery =
+        isSuperAdmin && superAdminNetwork
+          ? superAdminNetwork.organizationId
+          : organizationId!;
+      const [fetchedSchools, fetchedHeadteachers] = await Promise.all([
+        getSchoolsInOrganization(orgIdForQuery),
+        getHeadteachersInOrganization(orgIdForQuery),
+      ]);
 
       // Map headteachers to schools
       const headteacherMap = new Map<string, string>();
@@ -78,17 +94,54 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     } finally {
       setLoading(false);
     }
-  }, [isSuperAdmin, organizationId]);
+  }, [isSuperAdmin, organizationId, superAdminNetwork]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
+  const isOrgAdmin = user.role === 'org_admin';
+
+  useEffect(() => {
+    if (!isOrgAdmin || !organizationId) {
+      setOrgBrandingName(null);
+      return;
+    }
+    let cancelled = false;
+    void getOrganizationById(organizationId).then((org) => {
+      if (!cancelled) setOrgBrandingName(org?.name ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOrgAdmin, organizationId]);
+
   if (!isSuperAdmin && !organizationId) {
     return (
       <div className="p-8 text-center text-zinc-500">
-        You must be assigned an organization (organizationId or districtId on your profile) to view the branch
+        You must be assigned an organization (organizationId on your profile) to view the branch
         directory.
+      </div>
+    );
+  }
+
+  if (isSuperAdmin && !superAdminNetwork) {
+    return (
+      <div className="mx-auto w-full max-w-lg space-y-4 py-12 text-center">
+        <div className="bg-zinc-50 dark:bg-zinc-900/50 w-14 h-14 rounded-full flex items-center justify-center mx-auto">
+          <Building className="h-7 w-7 text-zinc-400" />
+        </div>
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Select a school network</h2>
+        <p className="text-sm text-zinc-500">
+          Open <span className="font-medium">Network directory</span> in the sidebar, then choose
+          <span className="font-medium"> View branches</span> on a network to see its campuses.
+        </p>
+        {onBackToNetworks && (
+          <Button type="button" onClick={onBackToNetworks} className="mt-2">
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+            Network directory
+          </Button>
+        )}
       </div>
     );
   }
@@ -102,21 +155,39 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
     return school.circuitId === circuitFilter;
   });
 
+  const canAddBranch = user.role === 'org_admin' || (isSuperAdmin && Boolean(superAdminNetwork));
+
+  const pageTitle =
+    isOrgAdmin && orgBrandingName
+      ? `${orgBrandingName} - Branch Directory`
+      : 'Branch directory';
+
+  const pageSubtitle =
+    isSuperAdmin && superAdminNetwork
+      ? `Branches in ${superAdminNetwork.name}, with lead contacts.`
+      : isOrgAdmin && orgBrandingName
+        ? `Branches and campuses in ${orgBrandingName}, with lead contacts.`
+        : 'Branches and campuses in your school network, with lead contacts.';
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
+      {isSuperAdmin && superAdminNetwork && onBackToNetworks && (
+        <div>
+          <Button type="button" variant="ghost" size="sm" className="mb-1 -ml-1 text-zinc-600" onClick={onBackToNetworks}>
+            <ArrowLeft className="mr-1.5 h-4 w-4" aria-hidden />
+            Back to networks
+          </Button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Branch directory
+            {pageTitle}
           </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {isSuperAdmin
-              ? 'All branches and campuses on the platform, with lead contacts.'
-              : 'Branches and campuses in your school network, with lead contacts.'}
-          </p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{pageSubtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {isSuperAdmin && (
+          {canAddBranch && (
             <Button type="button" size="sm" onClick={() => setCreateBranchOpen(true)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               Add new branch
@@ -140,7 +211,11 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
         <CardHeader>
           <CardTitle className="text-base">Network branches</CardTitle>
           <CardDescription>
-            {isSuperAdmin ? 'Every branch across all organizations.' : 'Branches in your organization.'}
+            {isSuperAdmin && superAdminNetwork
+              ? `Campuses in ${superAdminNetwork.name}.`
+              : isOrgAdmin && orgBrandingName
+                ? `Campuses in ${orgBrandingName}.`
+                : 'Branches in your organization.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -167,7 +242,12 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
                   <TableHead>Branch / campus</TableHead>
                   <TableHead>Circuit</TableHead>
                   <TableHead>Headteacher</TableHead>
-                  {canInviteToSchools && <TableHead className="w-[1%] text-right">Invite</TableHead>}
+                  {canInviteToSchools && (
+                    <>
+                      <TableHead className="w-[1%] whitespace-nowrap text-right">Invite teacher</TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap text-right">Invite Headteacher</TableHead>
+                    </>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -208,23 +288,36 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
                       )}
                     </TableCell>
                     {canInviteToSchools && (
-                      <TableCell
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-right"
-                      >
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setInviteSchoolId(school.id);
-                          }}
-                        >
-                          <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                          Invite
-                        </Button>
-                      </TableCell>
+                      <>
+                        <TableCell onClick={(e) => e.stopPropagation()} className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInviteTarget({ schoolId: school.id, role: 'teacher' });
+                            }}
+                          >
+                            <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                            Invite
+                          </Button>
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()} className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInviteTarget({ schoolId: school.id, role: 'headteacher' });
+                            }}
+                          >
+                            <UserPlus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                            Invite Headteacher
+                          </Button>
+                        </TableCell>
+                      </>
                     )}
                   </TableRow>
                 ))}
@@ -235,17 +328,27 @@ export function SchoolDirectory({ user, onSchoolClick }: SchoolDirectoryProps) {
       </Card>
 
       <InviteTeacherDialog
-        open={inviteSchoolId !== null}
+        open={inviteTarget !== null}
         onOpenChange={(o) => {
-          if (!o) setInviteSchoolId(null);
+          if (!o) setInviteTarget(null);
         }}
-        targetSchoolId={inviteSchoolId ?? ''}
+        targetSchoolId={inviteTarget?.schoolId ?? ''}
+        inviteRole={inviteTarget?.role ?? 'teacher'}
+        roleLocked={inviteTarget?.role === 'headteacher'}
+        onInvited={() => void loadData()}
       />
 
       <CreateBranchDialog
         open={createBranchOpen}
         onOpenChange={setCreateBranchOpen}
         onCreated={() => void loadData()}
+        orgId={
+          isSuperAdmin && superAdminNetwork
+            ? superAdminNetwork.organizationId
+            : !isSuperAdmin
+              ? (organizationId ?? undefined)
+              : undefined
+        }
       />
     </div>
   );

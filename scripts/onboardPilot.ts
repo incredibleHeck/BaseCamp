@@ -1,5 +1,5 @@
 /**
- * Pilot onboarding from CSV (Admin SDK). Creates districts, schools, headteachers, and teachers
+ * Pilot onboarding from CSV (Admin SDK). Creates organizations, schools, headteachers, and teachers
  * with managed pseudo-emails (same convention as Cloud Functions).
  *
  * Prerequisites:
@@ -10,9 +10,9 @@
  *   npx tsx scripts/onboardPilot.ts path/to/onboard.csv --dry-run
  *
  * CSV columns (header row required):
- *   districtId,districtName,region,schoolId,schoolName,headteacherName,headteacherUsername,teacherName,teacherUsername
+ *   organizationId,organizationName,region,schoolId,schoolName,headteacherName,headteacherUsername,teacherName,teacherUsername
  *
- * One row per teacher to onboard; repeat district/school/headteacher columns when adding multiple teachers per school.
+ * One row per teacher to onboard; repeat organization/school/headteacher columns when adding multiple teachers per school.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -102,13 +102,13 @@ async function main() {
     process.exit(1);
   }
 
-  const districtsDone = new Set<string>();
+  const organizationsDone = new Set<string>();
   const schoolsDone = new Set<string>();
   const headDone = new Set<string>();
 
   for (const row of rows) {
-    const districtId = row.districtId?.trim();
-    const districtName = row.districtName?.trim();
+    const organizationId = row.organizationId?.trim();
+    const organizationName = row.organizationName?.trim();
     const region = row.region?.trim();
     const schoolId = row.schoolId?.trim();
     const schoolName = row.schoolName?.trim();
@@ -117,21 +117,21 @@ async function main() {
     const teacherName = row.teacherName?.trim();
     const teacherUsername = row.teacherUsername?.trim();
 
-    if (!districtId || !districtName || !schoolId || !schoolName || !headteacherName || !headteacherUsername) {
-      console.error('Skipping row (missing district/school/headteacher fields):', row);
+    if (!organizationId || !organizationName || !schoolId || !schoolName || !headteacherName || !headteacherUsername) {
+      console.error('Skipping row (missing organization/school/headteacher fields):', row);
       continue;
     }
 
-    if (!districtsDone.has(districtId)) {
-      console.log(`${DRY_RUN ? '[dry-run] ' : ''}district ${districtId}`);
+    if (!organizationsDone.has(organizationId)) {
+      console.log(`${DRY_RUN ? '[dry-run] ' : ''}organization ${organizationId}`);
       if (!DRY_RUN) {
-        await db.collection('districts').doc(districtId).set({
-          name: districtName,
+        await db.collection('organizations').doc(organizationId).set({
+          name: organizationName,
           region: region || '',
           createdAt: Date.now(),
         });
       }
-      districtsDone.add(districtId);
+      organizationsDone.add(organizationId);
     }
 
     if (!schoolsDone.has(schoolId)) {
@@ -139,8 +139,9 @@ async function main() {
       if (!DRY_RUN) {
         await db.collection('schools').doc(schoolId).set({
           name: schoolName,
-          districtId,
-          location: region || '',
+          organizationId,
+          region: region || '',
+          updatedAt: Date.now(),
         });
       }
       schoolsDone.add(schoolId);
@@ -163,7 +164,7 @@ async function main() {
             name: headteacherName,
             role: 'headteacher',
             schoolId,
-            districtId,
+            organizationId,
             username: headteacherUsername,
             email: htEmail,
             location: 'School Campus',
@@ -191,7 +192,7 @@ async function main() {
             name: teacherName,
             role: 'teacher',
             schoolId,
-            districtId,
+            organizationId,
             username: teacherUsername,
             email: tEmail,
             location: 'School Campus',

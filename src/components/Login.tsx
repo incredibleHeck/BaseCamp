@@ -142,13 +142,7 @@ export function Login() {
         role,
         name: typeof profile.name === 'string' ? profile.name : '',
         schoolId: typeof profile.schoolId === 'string' ? profile.schoolId : '',
-        districtId: typeof profile.districtId === 'string' ? profile.districtId : '',
-        organizationId:
-          typeof profile.organizationId === 'string'
-            ? profile.organizationId
-            : typeof profile.districtId === 'string'
-              ? profile.districtId
-              : '',
+        organizationId: typeof profile.organizationId === 'string' ? profile.organizationId : '',
         email: typeof profile.email === 'string' ? profile.email : '',
         username: typeof profile.username === 'string' ? profile.username : '',
         linkedProfileId: profileUserId,

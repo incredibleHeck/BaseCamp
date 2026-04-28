@@ -35,7 +35,7 @@ async function schoolCatalogNameById(
     : [
         ...new Set(
           scopedStudents
-            .map((s) => effectiveOrganizationId(s))
+            .map((s) => s.organizationId)
             .filter((d): d is string => Boolean(d))
         ),
       ];
@@ -248,10 +248,9 @@ export interface OrganizationFeatureScope {
 
 /** @deprecated use OrganizationFeatureScope */
 export type JurisdictionFeatureScope = OrganizationFeatureScope;
-
 function studentInOrganizationScope(s: Student, scope: OrganizationFeatureScope): boolean {
   const o = scope.organizationId ?? DEFAULT_ORGANIZATION_ID;
-  const sid = effectiveOrganizationId(s);
+  const sid = s.organizationId;
   if (sid && sid !== o) return false;
   if (scope.schoolId) {
     if (!s.schoolId || s.schoolId !== scope.schoolId) return false;

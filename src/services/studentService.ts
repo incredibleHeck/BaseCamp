@@ -23,8 +23,7 @@ import {
   DEFAULT_SCHOOL_NAME,
   schoolById,
 } from '../config/organizationDefaults';
-import { effectiveOrganizationId } from '../utils/organizationScope';
-import type { Student } from '../types/domain';
+import type { Student, Cohort } from '../types/domain';
 
 export type { Student };
 
@@ -43,7 +42,7 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
     const now = Date.now();
     const enrollmentStatus = studentData.enrollmentStatus ?? 'active';
     const org =
-      effectiveOrganizationId(studentData) ?? DEFAULT_ORGANIZATION_ID;
+      studentData.organizationId ?? DEFAULT_ORGANIZATION_ID;
     const payload: Record<string, unknown> = {
       name: studentData.name,
       grade: studentData.grade,
@@ -59,8 +58,18 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
     if (cid) {
       try {
         const cohortSnap = await getDoc(doc(db, 'cohorts', cid));
-        const rawTid = cohortSnap.data()?.teacherId;
-        if (typeof rawTid === 'string' && rawTid.trim()) payload.cohortTeacherId = rawTid.trim();
+        const cohortData = cohortSnap.data() as Record<string, unknown> | undefined;
+        const fromList = cohortData?.assignedTeacherIds;
+        let primaryTeacher: string | undefined;
+        if (Array.isArray(fromList)) {
+          const first = fromList.find((x): x is string => typeof x === 'string' && x.trim().length > 0);
+          if (first) primaryTeacher = first.trim();
+        }
+        if (!primaryTeacher) {
+          const rawTid = cohortData?.teacherId;
+          if (typeof rawTid === 'string' && rawTid.trim()) primaryTeacher = rawTid.trim();
+        }
+        if (primaryTeacher) payload.cohortTeacherId = primaryTeacher;
       } catch {
         /* cohort read may fail offline; rules still allow via cohortId path when possible */
       }
@@ -247,6 +256,36 @@ export const updateStudent = async (studentId: string, updates: Partial<Student>
   if (Object.keys(patch).length === 0) return;
   patch.updatedAt = Date.now();
   await updateDoc(doc(db, 'students', studentId), patch);
+};
+
+/**
+ * Move a learner to a campus cohort (or clear placement) with denormalized grade and cohortTeacherId.
+ */
+export const updateStudentCohortPlacement = async (studentId: string, cohort: Cohort | null): Promise<void> => {
+  const sid = studentId?.trim();
+  if (!sid) return;
+  const ref = doc(db, 'students', sid);
+  if (!cohort) {
+    await updateDoc(ref, {
+      cohortId: deleteField(),
+      cohortTeacherId: deleteField(),
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+  const primaryTid = cohort.assignedTeacherIds[0]?.trim() ?? '';
+  const patch: Record<string, unknown> = {
+    cohortId: cohort.id,
+    grade: cohort.name,
+    numericGradeLevel: cohort.gradeLevel,
+    updatedAt: Date.now(),
+  };
+  if (primaryTid) {
+    patch.cohortTeacherId = primaryTid;
+  } else {
+    patch.cohortTeacherId = deleteField();
+  }
+  await updateDoc(ref, patch);
 };
 
 /**

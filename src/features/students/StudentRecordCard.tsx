@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { getCohortsBySchool } from '../../services/cohortService';
+import { getCohortsForCampus, getCohortsForTeacher } from '../../services/cohortService';
 import { updateStudent, type Student } from '../../services/studentService';
 import { useAuth } from '../../context/AuthContext';
 import type { Cohort } from '../../types/domain';
@@ -48,12 +48,29 @@ export function StudentRecordCard({ studentId, student, canEdit, onUpdated }: St
   ]);
 
   const loadCohorts = () => {
-    if (!schoolId) {
+    const sid = schoolId.trim();
+    const tid = user.id?.trim();
+
+    if (user.role === 'teacher') {
+      if (!tid) {
+        setCohorts([]);
+        setCohortsLoading(false);
+        return;
+      }
+      setCohortsLoading(true);
+      void getCohortsForTeacher(tid).then((list) => {
+        setCohorts(list);
+        setCohortsLoading(false);
+      });
+      return;
+    }
+
+    if (!sid) {
       setCohorts([]);
       return;
     }
     setCohortsLoading(true);
-    void getCohortsBySchool(schoolId).then((list) => {
+    void getCohortsForCampus(sid).then((list) => {
       setCohorts(list);
       setCohortsLoading(false);
     });
@@ -61,7 +78,7 @@ export function StudentRecordCard({ studentId, student, canEdit, onUpdated }: St
 
   useEffect(() => {
     loadCohorts();
-  }, [schoolId]);
+  }, [schoolId, user.id, user.role]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +105,11 @@ export function StudentRecordCard({ studentId, student, canEdit, onUpdated }: St
     }
   };
 
-  const cohortSelectDisabled = !canEdit || cohortsLoading || !schoolId || cohorts.length === 0;
+  const cohortSelectDisabled =
+    !canEdit ||
+    cohortsLoading ||
+    cohorts.length === 0 ||
+    (user.role === 'teacher' ? !user.id?.trim() : !schoolId);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/30">
@@ -132,12 +153,21 @@ export function StudentRecordCard({ studentId, student, canEdit, onUpdated }: St
               </option>
             ))}
           </select>
-          {!schoolId && (
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">No school on your account; classes cannot load.</p>
+          {(user.role === 'teacher' ? !user.id?.trim() : !schoolId) && (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+              {user.role === 'teacher'
+                ? 'Sign-in required to load your assigned classes.'
+                : 'No school on your account; classes cannot load.'}
+            </p>
           )}
-          {schoolId && !cohortsLoading && cohorts.length === 0 && (
+          {schoolId && user.role !== 'teacher' && !cohortsLoading && cohorts.length === 0 && (
             <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
               No classes are assigned to this school yet.
+            </p>
+          )}
+          {user.role === 'teacher' && user.id?.trim() && !cohortsLoading && cohorts.length === 0 && (
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+              You have not been assigned any classes. Contact your Headteacher.
             </p>
           )}
         </div>

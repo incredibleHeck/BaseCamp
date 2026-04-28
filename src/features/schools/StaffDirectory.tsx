@@ -14,13 +14,13 @@ import {
 import {
   getTeachersBySchool,
   addTeacher,
-  deleteTeacher,
   type CreateTeacherResult,
   type SchoolTeacherSummary,
 } from '../../services/userService';
 import type { UserData } from '../../components/layout/Header';
 import { useAuth } from '../../context/AuthContext';
 import { InviteTeacherDialog } from './InviteTeacherDialog';
+import { TeacherHandoverDialog } from './TeacherHandoverDialog';
 
 interface StaffDirectoryProps {
   user: UserData;
@@ -41,9 +41,8 @@ export function StaffDirectory({ user, scopeSchoolId }: StaffDirectoryProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdTeacher, setCreatedTeacher] = useState<CreateTeacherResult | null>(null);
 
-  // Delete dialog state
-  const [teacherToDelete, setTeacherToDelete] = useState<SchoolTeacherSummary | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  // Remove flow: handover dialog (teachers only — list is role-filtered)
+  const [handoverTeacher, setHandoverTeacher] = useState<SchoolTeacherSummary | null>(null);
 
   const activeSchoolId = scopeSchoolId?.trim() || user.schoolId;
   const effectiveSchoolId = tokenClaims.schoolId ?? activeSchoolId ?? '';
@@ -101,20 +100,8 @@ export function StaffDirectory({ user, scopeSchoolId }: StaffDirectoryProps) {
     }, 200);
   };
 
-  const handleDeleteTeacher = async () => {
-    if (!teacherToDelete) return;
-    setIsDeleting(true);
-    setError(null);
-    try {
-      await deleteTeacher(teacherToDelete.id);
-      setTeacherToDelete(null);
-      await loadTeachers();
-    } catch (err) {
-      setError('Failed to remove teacher.');
-      console.error(err);
-    } finally {
-      setIsDeleting(false);
-    }
+  const openHandover = (t: SchoolTeacherSummary) => {
+    setHandoverTeacher(t);
   };
 
   if (!activeSchoolId) {
@@ -308,7 +295,7 @@ export function StaffDirectory({ user, scopeSchoolId }: StaffDirectoryProps) {
                         variant="ghost"
                         size="sm"
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => setTeacherToDelete(teacher)}
+                        onClick={() => openHandover(teacher)}
                       >
                         <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
                         Remove
@@ -322,37 +309,14 @@ export function StaffDirectory({ user, scopeSchoolId }: StaffDirectoryProps) {
         </CardContent>
       </Card>
 
-      <Dialog isOpen={!!teacherToDelete} onClose={() => !isDeleting && setTeacherToDelete(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Remove Teacher</DialogTitle>
-            <p className="text-sm text-zinc-500">
-              Are you sure you want to remove <span className="font-semibold text-zinc-900">{teacherToDelete?.name}</span> from your school?
-              They will be unassigned from all classes.
-            </p>
-          </DialogHeader>
-          {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setTeacherToDelete(null)} disabled={isDeleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteTeacher}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Removing...
-                </>
-              ) : (
-                'Remove Teacher'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TeacherHandoverDialog
+        isOpen={handoverTeacher !== null}
+        onClose={() => setHandoverTeacher(null)}
+        teacher={handoverTeacher}
+        schoolId={activeSchoolId}
+        otherTeachers={teachers.filter((t) => handoverTeacher && t.id !== handoverTeacher.id)}
+        onRemoved={() => void loadTeachers()}
+      />
     </div>
   );
 }

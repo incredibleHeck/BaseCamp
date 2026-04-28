@@ -49,6 +49,19 @@ export type PersistResult = {
   assessmentCount?: number;
 };
 
+function primaryCohortTeacherId(cohort: DocumentData | undefined): string | undefined {
+  if (!cohort) return undefined;
+  const ids = cohort.assignedTeacherIds;
+  if (Array.isArray(ids)) {
+    for (const x of ids) {
+      if (typeof x === 'string' && x.trim()) return x.trim();
+    }
+  }
+  const legacy = cohort.teacherId;
+  if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  return undefined;
+}
+
 /**
  * Reads RTDB `live_sessions/{sessionId}`, writes one `assessments` row per `student_links` entry,
  * marks `live_session_persisted/{sessionId}`, then removes the RTDB subtree.
@@ -123,7 +136,7 @@ export async function persistConcludedLiveSession(
     const cohort = cohortId ? cohortMap.get(cohortId) : undefined;
     const schoolId = typeof st?.schoolId === 'string' ? st.schoolId : undefined;
     const cohortTeacherId =
-      (cohort && typeof cohort.teacherId === 'string' && cohort.teacherId) ||
+      primaryCohortTeacherId(cohort) ??
       (typeof st?.cohortTeacherId === 'string' ? st.cohortTeacherId : undefined);
 
     const classLabel = cohort && typeof cohort.name === 'string' ? cohort.name : undefined;

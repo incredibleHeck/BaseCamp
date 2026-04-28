@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Loader2, Plus } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Loader2, Pencil, Plus } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
-import { getCohortsBySchool, setCohortTeacherId } from '../../services/cohortService';
+import { getCohortsForCampus, setCohortAssignedTeacherIds } from '../../services/cohortService';
 import { getTeachersBySchool, type SchoolTeacherSummary } from '../../services/userService';
 import type { Cohort } from '../../types/domain';
-import { selectTriggerClass } from '../../utils/ui-helpers';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { CreateCohortDialog } from './CreateCohortDialog';
@@ -33,7 +32,8 @@ export function CohortManager() {
   const [savingAssignmentCohortId, setSavingAssignmentCohortId] = useState<string | null>(null);
   const [savedAssignmentCohortId, setSavedAssignmentCohortId] = useState<string | null>(null);
   const savedAssignmentClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [cohortDialogOpen, setCohortDialogOpen] = useState(false);
+  const [cohortDialogEditing, setCohortDialogEditing] = useState<Cohort | null>(null);
 
   const allowed = canAccessCohortManager(user.role);
 
@@ -44,7 +44,7 @@ export function CohortManager() {
     }
     setListLoading(true);
     try {
-      const rows = await getCohortsBySchool(schoolId);
+      const rows = await getCohortsForCampus(schoolId);
       setCohorts(rows);
     } finally {
       setListLoading(false);
@@ -101,20 +101,29 @@ export function CohortManager() {
     }, 2200);
   }, []);
 
-  const handleAssignedTeacherChange = async (cohort: Cohort, nextTeacherId: string) => {
-    const next = nextTeacherId.trim();
-    const prev = cohort.teacherId?.trim() ?? '';
-    if (next === prev) return;
+  const teacherOrderIndex = useMemo(() => new Map(teachers.map((t, i) => [t.id, i])), [teachers]);
+
+  const handleAssignedTeachersChange = async (cohort: Cohort, teacherId: string, checked: boolean) => {
+    const current = new Set((cohort.assignedTeacherIds ?? []).map((id) => id.trim()).filter(Boolean));
+    if (checked) current.add(teacherId);
+    else current.delete(teacherId);
+    const sorted = [...current].sort((a, b) => {
+      const ia = teacherOrderIndex.has(a) ? teacherOrderIndex.get(a)! : 999;
+      const ib = teacherOrderIndex.has(b) ? teacherOrderIndex.get(b)! : 999;
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+    const prev = (cohort.assignedTeacherIds ?? []).map((id) => id.trim()).filter(Boolean).join('\0');
+    const next = sorted.join('\0');
+    if (prev === next) return;
 
     setSavingAssignmentCohortId(cohort.id);
-    const ok = await setCohortTeacherId(cohort.id, next || null);
+    const ok = await setCohortAssignedTeacherIds(cohort.id, sorted);
     setSavingAssignmentCohortId(null);
 
     if (ok) {
       setCohorts((rows) =>
-        rows.map((row) =>
-          row.id === cohort.id ? { ...row, teacherId: next || undefined } : row
-        )
+        rows.map((row) => (row.id === cohort.id ? { ...row, assignedTeacherIds: sorted } : row))
       );
       showSavedCue(cohort.id);
     } else {
@@ -125,10 +134,15 @@ export function CohortManager() {
   const teacherOptionsForCohort = useCallback(
     (cohort: Cohort): SchoolTeacherSummary[] => {
       const list = [...teachers];
-      const tid = cohort.teacherId?.trim();
-      if (tid && !list.some((t) => t.id === tid)) {
-        list.push({ id: tid, name: `Teacher (${tid.slice(0, 8)}…)` });
+      const existingIds = new Set(list.map((t) => t.id));
+      for (const raw of cohort.assignedTeacherIds ?? []) {
+        const tid = typeof raw === 'string' ? raw.trim() : '';
+        if (tid && !existingIds.has(tid)) {
+          existingIds.add(tid);
+          list.push({ id: tid, name: `Teacher (${tid.slice(0, 8)}…)` });
+        }
       }
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
       return list;
     },
     [teachers]
@@ -154,11 +168,21 @@ export function CohortManager() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6">
       <CreateCohortDialog
-        isOpen={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
+        isOpen={cohortDialogOpen}
+        onClose={() => {
+          setCohortDialogOpen(false);
+          setCohortDialogEditing(null);
+        }}
         schoolId={schoolId}
+        editingCohort={cohortDialogEditing}
         onCreated={() => {
-          setCreateDialogOpen(false);
+          setCohortDialogOpen(false);
+          setCohortDialogEditing(null);
+          void refreshList();
+        }}
+        onUpdated={() => {
+          setCohortDialogOpen(false);
+          setCohortDialogEditing(null);
           void refreshList();
         }}
       />
@@ -169,11 +193,14 @@ export function CohortManager() {
             School classes
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Create cohorts for your school, then assign a teacher to each class.
+            Create cohorts for your school, then assign one or more teachers to each class (co-teaching).
           </p>
         </div>
         <Button
-          onClick={() => setCreateDialogOpen(true)}
+          onClick={() => {
+            setCohortDialogEditing(null);
+            setCohortDialogOpen(true);
+          }}
           disabled={scopeMissing}
           className="shrink-0"
         >
@@ -218,7 +245,8 @@ export function CohortManager() {
                 <TableRow>
                   <TableHead>Class name</TableHead>
                   <TableHead>Grade</TableHead>
-                  <TableHead className="min-w-[14rem]">Assigned teacher</TableHead>
+                  <TableHead className="min-w-[14rem]">Assigned teachers</TableHead>
+                  <TableHead className="w-[7rem] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -231,36 +259,63 @@ export function CohortManager() {
                       <TableCell className="font-medium">{c.name}</TableCell>
                       <TableCell>{c.gradeLevel}</TableCell>
                       <TableCell>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <select
-                            className={`${selectTriggerClass} min-w-[11rem] max-w-[16rem] flex-1`}
-                            aria-label={`Assigned teacher for ${c.name}`}
-                            value={c.teacherId ?? ''}
-                            disabled={teachersLoading || assigning}
-                            onChange={(ev) => void handleAssignedTeacherChange(c, ev.target.value)}
-                          >
-                            <option value="">
-                              {teachersLoading ? 'Loading teachers…' : 'Unassigned'}
-                            </option>
-                            {rowTeachers.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                          {assigning && (
-                            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-500" aria-hidden />
-                          )}
-                          {showSaved && !assigning && (
-                            <span
-                              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                              role="status"
-                            >
-                              <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                              Saved
-                            </span>
-                          )}
+                        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start">
+                          <div className="max-h-40 min-w-[11rem] max-w-md flex-1 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-950/40">
+                            {rowTeachers.length === 0 ? (
+                              <p className="text-xs text-slate-500">No teachers on file for this school.</p>
+                            ) : (
+                              rowTeachers.map((t) => {
+                                const checked = (c.assignedTeacherIds ?? []).some((id) => id.trim() === t.id);
+                                return (
+                                  <label
+                                    key={t.id}
+                                    className="flex cursor-pointer items-start gap-2 text-sm leading-snug"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+                                      checked={checked}
+                                      disabled={teachersLoading || assigning}
+                                      onChange={(e) =>
+                                        void handleAssignedTeachersChange(c, t.id, e.target.checked)
+                                      }
+                                    />
+                                    <span>{t.name}</span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {assigning && (
+                              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-500" aria-hidden />
+                            )}
+                            {showSaved && !assigning && (
+                              <span
+                                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                                role="status"
+                              >
+                                <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                                Saved
+                              </span>
+                            )}
+                          </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-right align-top">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => {
+                            setCohortDialogEditing(c);
+                            setCohortDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                          Edit
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

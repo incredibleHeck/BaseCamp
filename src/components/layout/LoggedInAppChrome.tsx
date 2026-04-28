@@ -1,16 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { AnimatePresence, m } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart2,
   BarChart3,
   ClipboardList,
+  FilePenLine,
   FlaskConical,
-  Home,
   LayoutGrid,
   Map,
-  School,
-  UserCircle,
+  School as SchoolIconLucide,
   Users,
   UsersRound,
   Building,
@@ -30,7 +29,9 @@ import { SenDashboard } from '../../features/sen-coordinator/SenDashboard';
 import { PlaybookLiftLeaderboard } from '../../features/dashboards/PlaybookLiftLeaderboard';
 import { FineTunePilotPanel } from '../../features/ai-tools/FineTunePilotPanel';
 import { StaffDirectory } from '../../features/schools/StaffDirectory';
+import { CampusStudentRegistry } from '../../features/students/CampusStudentRegistry';
 import { SchoolDirectory } from '../../features/schools/SchoolDirectory';
+import { OrganizationDirectory } from '../../features/organizations/OrganizationDirectory';
 import { enterpriseNavForRole } from '../../auth/enterpriseAccess';
 import { PendingAnalyses } from '../../features/assessments/PendingAnalyses';
 import { OfflineQueuedModal } from '../OfflineQueuedModal';
@@ -45,6 +46,8 @@ import { SidebarNavLink } from './SidebarNavLink';
 import { premiumClassNames } from '../premium/premiumClassNames';
 import { PremiumHeaderChrome } from '../premium/PremiumHeaderChrome';
 import { PremiumWelcomeBanner } from '../premium/PremiumWelcomeBanner';
+import { getSchoolById } from '../../services/schoolService';
+import type { School } from '../../types/domain';
 
 export type View =
   | 'class-roster'
@@ -54,8 +57,10 @@ export type View =
   | 'org-admin-overview'
   | 'school-overview'
   | 'manage-classes'
+  | 'campus-registry'
   | 'staff-directory'
   | 'school-directory'
+  | 'organization-directory'
   | 'org-admin-campus-gaps'
   | 'org-admin-playbooks'
   | 'sen-inbox'
@@ -66,19 +71,31 @@ const DASHBOARD_CONFIG: Record<
   UserData['role'],
   { title: string; welcome: string; premiumTitle?: string; premiumWelcome?: string }
 > = {
-  teacher: { title: 'Classroom Dashboard', welcome: 'Here is your class overview.' },
-  headteacher: { title: 'Headmaster Dashboard', welcome: 'Here is your school-wide performance overview.' },
-  org_admin: { 
-    title: 'School network overview', 
+  teacher: {
+    title: 'Teacher overview',
+    welcome: 'Students and classes you are assigned to by your Headteacher.',
+    premiumTitle: 'Teacher overview',
+    premiumWelcome:
+      'Review assigned cohorts, run diagnostics, and keep learners moving — scoped to classes you belong to.',
+  },
+  headteacher: {
+    title: 'Headteacher overview',
+    welcome: 'Campus performance, classes, and staff for your assigned school.',
+    premiumTitle: 'Headteacher overview',
+    premiumWelcome:
+      'Monitor school-wide assessment signals, manage classes, and support teachers on your campus.',
+  },
+  org_admin: {
+    title: 'School network overview',
     welcome: "Performance and enrollment across your organization's branches.",
     premiumTitle: 'School network',
-    premiumWelcome: 'Administrative overview across campuses and branches.'
+    premiumWelcome: 'Administrative overview across campuses and branches.',
   },
-  sen_coordinator: { 
-    title: 'SEN Coordination', 
+  sen_coordinator: {
+    title: 'SEN Coordination',
     welcome: 'Review screening signals in regional context.',
     premiumTitle: 'Special Needs Coordination',
-    premiumWelcome: 'Review screening signals and support context.'
+    premiumWelcome: 'Review screening signals and support context.',
   },
   super_admin: { title: 'Enterprise / MoE View', welcome: 'Cross-cutting analytics and governance tools.' },
 };
@@ -105,7 +122,16 @@ export type LoggedInAppChromeProps = {
   studentNameById: Record<string, string>;
   handleRemoveQueuedItem: (id: string) => Promise<void>;
   handleRetryQueuedNow: () => Promise<void>;
+  onClearSuperAdminNetwork?: () => void;
+  superAdminNetworkScope: { organizationId: string; name: string } | null;
+  setSuperAdminNetworkScope: React.Dispatch<
+    React.SetStateAction<{ organizationId: string; name: string } | null>
+  >;
 };
+
+type NavDef = { view: View; label: string; shortLabel: string; icon: LucideIcon; onSelect?: () => void };
+
+type SidebarBlock = { sectionLabel?: string; items: NavDef[] };
 
 export function LoggedInAppChrome({
   user,
@@ -129,12 +155,38 @@ export function LoggedInAppChrome({
   studentNameById,
   handleRemoveQueuedItem,
   handleRetryQueuedNow,
+  onClearSuperAdminNetwork,
+  superAdminNetworkScope,
+  setSuperAdminNetworkScope,
 }: LoggedInAppChromeProps) {
   const { resetAssessment } = useAssessment();
   const { isPremiumTier, isReady: premiumReady } = usePremiumTier();
   const showPremiumShell = premiumReady && isPremiumTier;
   const showLiveClassroom = showPremiumShell && Boolean(rtdb);
   const navVariant = showPremiumShell ? 'premium' : 'default';
+
+  const [campusSchool, setCampusSchool] = useState<School | null>(null);
+  const [campusSchoolLoading, setCampusSchoolLoading] = useState(false);
+
+  useEffect(() => {
+    const sid = user.schoolId?.trim();
+    if (user.role !== 'headteacher' || !sid) {
+      setCampusSchool(null);
+      setCampusSchoolLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCampusSchoolLoading(true);
+    void getSchoolById(sid).then((doc) => {
+      if (!cancelled) {
+        setCampusSchool(doc);
+        setCampusSchoolLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.role, user.schoolId]);
 
   const handleStartAssessment = (studentId: string) => {
     setSelectedStudentId(studentId);
@@ -155,7 +207,13 @@ export function LoggedInAppChrome({
   const renderContent = () => {
     switch (currentView) {
       case 'class-roster':
-        return <ClassRoster onNewAssessment={handleStartAssessment} onViewProfile={handleViewProfile} />;
+        return (
+          <ClassRoster
+            onNewAssessment={handleStartAssessment}
+            onViewProfile={handleViewProfile}
+            onGoToManageClasses={() => setCurrentView('manage-classes')}
+          />
+        );
       case 'new-assessment':
         return (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
@@ -186,16 +244,22 @@ export function LoggedInAppChrome({
         return <OrganizationDashboard onSchoolClick={handleSchoolClick} />;
       case 'school-overview':
         return (
-          <HeadmasterDashboard 
-            overrideSchoolId={selectedSchoolForOverviewId || undefined} 
-            onBack={selectedSchoolForOverviewId ? () => {
-              setSelectedSchoolForOverviewId(null);
-              setCurrentView(user.role === 'org_admin' ? 'org-admin-overview' : 'school-directory');
-            } : undefined}
+          <HeadmasterDashboard
+            overrideSchoolId={selectedSchoolForOverviewId || undefined}
+            onBack={
+              selectedSchoolForOverviewId
+                ? () => {
+                    setSelectedSchoolForOverviewId(null);
+                    setCurrentView(user.role === 'org_admin' ? 'org-admin-overview' : 'school-directory');
+                  }
+                : undefined
+            }
           />
         );
       case 'manage-classes':
         return <CohortManager />;
+      case 'campus-registry':
+        return <CampusStudentRegistry user={user} onViewProfile={handleViewProfile} />;
       case 'org-admin-campus-gaps':
         return <CampusGapAnalysisPanel user={user} />;
       case 'org-admin-playbooks':
@@ -204,8 +268,31 @@ export function LoggedInAppChrome({
         return <SenDashboard user={user} onAlertClick={handleViewProfile} />;
       case 'staff-directory':
         return <StaffDirectory user={user} scopeSchoolId={selectedSchoolForOverviewId || undefined} />;
+      case 'organization-directory':
+        return (
+          <OrganizationDirectory
+            onViewBranches={({ organizationId, name }) => {
+              setSuperAdminNetworkScope({ organizationId, name });
+              setCurrentView('school-directory');
+            }}
+          />
+        );
       case 'school-directory':
-        return <SchoolDirectory user={user} onSchoolClick={handleSchoolClick} />;
+        return (
+          <SchoolDirectory
+            user={user}
+            onSchoolClick={handleSchoolClick}
+            superAdminNetwork={user.role === 'super_admin' ? superAdminNetworkScope : null}
+            onBackToNetworks={
+              user.role === 'super_admin'
+                ? () => {
+                    onClearSuperAdminNetwork?.();
+                    setCurrentView('organization-directory');
+                  }
+                : undefined
+            }
+          />
+        );
       case 'fine-tune-pilot':
         return <FineTunePilotPanel />;
       case 'live-classroom':
@@ -217,44 +304,107 @@ export function LoggedInAppChrome({
 
   const enterpriseNav = enterpriseNavForRole(user.role);
 
-  type NavDef = { view: View; label: string; shortLabel: string; icon: LucideIcon };
-
-  const { primarySidebarNav, secondarySidebarNav } = useMemo(() => {
+  const { sidebarBlocks, mobileNavItems } = useMemo(() => {
     const role = user.role;
-    const primary: NavDef[] = [];
 
-    if (role === 'teacher') {
-      primary.push({
-        view: 'new-assessment',
-        label: 'New Assessment',
-        shortLabel: 'New',
-        icon: Home,
-      });
-    }
-    if (role === 'teacher' || role === 'headteacher') {
-      primary.push({
-        view: 'class-roster',
-        label: 'Class Roster',
-        shortLabel: 'Roster',
-        icon: Users,
-      });
-    }
-    if (role === 'headteacher') {
-      primary.push({
-        view: 'school-overview',
-        label: 'Headmaster View',
-        shortLabel: 'School',
-        icon: School,
-      });
-    }
-    if (showLiveClassroom && (role === 'teacher' || role === 'headteacher')) {
-      primary.push({
+    const teachingTeacher: NavDef[] = [];
+    teachingTeacher.push({
+      view: 'new-assessment',
+      label: 'New Assessment',
+      shortLabel: 'New',
+      icon: FilePenLine,
+    });
+    teachingTeacher.push({
+      view: 'class-roster',
+      label: 'Class Roster',
+      shortLabel: 'Roster',
+      icon: Users,
+    });
+    if (showLiveClassroom) {
+      teachingTeacher.push({
         view: 'live-classroom',
         label: 'Live classroom',
         shortLabel: 'Live',
         icon: Zap,
       });
     }
+
+    const queueTeacher: NavDef[] = [
+      {
+        view: 'pending-analyses',
+        label: 'Pending Analyses',
+        shortLabel: 'Pending',
+        icon: ClipboardList,
+      },
+    ];
+
+    const teachingHead: NavDef[] = [
+      {
+        view: 'class-roster',
+        label: 'Class Roster',
+        shortLabel: 'Roster',
+        icon: Users,
+      },
+      {
+        view: 'school-overview',
+        label: 'School overview',
+        shortLabel: 'Overview',
+        icon: SchoolIconLucide,
+      },
+    ];
+    if (showLiveClassroom) {
+      teachingHead.push({
+        view: 'live-classroom',
+        label: 'Live classroom',
+        shortLabel: 'Live',
+        icon: Zap,
+      });
+    }
+
+    const campusHead: NavDef[] = [
+      {
+        view: 'manage-classes',
+        label: 'Manage Classes',
+        shortLabel: 'Classes',
+        icon: LayoutGrid,
+      },
+      {
+        view: 'campus-registry',
+        label: 'Student Registry',
+        shortLabel: 'Registry',
+        icon: Users,
+      },
+      {
+        view: 'staff-directory',
+        label: 'Staff Directory',
+        shortLabel: 'Staff',
+        icon: UsersRound,
+      },
+    ];
+
+    if (role === 'teacher') {
+      const blocks: SidebarBlock[] = [
+        { sectionLabel: 'Teaching', items: teachingTeacher },
+        { sectionLabel: 'Queue', items: queueTeacher },
+      ];
+      return {
+        sidebarBlocks: blocks,
+        mobileNavItems: [...teachingTeacher, ...queueTeacher],
+      };
+    }
+
+    if (role === 'headteacher') {
+      const blocks: SidebarBlock[] = [
+        { sectionLabel: 'Teaching', items: teachingHead },
+        { sectionLabel: 'Campus', items: campusHead },
+      ];
+      return {
+        sidebarBlocks: blocks,
+        mobileNavItems: [...teachingHead, ...campusHead],
+      };
+    }
+
+    const primary: NavDef[] = [];
     if (role === 'org_admin') {
       primary.push({
         view: 'org-admin-overview',
@@ -273,10 +423,14 @@ export function LoggedInAppChrome({
     }
     if (role === 'super_admin') {
       primary.push({
-        view: 'school-directory',
-        label: 'Branch directory',
-        shortLabel: 'Branches',
+        view: 'organization-directory',
+        label: 'Network directory',
+        shortLabel: 'Networks',
         icon: Building,
+        onSelect: () => {
+          onClearSuperAdminNetwork?.();
+          setCurrentView('organization-directory');
+        },
       });
     }
 
@@ -321,38 +475,6 @@ export function LoggedInAppChrome({
         icon: HeartHandshake,
       });
     }
-    if (role === 'teacher') {
-      secondary.push(
-        {
-          view: 'student-profile',
-          label: 'Student Profiles',
-          shortLabel: 'Profiles',
-          icon: UserCircle,
-        },
-        {
-          view: 'pending-analyses',
-          label: 'Pending Analyses',
-          shortLabel: 'Pending',
-          icon: ClipboardList,
-        }
-      );
-    }
-    if (role === 'headteacher') {
-      secondary.push(
-        {
-          view: 'manage-classes',
-          label: 'Manage Classes',
-          shortLabel: 'Classes',
-          icon: LayoutGrid,
-        },
-        {
-          view: 'staff-directory',
-          label: 'Staff Directory',
-          shortLabel: 'Staff',
-          icon: UsersRound,
-        }
-      );
-    }
     if (role === 'super_admin') {
       secondary.push({
         view: 'fine-tune-pilot',
@@ -362,13 +484,24 @@ export function LoggedInAppChrome({
       });
     }
 
-    return { primarySidebarNav: primary, secondarySidebarNav: secondary };
-  }, [user.role, enterpriseNav.showCampusGapAnalysis, enterpriseNav.showPlaybooks, enterpriseNav.showSenInbox, showLiveClassroom]);
+    const blocks: SidebarBlock[] = [];
+    if (primary.length) blocks.push({ items: primary });
+    if (secondary.length) blocks.push({ items: secondary });
+    return {
+      sidebarBlocks: blocks.length ? blocks : [{ items: [] as NavDef[] }],
+      mobileNavItems: [...primary, ...secondary],
+    };
+  }, [
+    user.role,
+    enterpriseNav.showCampusGapAnalysis,
+    enterpriseNav.showPlaybooks,
+    enterpriseNav.showSenInbox,
+    showLiveClassroom,
+    onClearSuperAdminNetwork,
+    setCurrentView,
+  ]);
 
-  const mobileNavItems = useMemo(
-    () => [...primarySidebarNav, ...secondarySidebarNav],
-    [primarySidebarNav, secondarySidebarNav]
-  );
+  const showCampusStrip = user.role === 'headteacher' && Boolean(user.schoolId?.trim());
 
   return (
     <AuthProvider user={user}>
@@ -409,37 +542,39 @@ export function LoggedInAppChrome({
             aria-label="Main navigation"
           >
             <nav className="flex flex-col gap-1 overflow-y-auto px-3 py-4">
-              {primarySidebarNav.map((item) => (
-                <SidebarNavLink
-                  key={item.view}
-                  icon={item.icon}
-                  label={item.label}
-                  active={currentView === item.view}
-                  layout="sidebar"
-                  variant={navVariant}
-                  onClick={() => setCurrentView(item.view)}
-                />
-              ))}
-              {secondarySidebarNav.length > 0 && (
-                <div
-                  className={
-                    showPremiumShell
-                      ? premiumClassNames.asideDivider
-                      : 'my-2 border-t border-zinc-200/60 pt-2'
-                  }
-                  role="presentation"
-                />
-              )}
-              {secondarySidebarNav.map((item) => (
-                <SidebarNavLink
-                  key={item.view}
-                  icon={item.icon}
-                  label={item.label}
-                  active={currentView === item.view}
-                  layout="sidebar"
-                  variant={navVariant}
-                  onClick={() => setCurrentView(item.view)}
-                />
+              {sidebarBlocks.map((block, blockIdx) => (
+                <React.Fragment key={block.sectionLabel ?? `block-${blockIdx}`}>
+                  {blockIdx > 0 && (
+                    <div
+                      className={
+                        showPremiumShell ? premiumClassNames.asideDivider : 'my-2 border-t border-zinc-200/60 pt-2'
+                      }
+                      role="presentation"
+                    />
+                  )}
+                  {block.sectionLabel ? (
+                    <p
+                      className={
+                        showPremiumShell
+                          ? 'px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 first:pt-0'
+                          : 'px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 first:pt-0'
+                      }
+                    >
+                      {block.sectionLabel}
+                    </p>
+                  ) : null}
+                  {block.items.map((item) => (
+                    <SidebarNavLink
+                      key={item.view + (item.label || '')}
+                      icon={item.icon}
+                      label={item.label}
+                      active={currentView === item.view}
+                      layout="sidebar"
+                      variant={navVariant}
+                      onClick={() => (item.onSelect ? item.onSelect() : setCurrentView(item.view))}
+                    />
+                  ))}
+                </React.Fragment>
               ))}
             </nav>
           </aside>
@@ -469,6 +604,33 @@ export function LoggedInAppChrome({
                   {syncToast.message}
                 </div>
               )}
+
+              {showCampusStrip && (
+                <div
+                  className={
+                    showPremiumShell
+                      ? 'mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-obsidian-700/80 bg-obsidian-900/50 px-4 py-2.5 text-sm text-zinc-200'
+                      : 'mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-800 shadow-sm'
+                  }
+                  role="status"
+                >
+                  {campusSchoolLoading ? (
+                    <span className="inline-block h-4 w-40 animate-pulse rounded bg-zinc-200 dark:bg-zinc-700" />
+                  ) : (
+                    <span className="font-semibold">{campusSchool?.name?.trim() || 'Campus'}</span>
+                  )}
+                  <span
+                    className={
+                      showPremiumShell
+                        ? 'rounded-full border border-amber-500/30 bg-amber-950/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100'
+                        : 'rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-900'
+                    }
+                  >
+                    Headteacher
+                  </span>
+                </div>
+              )}
+
               {showPremiumShell ? (
                 <PremiumWelcomeBanner
                   title={DASHBOARD_CONFIG[user.role].premiumTitle || DASHBOARD_CONFIG[user.role].title}
@@ -487,15 +649,15 @@ export function LoggedInAppChrome({
               )}
 
               <AnimatePresence mode="wait">
-              <m.div
-                key={currentView}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                {renderContent()}
-              </m.div>
+                <m.div
+                  key={currentView}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {renderContent()}
+                </m.div>
               </AnimatePresence>
             </main>
           </div>
@@ -513,14 +675,14 @@ export function LoggedInAppChrome({
             >
               {mobileNavItems.map((item) => (
                 <SidebarNavLink
-                  key={item.view}
+                  key={item.view + (item.shortLabel || '')}
                   icon={item.icon}
                   label={item.shortLabel}
                   title={item.label}
                   active={currentView === item.view}
                   layout="mobile"
                   variant={navVariant}
-                  onClick={() => setCurrentView(item.view)}
+                  onClick={() => (item.onSelect ? item.onSelect() : setCurrentView(item.view))}
                 />
               ))}
             </div>

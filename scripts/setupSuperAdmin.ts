@@ -1,61 +1,78 @@
-import admin from 'firebase-admin';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config as loadEnv } from 'dotenv';
+import { cert, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import type { ServiceAccount } from 'firebase-admin/app';
 
-// Initialize the Firebase Admin SDK.
-// This assumes GOOGLE_APPLICATION_CREDENTIALS is set to your service account JSON path.
-admin.initializeApp();
+loadEnv({ path: resolve(process.cwd(), '.env') });
 
-// Credential Configuration
-const MY_REAL_EMAIL = 'codingwithhector@gmail.com'; 
-const MY_NEW_PASSWORD = 'hectechadm1n';
+const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+if (credPath) {
+  const abs = resolve(process.cwd(), credPath);
+  if (!existsSync(abs)) {
+    console.error('Service account file not found:', abs);
+    process.exit(1);
+  }
+  const sa = JSON.parse(readFileSync(abs, 'utf8')) as ServiceAccount;
+  initializeApp({ credential: cert(sa) });
+} else {
+  console.error('Set GOOGLE_APPLICATION_CREDENTIALS in .env to your basecamp-pilot service account JSON (relative or absolute path).');
+  process.exit(1);
+}
+
+// Must match the Auth user in Firebase (basecamp-pilot). Do not commit real passwords long-term.
+const MY_REAL_EMAIL = 'codingwithhector@gmail.com';
+const MY_NEW_PASSWORD = 'hectech';
 
 async function setup() {
-  console.log("🚀 Bootstrapping Super Admin for HecTech...");
-  
+  const auth = getAuth();
+  const db = getFirestore();
+  console.log('Bootstrapping Super Admin (basecamp-pilot service account must match this project)...');
+
   try {
     let user;
     try {
-      // Check if user already exists in Firebase Auth
-      user = await admin.auth().getUserByEmail(MY_REAL_EMAIL);
-      console.log(`Found existing user identity: ${user.uid}`);
-      
-      // Force update the password for the existing user
-      await admin.auth().updateUser(user.uid, {
+      user = await auth.getUserByEmail(MY_REAL_EMAIL);
+      console.log(`Found existing user: ${user.uid}`);
+
+      await auth.updateUser(user.uid, {
         password: MY_NEW_PASSWORD,
-        emailVerified: true
+        emailVerified: true,
       });
-      console.log("Password updated successfully.");
-    } catch (e) {
-      // Create user if they don't exist
-      user = await admin.auth().createUser({
+      console.log('Password set / updated.');
+    } catch {
+      user = await auth.createUser({
         email: MY_REAL_EMAIL,
         password: MY_NEW_PASSWORD,
-        emailVerified: true
+        emailVerified: true,
       });
-      console.log(`Created new user identity: ${user.uid}`);
+      console.log(`Created new user: ${user.uid}`);
     }
 
-    // 2. Set the Super Admin Badge (Custom Claims)
-    // This is the "passport stamp" the app looks for to grant master access
-    await admin.auth().setCustomUserClaims(user.uid, { 
-      role: 'super_admin' 
-    });
+    await auth.setCustomUserClaims(user.uid, { role: 'super_admin' });
 
-    // 3. Sync to Firestore (Ensures UI profile consistency)
-    const db = admin.firestore();
-    await db.collection('users').doc(user.uid).set({
-      email: MY_REAL_EMAIL,
-      role: 'super_admin',
-      name: 'Hector (Super Admin)',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    await db
+      .collection('users')
+      .doc(user.uid)
+      .set(
+        {
+          email: MY_REAL_EMAIL,
+          role: 'super_admin',
+          name: 'Hector (Super Admin)',
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-    console.log("✅ SUCCESS! HecTech Super Admin is ready.");
-    console.log(`Email: ${MY_REAL_EMAIL}`);
-    console.log(`Password: ${MY_NEW_PASSWORD}`);
-    console.log("You can now log in at https://basecamp-pilot.web.app");
-    
+    console.log('SUCCESS. Super admin claims + users/{uid} are set.');
+    console.log(`Log in: ${MY_REAL_EMAIL} / (password in script — rotate after first login)`);
+    console.log('Open: https://basecamp-pilot.web.app — sign out first if a session is cached, then sign in to refresh the token.');
+
   } catch (error) {
-    console.error("❌ Setup failed:", error);
+    console.error('Setup failed:', error);
+    process.exit(1);
   }
 }
 

@@ -23,14 +23,14 @@ service cloud.firestore {
     }
 
     function orgIdFromSchoolData(d) {
-      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : '';
     }
 
     function orgIdForSchoolId(sid) {
       return orgIdFromSchoolData(get(/databases/$(database)/documents/schools/$(sid)).data);
     }
 
-    // Org admin + SEN: read all branches (`schools`) in the same organization (uses profile `organizationId` with legacy `districtId`).
+    // Org admin + SEN: read all branches (`schools`) in the same organization (profile `organizationId`).
     function isOrgAdminForSchoolId(sid) {
       return isJurisdictionOversight() && sid is string &&
         orgIdForSchoolId(sid) == getUserOrgId();
@@ -79,11 +79,11 @@ service cloud.firestore {
 
     function getUserOrgId() {
       let u = ud();
-      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : u.districtId;
+      return (u.organizationId is string && u.organizationId != '') ? u.organizationId : '';
     }
 
     function userDocOrgId(d) {
-      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : '';
     }
 
     function teacherIdMatchesStaffLinks(tid) {
@@ -94,12 +94,22 @@ service cloud.firestore {
       );
     }
 
-    function teacherOwnsCohortFields(data) {
+    function teacherListedInAssignedCohort(data) {
+      return data.assignedTeacherIds is list && (
+        data.assignedTeacherIds.hasAny([request.auth.uid]) ||
+        (ud().linkedTeacherId is string && data.assignedTeacherIds.hasAny([ud().linkedTeacherId])) ||
+        (ud().role == 'teacher' && ud().linkedProfileId is string &&
+          data.assignedTeacherIds.hasAny([ud().linkedProfileId]))
+      );
+    }
+
+    // Legacy cohorts keyed by single teacherId (migration).
+    function teacherOwnsLegacyCohortFields(data) {
       return data.teacherId is string && teacherIdMatchesStaffLinks(data.teacherId);
     }
 
     function isTeacherOfCohortData(data) {
-      return isTeacher() && teacherOwnsCohortFields(data);
+      return isTeacher() && (teacherListedInAssignedCohort(data) || teacherOwnsLegacyCohortFields(data));
     }
 
     function teacherReadsDenormCohortTeacherData(d) {
@@ -160,16 +170,6 @@ service cloud.firestore {
 
     // --- Org ---
 
-    match /districts/{districtId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (isJurisdictionOversight() && districtId == getUserOrgId()) ||
-        (isHeadteacher() && getUserOrgId() == districtId) ||
-        (isTeacher() && getUserOrgId() == districtId)
-      );
-      allow write: if isAdmin();
-    }
-
     match /organizations/{orgId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
@@ -183,17 +183,28 @@ service cloud.firestore {
     match /schools/{schoolId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
-        (isJurisdictionOversight() &&
-          orgIdForSchoolId(schoolId) == getUserOrgId()) ||
+        (isJurisdictionOversight() && orgIdFromSchoolData(resource.data) == getUserOrgId()) ||
         (isHeadteacher() && schoolId == getUserSchoolId()) ||
         (isTeacher() && schoolId == getUserSchoolId()) ||
         (isStudentPortal() &&
           schoolId ==
             get(/databases/$(database)/documents/students/$(ud().portalStudentId)).data.schoolId)
       );
-      // Headteacher self-serve onboarding: any authenticated user may create a school doc once.
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.auth != null &&
+        request.auth.token.role == 'org_admin' &&
+        request.resource.data.organizationId is string &&
+        request.auth.token.organizationId is string &&
+        request.resource.data.organizationId == request.auth.token.organizationId
+      );
+      allow update, delete: if isAdmin() || (
+        request.auth != null &&
+        request.auth.token.role == 'org_admin' &&
+        resource.data.organizationId is string &&
+        request.auth.token.organizationId is string &&
+        resource.data.organizationId == request.auth.token.organizationId &&
+        (request.method == 'delete' || (request.method == 'update' && request.resource.data.organizationId == resource.data.organizationId))
+      );
     }
 
     // --- Users ---
@@ -209,9 +220,10 @@ service cloud.firestore {
 
       // Self-serve onboarding: first-time create of own `users/{uid}` only (Admin SDK bypasses rules for admin tools).
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      // Updates/deletes unchanged from prior strict write (no broad create here).
+      // Updates/deletes: super admin; org_admin same-tenant (token.organizationId + profile org); self-service portal edits.
       allow update, delete: if isAdmin() ||
-        (isAuthenticated() && request.auth.uid == userId && (
+        (request.auth != null && request.auth.token.role == 'org_admin' && resource.data.organizationId is string && request.auth.token.organizationId is string && resource.data.organizationId == request.auth.token.organizationId && (request.method == 'delete' || (request.method == 'update' && request.resource.data.organizationId == resource.data.organizationId))) ||
+        (isAuthenticated() && request.auth.uid == userId && request.method == 'update' && (
              !('role' in resource.data) ||
              resource.data.role != 'student_portal' ||
              (request.resource.data.role == 'student_portal' &&

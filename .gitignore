@@ -5,6 +5,10 @@ functions/lib/
 coverage/
 .DS_Store
 *.log
+# Firebase service account private keys (never commit)
+service-account.json
+secrets/
+
 # Local env files (secrets) - do not commit to GitHub
 .env*
 !.env.example

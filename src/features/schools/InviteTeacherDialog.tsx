@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { Loader2, Mail } from 'lucide-react';
+import { Loader2, Mail, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { functions } from '../../lib/firebase';
@@ -15,8 +15,10 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 
+type InvitedStaffRole = 'org_admin' | 'headteacher' | 'teacher';
+
 const inviteStaffMember = httpsCallable<
-  { email: string; role: 'teacher'; targetSchoolId: string },
+  { email: string; role: InvitedStaffRole; targetSchoolId: string },
   { ok: boolean; uid: string; warning?: string }
 >(functions, 'inviteStaffMember');
 
@@ -26,9 +28,20 @@ type InviteTeacherDialogProps = {
   /** Firestore + token tenant id for the invite. */
   targetSchoolId: string;
   onInvited?: () => void;
+  /** Defaults to teacher (existing staff-directory / teacher flows). */
+  inviteRole?: 'teacher' | 'headteacher';
+  /** When true, show role as read-only (e.g. locked to headteacher). */
+  roleLocked?: boolean;
 };
 
-export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvited }: InviteTeacherDialogProps) {
+export function InviteTeacherDialog({
+  open,
+  onOpenChange,
+  targetSchoolId,
+  onInvited,
+  inviteRole = 'teacher',
+  roleLocked = false,
+}: InviteTeacherDialogProps) {
   const { refreshTokenClaims } = useAuth();
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -41,10 +54,20 @@ export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvi
     setError(null);
   };
 
+  useEffect(() => {
+    if (open) {
+      setEmail('');
+      setMessage(null);
+      setError(null);
+    }
+  }, [open, targetSchoolId, inviteRole]);
+
   const handleClose = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
   };
+
+  const isHeadmaster = inviteRole === 'headteacher';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,15 +77,24 @@ export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvi
     setError(null);
     setMessage(null);
     try {
-      const { data } = await inviteStaffMember({ email: em, role: 'teacher', targetSchoolId });
+      const { data } = await inviteStaffMember({
+        email: em,
+        role: inviteRole,
+        targetSchoolId,
+      });
       if (data.warning) {
         setMessage(
           'Account created, but the invite email could not be sent. Share the password reset link manually or try again later.'
         );
         toast.warning(data.warning);
       } else {
-        setMessage('Invitation sent. The teacher will receive an email to set their password.');
-        toast.success('Invitation sent. The teacher can set their password from the email.');
+        if (isHeadmaster) {
+          setMessage('Invitation sent. The Headteacher will receive an email to set their password.');
+          toast.success('Invitation sent. They can set their password from the email.');
+        } else {
+          setMessage('Invitation sent. The teacher will receive an email to set their password.');
+          toast.success('Invitation sent. The teacher can set their password from the email.');
+        }
       }
       setEmail('');
       await refreshTokenClaims();
@@ -77,17 +109,28 @@ export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvi
     }
   };
 
+  const descriptionHeadmaster =
+    "They will receive a secure email link to set their password and join this campus.";
+
   return (
     <Dialog isOpen={open} onClose={() => handleClose(false)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-indigo-600" aria-hidden />
-            Invite teacher
+            {isHeadmaster ? (
+              <UserPlus className="h-5 w-5 text-indigo-600" aria-hidden />
+            ) : (
+              <Mail className="h-5 w-5 text-indigo-600" aria-hidden />
+            )}
+            {isHeadmaster ? 'Invite Headteacher' : 'Invite teacher'}
           </DialogTitle>
-          <p className="text-sm text-zinc-500">
-            We will create their account and email them a link to set a password. No school code is required.
-          </p>
+          {isHeadmaster && roleLocked ? (
+            <p className="text-sm text-zinc-500">{descriptionHeadmaster}</p>
+          ) : (
+            <p className="text-sm text-zinc-500">
+              We will create their account and email them a link to set a password. No school code is required.
+            </p>
+          )}
         </DialogHeader>
         {message ? (
           <div className="space-y-4 py-2">
@@ -99,6 +142,12 @@ export function InviteTeacherDialog({ open, onOpenChange, targetSchoolId, onInvi
         ) : (
           <form onSubmit={(e) => void handleSubmit(e)}>
             <div className="space-y-4 py-2">
+              {isHeadmaster && roleLocked && (
+                <div>
+                  <span className="text-sm font-medium text-zinc-800">Role</span>
+                  <p className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">Headteacher</p>
+                </div>
+              )}
               <div>
                 <label htmlFor="invite-email" className="text-sm font-medium text-zinc-800 block mb-1.5">
                   Work email

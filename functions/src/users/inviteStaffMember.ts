@@ -30,8 +30,6 @@ function isInvitedRole(x: unknown): x is InvitedRole {
 function orgIdFromUserProfile(data: Record<string, unknown>): string | undefined {
   const o = data.organizationId;
   if (typeof o === 'string' && o.trim()) return o.trim();
-  const d = data.districtId;
-  if (typeof d === 'string' && d.trim()) return d.trim();
   return undefined;
 }
 
@@ -39,9 +37,6 @@ function orgIdFromSchoolData(schoolData: Record<string, unknown> | undefined): s
   if (!schoolData) return undefined;
   if (typeof schoolData.organizationId === 'string' && schoolData.organizationId.trim()) {
     return schoolData.organizationId.trim();
-  }
-  if (typeof schoolData.districtId === 'string' && schoolData.districtId.trim()) {
-    return schoolData.districtId.trim();
   }
   return undefined;
 }
@@ -149,7 +144,7 @@ function buildStaffInviteEmail(args: {
 
 /**
  * super_admin: any existing targetSchoolId; may invite org_admin (Sprint 2 will extend org-admin invite policy).
- * org_admin / school_admin / district (legacy): same organization as the branch; may invite headteacher or teacher to any branch in that org.
+ * org_admin / school_admin: same organization as the branch; may invite headteacher or teacher to any branch in that org.
  * headteacher: same school, may invite teacher only.
  */
 async function assertCanInvite(
@@ -176,7 +171,7 @@ async function assertCanInvite(
 
   const inviterOrgId = orgIdFromUserProfile(inviterData);
 
-  if (role === 'org_admin' || role === 'school_admin' || role === 'district') {
+  if (role === 'org_admin' || role === 'school_admin') {
     if (!schoolOrgId || !inviterOrgId || inviterOrgId !== schoolOrgId) {
       throw new HttpsError(
         'permission-denied',
@@ -205,13 +200,20 @@ async function assertCanInvite(
 function mergeClaims(
   userRecord: UserRecord,
   targetSchoolId: string,
-  targetRole: InvitedRole
+  targetRole: InvitedRole,
+  organizationId: string | undefined
 ): Record<string, unknown> {
   const existing: Record<string, unknown> = {
     ...(userRecord.customClaims as Record<string, unknown> | null | undefined),
   };
   existing.schoolId = targetSchoolId;
   existing.role = targetRole;
+  if (organizationId) {
+    existing.organizationId = organizationId;
+  } else {
+    delete existing.organizationId;
+  }
+  delete existing.districtId;
   return existing;
 }
 
@@ -316,7 +318,7 @@ export const inviteStaffMember = onCall({ region: REGION, secrets: [resendApiKey
   const profileSnap = await profileRef.get();
   assertNotWrongSchool(userRecord, profileSnap, targetSchoolId);
 
-  const merged = mergeClaims(userRecord, targetSchoolId, targetRole);
+  const merged = mergeClaims(userRecord, targetSchoolId, targetRole, orgIdFromSchool);
   await auth.setCustomUserClaims(uid, merged);
 
   const priorName = profileSnap.exists

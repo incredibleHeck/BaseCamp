@@ -9,11 +9,9 @@ export interface UserData {
   location: string;
   /**
    * B2B network / organization; umbrella scope for `org_admin` (multi-campus).
-   * Backed by `organizationId` in Firestore; older docs use `districtId` only and are merged on load.
+   * Backed by `organizationId` in Firestore.
    */
   organizationId?: string;
-  /** @deprecated use organizationId */
-  districtId?: string;
   circuitId?: string;
   schoolId?: string;
 }

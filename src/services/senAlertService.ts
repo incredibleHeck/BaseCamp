@@ -12,7 +12,6 @@ import type { Assessment } from './assessmentService';
 import { getStudentHistory } from './assessmentService';
 import { getStudent } from './studentService';
 import { DEFAULT_ORGANIZATION_ID } from '../config/organizationDefaults';
-import { effectiveOrganizationId } from '../utils/organizationScope';
 import type { SenWarningFlag } from './ai/aiPrompts/types';
 
 export const SEN_RULE_NUMERACY_PATTERN_V1 = 'numeracy-sen-pattern-consecutive-3';
@@ -26,8 +25,6 @@ export interface SenAlert {
   studentId: string;
   studentName?: string;
   organizationId?: string;
-  /** @deprecated use organizationId */
-  districtId?: string;
   circuitId?: string;
   schoolId?: string;
   status: 'open' | 'dismissed' | 'escalated' | 'snoozed';
@@ -93,14 +90,13 @@ async function persistAiLongitudinalSenAlert(
   if (hasOpen) return;
 
   const student = await getStudent(studentId);
-  const orgId = effectiveOrganizationId(student ?? undefined) ?? DEFAULT_ORGANIZATION_ID;
+  const orgId = student?.organizationId ?? DEFAULT_ORGANIZATION_ID;
   const summary = `Longitudinal AI screening (${flag.severity}): ${flag.category}. ${flag.reason}`;
 
   await addDoc(collection(db, COLLECTION), {
     studentId,
     studentName: student?.name ?? 'Learner',
     organizationId: orgId,
-    districtId: orgId,
     circuitId: student?.circuitId ?? '',
     schoolId: student?.schoolId ?? '',
     status: 'open',
@@ -163,7 +159,7 @@ export async function evaluateAndPersistSenAlerts(
     if (hasOpen) return;
 
     const student = await getStudent(studentId);
-    const orgId = effectiveOrganizationId(student ?? undefined) ?? DEFAULT_ORGANIZATION_ID;
+    const orgId = student?.organizationId ?? DEFAULT_ORGANIZATION_ID;
 
     const summary =
       'Three consecutive numeracy assessments show overlapping educational risk patterns (e.g. number sense / processing). This is a screening signal for coordinator review—not a diagnosis.';
@@ -172,7 +168,6 @@ export async function evaluateAndPersistSenAlerts(
       studentId,
       studentName: student?.name ?? 'Learner',
       organizationId: orgId,
-      districtId: orgId,
       circuitId: student?.circuitId ?? '',
       schoolId: student?.schoolId ?? '',
       status: 'open',
@@ -200,16 +195,13 @@ export async function listSenAlertsInJurisdiction(organizationId: string): Promi
     const list: SenAlert[] = [];
     snap.forEach((d) => {
       const data = d.data() as Record<string, unknown>;
-      const rowOrg = effectiveOrganizationId(
-        data as { organizationId?: string; districtId?: string }
-      );
+      const rowOrg = data.organizationId as string | undefined;
       if (rowOrg !== organizationId) return;
       list.push({
         id: d.id,
         studentId: data.studentId as string,
         studentName: data.studentName as string | undefined,
         organizationId: data.organizationId as string | undefined,
-        districtId: (data.districtId as string) ?? '',
         circuitId: (data.circuitId as string) || undefined,
         schoolId: (data.schoolId as string) || undefined,
         status: data.status as SenAlert['status'],
@@ -228,9 +220,6 @@ export async function listSenAlertsInJurisdiction(organizationId: string): Promi
     return [];
   }
 }
-
-/** @deprecated use listSenAlertsInJurisdiction */
-export const listSenAlertsForDistrict = listSenAlertsInJurisdiction;
 
 export async function updateSenAlertStatus(
   alertId: string,

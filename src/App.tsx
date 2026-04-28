@@ -14,7 +14,6 @@ import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
 import { AssessmentProvider } from './context/AssessmentContext';
 import { DEFAULT_ORGANIZATION_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
-import { effectiveOrganizationId } from './utils/organizationScope';
 import { isDemoHostedBuild } from './config/demoMode';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
 import { PremiumTierProvider } from './context/PremiumTierContext';
@@ -64,7 +63,6 @@ export default function App() {
                     name: 'Super Admin',
                     email: user.email ?? '',
                     organizationId: DEFAULT_ORGANIZATION_ID,
-                    districtId: DEFAULT_ORGANIZATION_ID,
                   },
                   { merge: true }
                 );
@@ -109,7 +107,7 @@ export default function App() {
             if (
               scopedRole &&
               VALID_ROLES.includes(scopedRole) &&
-              !effectiveOrganizationId(probe as { organizationId?: string; districtId?: string })
+              !(typeof probe.organizationId === 'string' && probe.organizationId.trim())
             ) {
               for (let attempt = 0; attempt < 25; attempt++) {
                 await new Promise((r) => setTimeout(r, 150));
@@ -117,7 +115,7 @@ export default function App() {
                 if (!again.exists()) break;
                 userDocSnap = again;
                 const d = again.data() as Record<string, unknown>;
-                if (effectiveOrganizationId(d as { organizationId?: string; districtId?: string })) break;
+                if (typeof d.organizationId === 'string' && d.organizationId.trim()) break;
               }
             }
           }
@@ -133,7 +131,7 @@ export default function App() {
             (role === 'org_admin' || role === 'sen_coordinator' || role === 'super_admin'
               ? 'Greater Accra'
               : 'Mando Basic School');
-          let organizationId = effectiveOrganizationId(data as { organizationId?: string; districtId?: string });
+          let organizationId = typeof data.organizationId === 'string' ? data.organizationId.trim() : undefined;
           let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
 
@@ -155,7 +153,7 @@ export default function App() {
             (role === 'org_admin' || role === 'sen_coordinator')
           ) {
             console.warn(
-              '[BaseCamp] User profile has no organizationId or districtId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
+              '[BaseCamp] User profile has no organizationId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
               user.uid
             );
           }
@@ -164,29 +162,18 @@ export default function App() {
           if (!demoSeedEnabled && (role === 'org_admin' || role === 'sen_coordinator')) {
             try {
               const idt = await user.getIdTokenResult();
-              const fromClaims = effectiveOrganizationId(
-                idt.claims as { organizationId?: string; districtId?: string }
-              );
+              const fromClaims = typeof idt.claims.organizationId === 'string' ? idt.claims.organizationId : undefined;
               if (!organizationId && fromClaims) {
                 try {
                   await setDoc(
                     userDocRef,
-                    { organizationId: fromClaims, districtId: fromClaims },
+                    { organizationId: fromClaims },
                     { merge: true }
                   );
                 } catch (backfillErr) {
                   console.warn('[BaseCamp] Could not write organizationId from claims to users doc', backfillErr);
                 }
                 organizationId = fromClaims;
-              } else if (
-                organizationId &&
-                fromClaims &&
-                organizationId !== fromClaims
-              ) {
-                console.warn(
-                  '[BaseCamp] organizationId mismatch: Firestore users doc vs Auth custom claims. Branch queries use the profile value; align Firestore schools.organizationId with users.organizationId if the directory is empty.',
-                  { uid: user.uid, profileOrganizationId: organizationId, claimsOrganizationId: fromClaims }
-                );
               }
             } catch (tokenErr) {
               console.warn('[BaseCamp] getIdTokenResult failed while resolving organization scope', tokenErr);
@@ -296,6 +283,10 @@ function LoggedInApp({ user }: LoggedInAppProps) {
   const [currentView, setCurrentView] = useState<View>(() => defaultViewForRole(user.role) as View);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedSchoolForOverviewId, setSelectedSchoolForOverviewId] = useState<string | null>(null);
+  const [superAdminNetworkScope, setSuperAdminNetworkScope] = useState<{
+    organizationId: string;
+    name: string;
+  } | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [showOfflineQueuedModal, setShowOfflineQueuedModal] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string } | null>(null);
@@ -371,6 +362,10 @@ function LoggedInApp({ user }: LoggedInAppProps) {
     await refreshQueue();
   }, [processQueue, refreshQueue]);
 
+  const onClearSuperAdminNetwork = useCallback(() => {
+    setSuperAdminNetworkScope(null);
+  }, []);
+
   return (
     <PremiumTierProvider user={user}>
       <LiveClassroomSessionProvider>
@@ -406,6 +401,9 @@ function LoggedInApp({ user }: LoggedInAppProps) {
             studentNameById={studentNameById}
             handleRemoveQueuedItem={handleRemoveQueuedItem}
             handleRetryQueuedNow={handleRetryQueuedNow}
+            onClearSuperAdminNetwork={onClearSuperAdminNetwork}
+            superAdminNetworkScope={superAdminNetworkScope}
+            setSuperAdminNetworkScope={setSuperAdminNetworkScope}
           />
         </AssessmentProvider>
       </LiveClassroomSessionProvider>

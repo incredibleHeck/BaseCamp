@@ -1,6 +1,5 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { effectiveOrganizationId } from '../utils/organizationScope';
 import type { School } from '../types/domain';
 
 export type { School };
@@ -8,9 +7,7 @@ export type { School };
 const SCHOOLS_COLLECTION = 'schools';
 
 function schoolFromFirestoreDoc(docId: string, data: Record<string, unknown>): School | null {
-  const organizationId = effectiveOrganizationId(
-    data as { organizationId?: string; districtId?: string }
-  );
+  const organizationId = typeof data.organizationId === 'string' ? data.organizationId.trim() : undefined;
   const name = typeof data.name === 'string' ? data.name.trim() : '';
   if (!organizationId || !name) return null;
   return {
@@ -31,6 +28,13 @@ function schoolFromFirestoreDoc(docId: string, data: Record<string, unknown>): S
 }
 
 /**
+ * Load a single school document by Firestore document id (campus branch).
+ *
+ * Alias for tooling / UI copy that calls this `getSchoolById`.
+ */
+export const getSchoolById = async (id: string): Promise<School | null> => getSchool(id);
+
+/**
  * Load a single school document by Firestore document id.
  */
 export async function getSchool(id: string): Promise<School | null> {
@@ -49,25 +53,19 @@ export async function getSchool(id: string): Promise<School | null> {
 
 /**
  * Branches (Firestore `schools` docs) in a school-network scope.
- * B2B canonical field on documents is **`organizationId`**. A second query matches legacy **`districtId`**
- * (same string id) so older seeded rows still appear until backfilled.
+ * B2B canonical field on documents is **`organizationId`**.
  */
 export async function getSchoolsInOrganization(organizationId: string): Promise<School[]> {
   const trimmed = organizationId?.trim();
   if (!trimmed) return [];
   try {
-    const [byOrg, byLegacy] = await Promise.all([
-      getDocs(query(collection(db, SCHOOLS_COLLECTION), where('organizationId', '==', trimmed))),
-      getDocs(query(collection(db, SCHOOLS_COLLECTION), where('districtId', '==', trimmed))),
-    ]);
-    const map = new Map<string, School>();
-    for (const snap of [byOrg, byLegacy]) {
-      snap.forEach((d) => {
-        const row = schoolFromFirestoreDoc(d.id, d.data() as Record<string, unknown>);
-        if (row) map.set(d.id, row);
-      });
-    }
-    return [...map.values()];
+    const snap = await getDocs(query(collection(db, SCHOOLS_COLLECTION), where('organizationId', '==', trimmed)));
+    const out: School[] = [];
+    snap.forEach((d) => {
+      const row = schoolFromFirestoreDoc(d.id, d.data() as Record<string, unknown>);
+      if (row) out.push(row);
+    });
+    return out;
   } catch (error) {
     const code =
       error && typeof error === 'object' && 'code' in error

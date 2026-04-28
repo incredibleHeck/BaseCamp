@@ -7,7 +7,6 @@ import {
   type SenAlert,
 } from '../../services/senAlertService';
 import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
-import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { SenAlertCard } from './SenAlertCard';
 
 interface SenAlertsInboxProps {
@@ -16,7 +15,7 @@ interface SenAlertsInboxProps {
 }
 
 export function SenAlertsInbox({ user, onAlertClick }: SenAlertsInboxProps) {
-  const organizationId = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
+  const organizationId = user.organizationId ?? DEFAULT_ORGANIZATION_ID;
   const [alerts, setAlerts] = useState<SenAlert[]>([]);
   const [loading, setLoading] = useState(true);
 

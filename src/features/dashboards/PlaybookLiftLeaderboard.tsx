@@ -7,7 +7,6 @@ import {
 } from '../../services/analytics/organizationAnalyticsService';
 import { computePlaybookLiftLeaderboard, type PlaybookLiftRow } from '../../services/analytics/playbookAnalyticsService';
 import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
-import { effectiveOrganizationId } from '../../utils/organizationScope';
 
 interface PlaybookLiftLeaderboardProps {
   user: UserData;
@@ -17,7 +16,7 @@ export function PlaybookLiftLeaderboard({ user }: PlaybookLiftLeaderboardProps) 
   const [rows, setRows] = useState<PlaybookLiftRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const orgScope = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
+  const orgScope = user.organizationId ?? DEFAULT_ORGANIZATION_ID;
   const scope: OrganizationFeatureScope = useMemo(
     () => ({
       organizationId: orgScope,

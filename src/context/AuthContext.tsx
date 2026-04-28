@@ -24,9 +24,7 @@ function parseTokenClaims(claims: Record<string, unknown>): TokenClaims {
   const org =
     typeof claims.organizationId === 'string' && claims.organizationId.trim()
       ? claims.organizationId.trim()
-      : typeof claims.districtId === 'string' && claims.districtId.trim()
-        ? claims.districtId.trim()
-        : undefined;
+      : undefined;
   return {
     schoolId: typeof claims.schoolId === 'string' ? claims.schoolId : undefined,
     role: typeof claims.role === 'string' ? claims.role : undefined,

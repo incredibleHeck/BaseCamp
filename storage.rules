@@ -25,7 +25,7 @@ service firebase.storage {
 
     function isJurisdictionOversight() {
       return userExists() &&
-        (userData().role == 'org_admin' || userData().role == 'school_admin' || userData().role == 'district' || userData().role == 'sen_coordinator');
+        (userData().role == 'org_admin' || userData().role == 'school_admin' || userData().role == 'sen_coordinator');
     }
 
     function userSchoolId() {
@@ -33,12 +33,12 @@ service firebase.storage {
     }
 
     function userOrganizationId() {
-      return (userData().organizationId is string && userData().organizationId != '') ? userData().organizationId : userData().districtId;
+      return userData().organizationId is string && userData().organizationId != '' ? userData().organizationId : '';
     }
 
     function schoolOrganizationId(schoolId) {
       let d = firestore.get(/databases/(default)/documents/schools/$(schoolId)).data;
-      return (d.organizationId is string && d.organizationId != '') ? d.organizationId : d.districtId;
+      return d.organizationId is string && d.organizationId != '' ? d.organizationId : '';
     }
 
     // Personal scratch / uploads keyed by Auth uid (mirrors Firestore `users/{uid}` ownership).

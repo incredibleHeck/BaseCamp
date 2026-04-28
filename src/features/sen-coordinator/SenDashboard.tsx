@@ -4,7 +4,6 @@ import type { UserData } from '../../components/layout/Header';
 import { SenAlertsInbox } from './SenAlertsInbox';
 import { listSenAlertsInJurisdiction } from '../../services/senAlertService';
 import { DEFAULT_ORGANIZATION_ID } from '../../config/organizationDefaults';
-import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 
 interface SenDashboardProps {
@@ -13,8 +12,7 @@ interface SenDashboardProps {
 }
 
 export function SenDashboard({ user, onAlertClick }: SenDashboardProps) {
-  const organizationId = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
-  const [stats, setStats] = useState({
+  const organizationId = user.organizationId ?? DEFAULT_ORGANIZATION_ID;  const [stats, setStats] = useState({
     openAlerts: 0,
     escalatedAlerts: 0,
     totalReviewed: 0,

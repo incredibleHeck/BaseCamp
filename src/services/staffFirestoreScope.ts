@@ -1,9 +1,8 @@
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 
 import { auth, db } from '../lib/firebase';
-import { getCohortsByTeacher } from './cohortService';
+import { getCohortsForTeacher } from './cohortService';
 import { getSchoolsInOrganization } from './schoolService';
-import { effectiveOrganizationId } from '../utils/organizationScope';
 
 /** Matches demo seed super-admin Auth emails (see firestore.rules.demo). */
 const DEMO_SUPER_ADMIN_EMAILS = new Set(['superadmin@basecamp.com', 'super_admin@basecamp.com']);
@@ -50,15 +49,13 @@ export async function getStaffAccessScope(): Promise<StaffAccessScope> {
       (typeof d.linkedTeacherId === 'string' && d.linkedTeacherId.trim()) ||
       (typeof d.linkedProfileId === 'string' && d.linkedProfileId.trim()) ||
       u.uid;
-    const cohorts = await getCohortsByTeacher(tid);
+    const cohorts = await getCohortsForTeacher(tid);
     const cohortIds = cohorts.map((c) => c.id).filter(Boolean);
     return cohortIds.length > 0 ? { kind: 'cohorts', cohortIds } : { kind: 'none' };
   }
 
   if (role === 'org_admin' || role === 'school_admin' || role === 'sen_coordinator') {
-    const oid = effectiveOrganizationId(
-      d as { organizationId?: string; districtId?: string }
-    );
+    const oid = typeof d.organizationId === 'string' ? d.organizationId.trim() : '';
     if (!oid) return { kind: 'none' };
     const schools = await getSchoolsInOrganization(oid);
     const schoolIds = schools.map((s) => s.id).filter(Boolean);

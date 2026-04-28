@@ -1,12 +1,9 @@
 /**
- * B2B org model: `organizationId` is canonical; `districtId` is legacy and read as fallback
- * until data is backfilled. Document ids (`schools/{schoolId}`) stay stable.
+ * B2B multi-tenant: `organizationId` is the only network scope field on Firestore documents.
  */
 export function effectiveOrganizationId(
-  v: { organizationId?: string; districtId?: string } | null | undefined
+  record: { organizationId?: string } | null | undefined
 ): string | undefined {
-  const a = v?.organizationId?.trim();
-  if (a) return a;
-  const b = v?.districtId?.trim();
-  return b || undefined;
+  const o = record?.organizationId;
+  return typeof o === 'string' && o.trim() ? o.trim() : undefined;
 }

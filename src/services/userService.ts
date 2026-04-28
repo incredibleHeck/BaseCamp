@@ -1,7 +1,5 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 
-import { effectiveOrganizationId } from '../utils/organizationScope';
-
 import { httpsCallable } from 'firebase/functions';
 
 import { auth, db, functions } from '../lib/firebase';
@@ -31,46 +29,32 @@ export type CreateTeacherResult = {
 };
 
 /**
- * Headteachers in `users` under an `organizationId` (and legacy `districtId`), for org admin branch directory.
+ * Headteachers in `users` under an `organizationId`, for org admin branch directory.
  */
 export async function getHeadteachersInOrganization(organizationId: string): Promise<HeadteacherSummary[]> {
   const trimmed = organizationId?.trim();
   if (!trimmed) return [];
 
   try {
-    const [byOrg, byLegacy] = await Promise.all([
-      getDocs(
-        query(
-          collection(db, USERS_COLLECTION),
-          where('organizationId', '==', trimmed),
-          where('role', '==', 'headteacher')
-        )
-      ),
-      getDocs(
-        query(
-          collection(db, USERS_COLLECTION),
-          where('districtId', '==', trimmed),
-          where('role', '==', 'headteacher')
-        )
-      ),
-    ]);
-    const map = new Map<string, HeadteacherSummary>();
-    for (const snap of [byOrg, byLegacy]) {
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as Record<string, unknown>;
-        if (effectiveOrganizationId(data as { organizationId?: string; districtId?: string }) !== trimmed) {
-          return;
-        }
-        const name = typeof data.name === 'string' ? data.name.trim() : '';
-        const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : undefined;
-        map.set(docSnap.id, {
-          id: docSnap.id,
-          name: name || docSnap.id,
-          schoolId,
-        });
+    const snap = await getDocs(
+      query(
+        collection(db, USERS_COLLECTION),
+        where('organizationId', '==', trimmed),
+        where('role', '==', 'headteacher')
+      )
+    );
+    const out: HeadteacherSummary[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, unknown>;
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      const schoolId = typeof data.schoolId === 'string' ? data.schoolId.trim() : undefined;
+      out.push({
+        id: docSnap.id,
+        name: name || docSnap.id,
+        schoolId,
       });
-    }
-    return [...map.values()];
+    });
+    return out;
   } catch (error) {
     console.error('userService.getHeadteachersInOrganization failed:', error);
     return [];
@@ -174,12 +158,19 @@ export async function addTeacher(name: string, schoolId: string, _headteacherId:
 /**
  * Removes a teacher: Cloud Function deletes Auth user, cohort unassign, and Firestore user doc.
  */
-export async function deleteTeacher(teacherId: string): Promise<void> {
+export async function deleteTeacher(
+  teacherId: string,
+  options?: { successorTeacherUid?: string | null }
+): Promise<void> {
   const id = teacherId?.trim();
   if (!id) throw new Error('teacherId is required.');
 
+  const succ = typeof options?.successorTeacherUid === 'string' ? options.successorTeacherUid.trim() : '';
   try {
-    await deleteSchoolTeacherCallable({ teacherUid: id });
+    await deleteSchoolTeacherCallable({
+      teacherUid: id,
+      ...(succ ? { successorTeacherUid: succ } : {}),
+    });
   } catch (error) {
     console.error('userService.deleteTeacher failed:', error);
     throw new Error('Failed to remove teacher.');

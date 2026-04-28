@@ -4,13 +4,12 @@ import {
   type NetworkAnalyticsPayload,
 } from '../../services/analytics/organizationAnalyticsService';
 import { useAuth } from '../../context/AuthContext';
-import { effectiveOrganizationId } from '../../utils/organizationScope';
 import { NetworkBranchKPIs } from './NetworkBranchKPIs';
 import { SchoolComparisonCharts } from './SchoolComparisonCharts';
 
 export function OrganizationDashboard({ onSchoolClick }: { onSchoolClick?: (schoolId: string) => void }) {
   const { user } = useAuth();
-  const organizationId = effectiveOrganizationId(user)?.trim() || undefined;
+  const organizationId = user?.organizationId?.trim() || undefined;
 
   const [data, setData] = useState<NetworkAnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(() => Boolean(organizationId));

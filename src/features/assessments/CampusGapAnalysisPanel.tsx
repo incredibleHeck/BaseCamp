@@ -66,7 +66,7 @@ export function CampusGapAnalysisPanel({ user }: CampusGapAnalysisPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const orgScope = effectiveOrganizationId(user) ?? DEFAULT_ORGANIZATION_ID;
+  const orgScope = user.organizationId ?? DEFAULT_ORGANIZATION_ID;
   const scope: OrganizationFeatureScope = useMemo(
     () => ({
       organizationId: orgScope,

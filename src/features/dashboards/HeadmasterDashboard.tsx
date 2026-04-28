@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { AlertTriangle, FileText, TrendingUp, Users, BarChart3, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BarChart3, Download, FileText, Loader2, TrendingUp, Users } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -23,10 +23,13 @@ import {
   generateSchoolAnalytics,
   type SchoolAnalyticsPayload,
 } from '../../services/analytics/schoolAnalyticsService';
+import { getSchoolById } from '../../services/schoolService';
+import type { School } from '../../types/domain';
 import { useAuth } from '../../context/AuthContext';
 import { useExecutiveSummary } from '../../hooks/useExecutiveSummary';
-
-const BAR_FILL = '#4f46e5';
+import { PageHero } from '../../components/page-shell/PageHero';
+import { Button } from '../../components/ui/button';
+import { downloadCampusRosterCsv } from '../../utils/campusRosterExport';
 
 function formatAvgScorePercent(value: number): string {
   return `${value.toFixed(1)}%`;
@@ -35,6 +38,28 @@ function formatAvgScorePercent(value: number): string {
 export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideSchoolId?: string, onBack?: () => void }) {
   const { user } = useAuth();
   const schoolId = overrideSchoolId || user.schoolId?.trim() || undefined;
+
+  const [schoolDoc, setSchoolDoc] = useState<School | null>(null);
+  const [schoolDocLoading, setSchoolDocLoading] = useState(false);
+
+  useEffect(() => {
+    if (!schoolId) {
+      setSchoolDoc(null);
+      setSchoolDocLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSchoolDocLoading(true);
+    void getSchoolById(schoolId).then((doc) => {
+      if (!cancelled) {
+        setSchoolDoc(doc);
+        setSchoolDocLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolId]);
 
   const { summary: aggDoc, loading: aggLoading, error: aggError } = useExecutiveSummary(schoolId);
 
@@ -61,6 +86,7 @@ export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideScho
   const [fallbackData, setFallbackData] = useState<SchoolAnalyticsPayload | null>(null);
   const [fallbackLoading, setFallbackLoading] = useState(false);
   const [fallbackError, setFallbackError] = useState<string | null>(null);
+  const [csvExporting, setCsvExporting] = useState(false);
 
   const loadFallback = useCallback(async () => {
     if (!schoolId) return;
@@ -113,14 +139,46 @@ export function HeadmasterDashboard({ overrideSchoolId, onBack }: { overrideScho
           Back to organization
         </button>
       )}
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          {overrideSchoolId ? 'School Overview' : 'Headmaster dashboard'}
-        </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          School-wide performance and class averages from local assessment data.
-        </p>
-      </header>
+      <PageHero
+        className="!mb-0 !sm:mb-0"
+        title={
+          schoolId && schoolDocLoading ? (
+            <Skeleton className="h-9 w-[min(100%,28rem)] max-w-full rounded-md" aria-hidden />
+          ) : schoolDoc?.name ? (
+            <span>{schoolDoc.name}</span>
+          ) : overrideSchoolId ? (
+            <span>School overview</span>
+          ) : (
+            <span>Headteacher dashboard</span>
+          )
+        }
+        description="Assessment activity and class averages grouped for your campus."
+        actions={
+          schoolId ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={csvExporting}
+              aria-busy={csvExporting}
+              className="shrink-0"
+              onClick={() => {
+                setCsvExporting(true);
+                void downloadCampusRosterCsv(schoolId, 'campus-roster-export').finally(() =>
+                  setCsvExporting(false)
+                );
+              }}
+            >
+              {csvExporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Download className="mr-2 h-4 w-4 shrink-0" aria-hidden />
+              )}
+              Export CSV
+            </Button>
+          ) : undefined
+        }
+      />
 
       {scopeMissing && !loading && (
         <p

@@ -4,7 +4,7 @@ import { logWorkflow } from '../../utils/workflowLog';
 import { useAssessment } from '../../context/AssessmentContext';
 import type { CurriculumFramework } from '../../services/ai/curriculumRagService';
 import { parseGradeLevelFromStudentRecord } from '../../utils/longitudinalPromptHelpers';
-import { getCohortsBySchool, getCohortsByTeacher } from '../../services/cohortService';
+import { getCohortsForCampus, getCohortsForTeacher } from '../../services/cohortService';
 import { useAuth } from '../../context/AuthContext';
 import type { Cohort } from '../../types/domain';
 import { ASSESSMENT_TRANSLANGUAGING_LANGUAGES } from '../../constants/studentLanguages';
@@ -63,13 +63,13 @@ export function useAssessmentSetup(initialStudentId: string) {
         let fetchedStudents: Student[] = [];
 
         if (user.role === 'teacher' && user.id) {
-          fetchedCohorts = await getCohortsByTeacher(user.id);
+          fetchedCohorts = await getCohortsForTeacher(user.id);
           const cohortIds = fetchedCohorts.map(c => c.id);
           if (cohortIds.length > 0) {
             fetchedStudents = await getStudentsByCohorts(cohortIds);
           }
         } else if (schoolId) {
-          fetchedCohorts = await getCohortsBySchool(schoolId);
+          fetchedCohorts = await getCohortsForCampus(schoolId);
           fetchedStudents = await getStudentsBySchool(schoolId);
         } else {
           // Fallback for school admin / super admin without schoolId

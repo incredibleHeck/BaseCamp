@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { addStudent, Student } from '../../services/studentService';
-import { getCohortsByTeacher } from '../../services/cohortService';
+import { getCohortsForTeacher } from '../../services/cohortService';
 import { useAuth } from '../../context/AuthContext';
 import type { Cohort } from '../../types/domain';
 import {
@@ -51,6 +51,12 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
       setSelectedCohortId(preselectedCohortId);
     }
 
+    if (user.role !== 'teacher') {
+      setCohorts([]);
+      setCohortsLoading(false);
+      return;
+    }
+
     const tid = user.id?.trim();
     if (!tid) {
       setCohorts([]);
@@ -60,7 +66,7 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
 
     let cancelled = false;
     setCohortsLoading(true);
-    getCohortsByTeacher(tid)
+    getCohortsForTeacher(tid)
       .then((list) => {
         if (!cancelled) {
           setCohorts(list);
@@ -74,13 +80,20 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
     return () => {
       cancelled = true;
     };
-  }, [isOpen, user.id]);
+  }, [isOpen, user.id, user.role, preselectedCohortId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cohort = cohorts.find((c) => c.id === selectedCohortId);
+    const sid = schoolId?.trim();
     if (!name.trim() || !cohort || !primaryLanguage) {
       alert('Please fill out all required fields (name, class, primary language).');
+      return;
+    }
+    if (!sid) {
+      alert(
+        'Your account is missing a school assignment (schoolId). Ask your administrator to link your profile to your campus before adding students.'
+      );
       return;
     }
 
@@ -89,11 +102,11 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
       name: name.trim(),
       grade: cohort.name,
       cohortId: cohort.id,
+      schoolId: sid,
       numericGradeLevel: cohort.gradeLevel,
       primaryLanguage,
       ...(officialSenStatus ? { officialSenStatus } : {}),
       dataProcessingConsent,
-      ...(schoolId?.trim() ? { schoolId: schoolId.trim() } : {}),
     };
     const newId = await addStudent(newStudent);
 

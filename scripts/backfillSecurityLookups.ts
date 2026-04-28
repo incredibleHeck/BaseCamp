@@ -101,7 +101,7 @@ async function backfillAccessLookups(db: Firestore, dryRun: boolean): Promise<vo
       const d = docSnap.data();
       const name = typeof d.name === 'string' ? d.name : '';
       const schoolId = typeof d.schoolId === 'string' ? d.schoolId : '';
-      const districtId = typeof d.districtId === 'string' ? d.districtId : '';
+      const organizationId = typeof d.organizationId === 'string' ? d.organizationId : '';
       const email = typeof d.email === 'string' ? d.email.trim() : '';
       const username = typeof d.username === 'string' ? d.username.trim() : '';
 
@@ -120,7 +120,7 @@ async function backfillAccessLookups(db: Firestore, dryRun: boolean): Promise<vo
         role,
         name,
         schoolId,
-        districtId,
+        organizationId,
         email,
         username: username || email,
       };
