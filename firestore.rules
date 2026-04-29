@@ -235,23 +235,23 @@ service cloud.firestore {
     // --- Instructional data ---
 
     match /cohorts/{cohortId} {
-      // Documents must store `schoolId` (see cohortService) for claim-based tenant checks.
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (resource.data.schoolId is string && (
-          isUserInSchool(resource.data.schoolId) ||
-          isStaffUserDocInSchool(resource.data.schoolId) ||
-          isOrgAdminForSchoolId(resource.data.schoolId) ||
-          (isTeacher() && isTeacherOfCohortData(resource.data) &&
-            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))
-          )
-        ))
+      // Allow read if user is super admin, org admin of the same network, headteacher of the same campus,
+      // OR if the user is listed in the assignedTeacherIds array (or legacy teacherId).
+      allow read: if request.auth != null && (
+        request.auth.token.role == 'super_admin' ||
+        (request.auth.token.role == 'org_admin' && resource.data.organizationId == request.auth.token.organizationId) ||
+        request.auth.token.schoolId == resource.data.schoolId ||
+        request.auth.uid in resource.data.assignedTeacherIds ||
+        request.auth.uid == resource.data.teacherId
       );
-      allow create, update, delete: if isAdmin() || (
-        request.resource.data.schoolId is string &&
-        (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
-         isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
-        (isHeadteacher() || (isJurisdictionOversight() && isOrgAdminForSchoolId(request.resource.data.schoolId)))
+
+      // Allow write for admins, headteachers, and assigned teachers.
+      allow write: if request.auth != null && (
+        request.auth.token.role == 'super_admin' ||
+        (request.auth.token.role == 'org_admin' && resource.data.organizationId == request.auth.token.organizationId) ||
+        request.auth.token.schoolId == resource.data.schoolId ||
+        request.auth.uid in resource.data.assignedTeacherIds ||
+        request.auth.uid == resource.data.teacherId
       );
     }
 
