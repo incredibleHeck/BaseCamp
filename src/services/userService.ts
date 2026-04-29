@@ -9,6 +9,7 @@ const deleteSchoolTeacherCallable = httpsCallable(functions, 'deleteSchoolTeache
 
 const USERS_COLLECTION = 'users';
 
+/** `id` is the Firebase Auth UID — must match `users/{uid}` and cohort `assignedTeacherIds` for queries. */
 export type SchoolTeacherSummary = {
   id: string;
   name: string;
@@ -113,9 +114,12 @@ export async function getTeachersBySchool(schoolId: string): Promise<SchoolTeach
       const data = docSnap.data() as Record<string, unknown>;
       const name = typeof data.name === 'string' ? data.name.trim() : '';
       const username = typeof data.username === 'string' ? data.username : undefined;
+      const uidFromField = typeof data.uid === 'string' ? data.uid.trim() : '';
+      const authUid = uidFromField || docSnap.id.trim();
+      if (!authUid) return;
       out.push({
-        id: docSnap.id,
-        name: name || docSnap.id,
+        id: authUid,
+        name: name || authUid,
         username,
       });
     });

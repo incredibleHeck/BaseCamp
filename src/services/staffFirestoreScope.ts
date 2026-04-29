@@ -4,7 +4,7 @@ import { auth, db } from '../lib/firebase';
 import { getCohortsForTeacher } from './cohortService';
 import { getSchoolsInOrganization } from './schoolService';
 
-/** Matches demo seed super-admin Auth emails (see firestore.rules.demo). */
+/** Allowed super-admin Auth emails for diagnostics-wide Firestore access (see firestore.rules.demo). */
 const DEMO_SUPER_ADMIN_EMAILS = new Set(['superadmin@basecamp.com', 'super_admin@basecamp.com']);
 
 export type StaffAccessScope =

@@ -66,6 +66,7 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
 
     let cancelled = false;
     setCohortsLoading(true);
+    console.log('Teacher ID used for cohort query:', user.id);
     getCohortsForTeacher(tid)
       .then((list) => {
         if (!cancelled) {
@@ -168,9 +169,9 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
                 You must be signed in to load your assigned classes.
               </p>
             )}
-            {user.id?.trim() && !cohortsLoading && cohorts.length === 0 && (
+            {user.role === 'teacher' && user.id?.trim() && !cohortsLoading && cohorts.length === 0 && (
               <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                You have not been assigned any classes. Please contact your Headteacher.
+                No assigned classes available. Please contact your head teacher.
               </p>
             )}
           </div>

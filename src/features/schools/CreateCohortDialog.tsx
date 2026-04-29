@@ -236,6 +236,8 @@ export function CreateCohortDialog({
 
     if (editingCohort?.id) {
 
+      console.log('Saving Cohort with Teacher UIDs:', assignedTeacherIds);
+
       const ok = await updateCohort(editingCohort.id, {
 
         name: trimmed,
@@ -265,6 +267,8 @@ export function CreateCohortDialog({
     }
 
 
+
+    console.log('Saving Cohort with Teacher UIDs:', assignedTeacherIds);
 
     const id = await createCohort({
 
@@ -412,11 +416,13 @@ export function CreateCohortDialog({
 
                       onChange={(e) => {
 
+                        const teacherUid = t.id;
+
                         setAssignedTeacherIds((prev) => {
 
-                          if (e.target.checked) return [...new Set([...prev, t.id])];
+                          if (e.target.checked) return [...new Set([...prev, teacherUid])];
 
-                          return prev.filter((id) => id !== t.id);
+                          return prev.filter((id) => id !== teacherUid);
 
                         });
 

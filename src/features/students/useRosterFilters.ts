@@ -8,7 +8,9 @@ export function useRosterFilters(students: StudentListItem[]) {
   const filteredStudents = useMemo(() => {
     return students.filter(student => {
       const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCohort = selectedCohortId === 'all' || student.cohortId === selectedCohortId;
+      const matchesCohort =
+        selectedCohortId === 'all' ||
+        (selectedCohortId !== '' && student.cohortId === selectedCohortId);
       return matchesSearch && matchesCohort;
     });
   }, [students, searchTerm, selectedCohortId]);

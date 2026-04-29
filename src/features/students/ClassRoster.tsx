@@ -24,7 +24,6 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { useRosterFilters } from './useRosterFilters';
-import { DEFAULT_CLASS_LABEL } from '../../config/academicContext';
 import { PageHero } from '../../components/page-shell/PageHero';
 
 function formatLastAssessment(lastDateMs: number): string {
@@ -91,7 +90,15 @@ export function ClassRoster({
     const override = rosterLabelOverride?.trim();
     if (override) return override;
 
-    if (selectedCohortId !== 'all') {
+    if (user.role === 'teacher' && cohorts.length === 0) {
+      return 'No assigned classes';
+    }
+
+    if (user.role === 'headteacher' && selectedCohortId === 'all' && cohorts.length === 0) {
+      return 'No classes yet';
+    }
+
+    if (selectedCohortId !== 'all' && selectedCohortId !== '') {
       const match = cohorts.find((c) => c.id === selectedCohortId);
       if (match?.name?.trim()) return match.name.trim();
     }
@@ -113,10 +120,11 @@ export function ClassRoster({
       return 'All students';
     }
 
-    return DEFAULT_CLASS_LABEL;
+    return 'Class roster';
   }, [rosterLabelOverride, cohorts, selectedCohortId, user.role]);
 
   const handleExportGradebook = async () => {
+    if (user.role === 'teacher' && cohorts.length === 0) return;
     setIsExporting(true);
     try {
       const ok = await exportClassGradebookCsv(resolvedRosterLabel);
@@ -146,7 +154,12 @@ export function ClassRoster({
       } else if (user.role === 'teacher') {
         fetchedCohorts = await getCohortsForTeacher(user.id);
         setCohorts(fetchedCohorts);
-        if (fetchedCohorts.length > 0 && selectedCohortId === 'all') {
+        if (fetchedCohorts.length === 0) {
+          setSelectedCohortId('');
+        } else if (
+          fetchedCohorts.length > 0 &&
+          (selectedCohortId === 'all' || selectedCohortId === '')
+        ) {
           setSelectedCohortId(fetchedCohorts[0].id);
         }
         const cohortIds = fetchedCohorts.map(c => c.id);
@@ -201,6 +214,9 @@ export function ClassRoster({
     setIsAddStudentOpen(false);
   };
 
+  const teacherHasNoAssignedClasses =
+    !isLoading && user.role === 'teacher' && cohorts.length === 0;
+
   const getStatusDisplay = (score: number) => {
     if (score >= 70) return { icon: <CheckCircle2 size={16} />, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', text: 'On Track' };
     if (score >= 50) return { icon: <TrendingUp size={16} />, color: 'text-yellow-600 bg-yellow-50 border-yellow-200', text: 'Monitor' };
@@ -213,19 +229,27 @@ export function ClassRoster({
         isOpen={isAddStudentOpen}
         onClose={() => setIsAddStudentOpen(false)}
         onStudentAdded={handleStudentAdded}
-        preselectedCohortId={selectedCohortId !== 'all' ? selectedCohortId : undefined}
+        preselectedCohortId={
+          selectedCohortId !== 'all' && selectedCohortId !== '' ? selectedCohortId : undefined
+        }
       />
 
       <PageHero
         className="!mb-4"
         title={resolvedRosterLabel}
-        description={`${students.length} learner${students.length === 1 ? '' : 's'} enrolled on this roster.`}
+        description={
+          teacherHasNoAssignedClasses
+            ? 'You are not assigned to a class yet. Ask your head teacher to link you to a cohort.'
+            : `${students.length} learner${students.length === 1 ? '' : 's'} enrolled on this roster.`
+        }
       />
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full animate-in fade-in duration-500">
-        <div className="p-6 border-b border-gray-100 flex flex-col lg:flex-row lg:flex-wrap lg:items-center lg:justify-end gap-4">
+        {!teacherHasNoAssignedClasses ? (
+          <div className="p-6 border-b border-gray-100 flex flex-col lg:flex-row lg:flex-wrap lg:items-center lg:justify-end gap-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:flex-1 lg:min-w-0 lg:justify-end">
-            {(user.role === 'headteacher' && cohorts.length > 0) || (user.role === 'teacher' && cohorts.length > 1) ? (
+            {(user.role === 'headteacher' && cohorts.length > 0) ||
+            (user.role === 'teacher' && cohorts.length > 1) ? (
               <div className="relative w-full sm:w-48 shrink-0">
                 <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden />
                 <select
@@ -244,7 +268,7 @@ export function ClassRoster({
                 </div>
               </div>
             ) : null}
-            
+
             <div className="relative w-full sm:w-64 min-w-0">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -260,7 +284,7 @@ export function ClassRoster({
                 enterKeyHint="search"
               />
             </div>
-            {user.role === 'teacher' && (
+            {user.role === 'teacher' ? (
               <Button
                 type="button"
                 variant="default"
@@ -270,13 +294,13 @@ export function ClassRoster({
                 <UserPlus size={16} aria-hidden />
                 Add Student
               </Button>
-            )}
+            ) : null}
             <Button
               type="button"
               variant="outline"
               className="w-full shrink-0 sm:w-auto"
               onClick={() => void handleExportGradebook()}
-              disabled={isExporting}
+              disabled={isExporting || (user.role === 'teacher' && cohorts.length === 0)}
               aria-busy={isExporting}
             >
               {isExporting ? (
@@ -288,9 +312,22 @@ export function ClassRoster({
             </Button>
           </div>
         </div>
+        ) : null}
 
         <div className="overflow-x-auto">
-          {isLoading ? (
+          {teacherHasNoAssignedClasses ? (
+            <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                <Users className="h-8 w-8" strokeWidth={1.5} aria-hidden />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+                No assigned classes
+              </h3>
+              <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+                You have no assigned classes. Please contact your head teacher.
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="p-6">
               <Skeleton className="mb-6 h-8 w-48" />
               <Skeleton className="mb-2 h-16 w-full" />

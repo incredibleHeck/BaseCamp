@@ -13,17 +13,10 @@ import { useSyncManager } from './hooks/useSyncManager';
 import { useVoiceObservationSync } from './hooks/useVoiceObservationSync';
 import { getStudents } from './services/studentService';
 import { AssessmentProvider } from './context/AssessmentContext';
-import { DEFAULT_ORGANIZATION_ID, DEMO_SEED_PRIMARY_SCHOOL_ID } from './config/organizationDefaults';
-import { isDemoHostedBuild } from './config/demoMode';
 import { LoggedInAppChrome, type View } from './components/layout/LoggedInAppChrome';
 import { PremiumTierProvider } from './context/PremiumTierContext';
 import { LiveClassroomSessionProvider } from './context/LiveClassroomSessionContext';
 import { Toaster } from 'sonner';
-
-const demoSeedEnabled = isDemoHostedBuild;
-
-/** Diagnostics demo: Auth user may exist without Firestore `users/{uid}`; bootstrap matches demo rules + seeder emails. */
-const DEMO_SUPER_ADMIN_BOOTSTRAP_EMAILS = new Set(['superadmin@basecamp.com', 'super_admin@basecamp.com']);
 
 const VALID_ROLES: UserData['role'][] = [
   'teacher',
@@ -49,27 +42,6 @@ export default function App() {
             for (let attempt = 0; attempt < 15 && !userDocSnap.exists(); attempt++) {
               await new Promise((r) => setTimeout(r, 120));
               userDocSnap = await getDoc(userDocRef);
-            }
-          }
-
-          if (!userDocSnap.exists() && demoSeedEnabled && !user.isAnonymous) {
-            const em = user.email?.trim().toLowerCase() ?? '';
-            if (em && DEMO_SUPER_ADMIN_BOOTSTRAP_EMAILS.has(em)) {
-              try {
-                await setDoc(
-                  userDocRef,
-                  {
-                    role: 'super_admin',
-                    name: 'Super Admin',
-                    email: user.email ?? '',
-                    organizationId: DEFAULT_ORGANIZATION_ID,
-                  },
-                  { merge: true }
-                );
-                userDocSnap = await getDoc(userDocRef);
-              } catch (bootstrapErr) {
-                console.error('Failed to bootstrap super admin Firestore profile:', bootstrapErr);
-              }
             }
           }
 
@@ -135,20 +107,7 @@ export default function App() {
           let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
 
-          if (demoSeedEnabled) {
-            if (role === 'headteacher' && !schoolId) schoolId = DEMO_SEED_PRIMARY_SCHOOL_ID;
-            if (
-              (role === 'org_admin' ||
-                role === 'sen_coordinator' ||
-                role === 'super_admin') &&
-              !organizationId
-            ) {
-              organizationId = DEFAULT_ORGANIZATION_ID;
-            }
-          }
-
           if (
-            !demoSeedEnabled &&
             !organizationId &&
             (role === 'org_admin' || role === 'sen_coordinator')
           ) {
@@ -159,7 +118,7 @@ export default function App() {
           }
 
           // Claims can be ahead of a stale profile read; Firestore rules use users/{uid}, so backfill when safe.
-          if (!demoSeedEnabled && (role === 'org_admin' || role === 'sen_coordinator')) {
+          if (role === 'org_admin' || role === 'sen_coordinator') {
             try {
               const idt = await user.getIdTokenResult();
               const fromClaims = typeof idt.claims.organizationId === 'string' ? idt.claims.organizationId : undefined;
@@ -180,16 +139,8 @@ export default function App() {
             }
           }
 
-          let stableId = user.uid;
-          if (demoSeedEnabled) {
-            const lp = data.linkedProfileId;
-            if (typeof lp === 'string' && lp.trim().length > 0) {
-              stableId = lp.trim();
-            }
-          }
-
           const loadedUser: UserData = {
-            id: stableId,
+            id: user.uid,
             role,
             name,
             location,

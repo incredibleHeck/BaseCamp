@@ -21,10 +21,6 @@ export const DEMO_CIRCUITS = [
 
 export type DemoCircuitId = (typeof DEMO_CIRCUITS)[number]['id'];
 
-/** First school id created by `demoSeeder.ts` (`school1`..`school3`). Headteacher demo fallback must match. */
-export const DEMO_SEED_PRIMARY_SCHOOL_ID = 'school1';
-
-/** Minimum learners in a geography bucket before we show numeric intensity (privacy). */
 export const AGGREGATION_MIN_N = 5;
 
 /** Default school when none set on a student record. */
