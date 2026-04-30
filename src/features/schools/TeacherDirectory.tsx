@@ -24,7 +24,7 @@ const defaultTeachers: TeacherEntry[] = [
 ];
 
 export function TeacherDirectory({
-  schoolName = "Mando Basic School",
+  schoolName = 'Campus',
   teachers = defaultTeachers,
 }: TeacherDirectoryProps) {
   const { user, tokenClaims } = useAuth();

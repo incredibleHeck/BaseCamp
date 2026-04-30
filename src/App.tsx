@@ -98,36 +98,9 @@ export default function App() {
             rawRole === 'district' || rawRole === 'school_admin' ? 'org_admin' : rawRole;
           const role = VALID_ROLES.includes(r as UserData['role']) ? (r as UserData['role']) : 'teacher';
           let name = (typeof data.name === 'string' && data.name) || `${role.charAt(0).toUpperCase() + role.slice(1)} User`;
-          let location =
-            (typeof data.location === 'string' && data.location) ||
-            (role === 'org_admin' || role === 'sen_coordinator' || role === 'super_admin'
-              ? 'Greater Accra'
-              : 'Mando Basic School');
           let organizationId = typeof data.organizationId === 'string' ? data.organizationId.trim() : undefined;
           let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
-          let schoolName: string | undefined;
-          if (schoolId) {
-            try {
-              const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
-              if (schoolSnap.exists()) {
-                const nm = schoolSnap.data()?.name;
-                if (typeof nm === 'string' && nm.trim()) schoolName = nm.trim();
-              }
-            } catch {
-              /* ignore — addStudent resolves name from Firestore anyway */
-            }
-          }
-
-          if (
-            !organizationId &&
-            (role === 'org_admin' || role === 'sen_coordinator')
-          ) {
-            console.warn(
-              '[BaseCamp] User profile has no organizationId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
-              user.uid
-            );
-          }
 
           // Claims can be ahead of a stale profile read; Firestore rules use users/{uid}, so backfill when safe.
           if (role === 'org_admin' || role === 'sen_coordinator') {
@@ -151,12 +124,60 @@ export default function App() {
             }
           }
 
+          if (
+            !organizationId &&
+            (role === 'org_admin' || role === 'sen_coordinator')
+          ) {
+            console.warn(
+              '[BaseCamp] User profile has no organizationId; org-scoped branch directory and tools will be empty. Set organizationId on users/',
+              user.uid
+            );
+          }
+
+          let schoolName: string | undefined;
+          if (schoolId) {
+            try {
+              const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+              if (schoolSnap.exists()) {
+                const nm = schoolSnap.data()?.name;
+                if (typeof nm === 'string' && nm.trim()) schoolName = nm.trim();
+              }
+            } catch {
+              /* ignore — offline or rules */
+            }
+          }
+
+          let organizationDisplayName: string | undefined;
+          if (organizationId) {
+            try {
+              const orgSnap = await getDoc(doc(db, 'organizations', organizationId));
+              if (orgSnap.exists()) {
+                const raw = orgSnap.data() as Record<string, unknown>;
+                const nm = raw?.name;
+                if (typeof nm === 'string' && nm.trim()) organizationDisplayName = nm.trim();
+              }
+            } catch {
+              /* ignore — offline or rules */
+            }
+          }
+
+          const profileLocation =
+            typeof data.location === 'string' && data.location.trim() ? data.location.trim() : '';
+          const location =
+            profileLocation ||
+            schoolName?.trim() ||
+            organizationDisplayName?.trim() ||
+            (role === 'org_admin' || role === 'sen_coordinator' || role === 'super_admin'
+              ? 'Organization Dashboard'
+              : 'Campus Dashboard');
+
           const loadedUser: UserData = {
             id: user.uid,
             role,
             name,
             location,
             organizationId,
+            ...(organizationDisplayName ? { organizationName: organizationDisplayName } : {}),
             circuitId,
             schoolId,
             schoolName,
