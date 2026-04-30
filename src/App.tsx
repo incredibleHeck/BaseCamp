@@ -106,6 +106,18 @@ export default function App() {
           let organizationId = typeof data.organizationId === 'string' ? data.organizationId.trim() : undefined;
           let circuitId = typeof data.circuitId === 'string' ? data.circuitId : undefined;
           let schoolId = typeof data.schoolId === 'string' ? data.schoolId : undefined;
+          let schoolName: string | undefined;
+          if (schoolId) {
+            try {
+              const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+              if (schoolSnap.exists()) {
+                const nm = schoolSnap.data()?.name;
+                if (typeof nm === 'string' && nm.trim()) schoolName = nm.trim();
+              }
+            } catch {
+              /* ignore — addStudent resolves name from Firestore anyway */
+            }
+          }
 
           if (
             !organizationId &&
@@ -147,6 +159,7 @@ export default function App() {
             organizationId,
             circuitId,
             schoolId,
+            schoolName,
           };
 
           setCurrentUser(loadedUser);

@@ -256,68 +256,24 @@ service cloud.firestore {
     }
 
     match /students/{studentId} {
-      // `students` documents must include `schoolId` (see studentService) for `isUserInSchool` to apply.
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (resource.data.schoolId is string && (
-          isUserInSchool(resource.data.schoolId) ||
-          isStaffUserDocInSchool(resource.data.schoolId) ||
-          isOrgAdminForSchoolId(resource.data.schoolId) ||
-          (isHeadteacher() && (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))) ||
-          (isTeacher() && (teacherReadsDenormCohortTeacherData(resource.data) ||
-            (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId))) &&
-            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId)))
-        )) ||
-        studentPortalReadsStudent(studentId)
+      allow read, write: if request.auth != null && (
+        request.auth.token.role == 'super_admin' ||
+        (request.auth.token.role == 'org_admin' && resource.data.organizationId == request.auth.token.organizationId) ||
+        request.auth.token.schoolId == resource.data.schoolId ||
+        request.auth.token.schoolId == request.resource.data.schoolId ||
+        // Legacy fallback
+        (request.auth.token.districtId != null && request.auth.token.districtId == resource.data.districtId)
       );
-
-      allow write: if isAdmin() ||
-        studentPortalClearsActiveQuiz(studentId) ||
-        (request.resource != null && request.resource.data.schoolId is string &&
-          (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
-            isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
-          (resource == null || resource.data.schoolId == request.resource.data.schoolId) &&
-          (
-            (isTeacher() &&
-              isTeacherOfCohort(request.resource.data.cohortId) &&
-              (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
-            (isHeadteacher() &&
-              isHeadteacherOfCohortSchool(request.resource.data.cohortId) &&
-              (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)))
-          )
-        );
     }
 
     match /assessments/{assessmentId} {
-      // `assessments` documents should store `schoolId` (assessmentService) for tenant scoping.
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (resource.data.schoolId is string && (
-          isUserInSchool(resource.data.schoolId) ||
-          isStaffUserDocInSchool(resource.data.schoolId) ||
-          isOrgAdminForSchoolId(resource.data.schoolId) ||
-          (isHeadteacher() && (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId))) ||
-          (isTeacher() && (teacherReadsDenormCohortTeacherData(resource.data) ||
-            (resource.data.cohortId != null && isTeacherOfCohort(resource.data.cohortId))) &&
-            (isUserInSchool(resource.data.schoolId) || isStaffUserDocInSchool(resource.data.schoolId)))
-        )) ||
-        (resource.data.studentId != null && studentPortalReadsStudent(resource.data.studentId))
+      allow read, write: if request.auth != null && (
+        request.auth.token.role == 'super_admin' ||
+        (request.auth.token.role == 'org_admin' && resource.data.organizationId == request.auth.token.organizationId) ||
+        request.auth.token.schoolId == resource.data.schoolId ||
+        request.auth.token.schoolId == request.resource.data.schoolId ||
+        (request.auth.token.districtId != null && request.auth.token.districtId == resource.data.districtId)
       );
-
-      allow write: if isAdmin() ||
-        (request.resource != null && request.resource.data.schoolId is string &&
-          (isUserInSchool(request.resource.data.schoolId) || isStaffUserDocInSchool(request.resource.data.schoolId) ||
-            isOrgAdminForSchoolId(request.resource.data.schoolId)) &&
-          (resource == null || resource.data.schoolId == request.resource.data.schoolId) &&
-          (
-            (isTeacher() &&
-              isTeacherOfCohort(request.resource.data.cohortId) &&
-              (resource == null || isTeacherOfCohort(resource.data.cohortId))) ||
-            (isHeadteacher() &&
-              isHeadteacherOfCohortSchool(request.resource.data.cohortId) &&
-              (resource == null || isHeadteacherOfCohortSchool(resource.data.cohortId)))
-          )
-        );
     }
 
     match /senAlerts/{senAlertId} {

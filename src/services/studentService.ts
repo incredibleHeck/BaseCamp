@@ -16,13 +16,7 @@ import { signInAnonymously } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { chunkIds, getStaffAccessScope } from './staffFirestoreScope';
 import { normalizePortalLookupKey } from '../utils/accessLookupKeys';
-import {
-  DEFAULT_CIRCUIT_ID,
-  DEFAULT_ORGANIZATION_ID,
-  DEFAULT_SCHOOL_ID,
-  DEFAULT_SCHOOL_NAME,
-  schoolById,
-} from '../config/organizationDefaults';
+import { DEFAULT_ORGANIZATION_ID } from '../config/organizationDefaults';
 import type { Student, Cohort } from '../types/domain';
 
 export type { Student };
@@ -37,8 +31,27 @@ export type AddStudentInput = Omit<Student, 'id'>;
  */
 export const addStudent = async (studentData: AddStudentInput): Promise<string | null> => {
   try {
-    const schoolId = studentData.schoolId ?? DEFAULT_SCHOOL_ID;
-    const meta = schoolById(schoolId);
+    const schoolId = studentData.schoolId?.trim();
+    if (!schoolId) {
+      console.error('addStudent: missing schoolId — refusing to create student without a campus.');
+      return null;
+    }
+
+    let schoolNameFromDoc: string | undefined;
+    try {
+      const schoolSnap = await getDoc(doc(db, 'schools', schoolId));
+      if (schoolSnap.exists()) {
+        const raw = schoolSnap.data() as Record<string, unknown>;
+        const n = raw?.name;
+        if (typeof n === 'string' && n.trim()) schoolNameFromDoc = n.trim();
+      }
+    } catch {
+      /* offline or rules; omit schoolName unless caller provided */
+    }
+
+    const schoolNameEffective =
+      (typeof studentData.schoolName === 'string' && studentData.schoolName.trim()) || schoolNameFromDoc;
+
     const now = Date.now();
     const enrollmentStatus = studentData.enrollmentStatus ?? 'active';
     const org =
@@ -48,11 +61,13 @@ export const addStudent = async (studentData: AddStudentInput): Promise<string |
       grade: studentData.grade,
       organizationId: org,
       schoolId,
-      schoolName: studentData.schoolName ?? meta?.name ?? DEFAULT_SCHOOL_NAME,
-      circuitId: studentData.circuitId ?? meta?.circuitId ?? DEFAULT_CIRCUIT_ID,
       enrollmentStatus,
       updatedAt: now,
     };
+
+    if (schoolNameEffective) {
+      payload.schoolName = schoolNameEffective;
+    }
     if (studentData.cohortId !== undefined) payload.cohortId = studentData.cohortId;
     const cid = typeof studentData.cohortId === 'string' ? studentData.cohortId.trim() : '';
     if (cid) {

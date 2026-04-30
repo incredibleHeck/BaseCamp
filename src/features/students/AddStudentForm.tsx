@@ -99,11 +99,14 @@ export function AddStudentForm({ isOpen, onClose, onStudentAdded, preselectedCoh
     }
 
     setIsSaving(true);
+    const sn = user.schoolName?.trim() || '';
     const newStudent: Omit<Student, 'id'> = {
       name: name.trim(),
       grade: cohort.name,
       cohortId: cohort.id,
       schoolId: sid,
+      organizationId: user.organizationId?.trim() || '',
+      ...(sn ? { schoolName: sn } : {}),
       numericGradeLevel: cohort.gradeLevel,
       primaryLanguage,
       ...(officialSenStatus ? { officialSenStatus } : {}),

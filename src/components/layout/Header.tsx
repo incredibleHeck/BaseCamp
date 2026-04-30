@@ -14,6 +14,8 @@ export interface UserData {
   organizationId?: string;
   circuitId?: string;
   schoolId?: string;
+  /** Display name for the staff member's campus (from `schools/{schoolId}` when available). */
+  schoolName?: string;
 }
 
 interface HeaderProps {
